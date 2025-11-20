@@ -1,9 +1,10 @@
-import React, { useState, useRef } from 'react';
-import { Platform, View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Dimensions, Keyboard, Modal, Pressable, Image, ScrollView, FlatList, Share } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { Platform, View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Dimensions, Keyboard, Modal, Pressable, Image, ScrollView, FlatList, Share, Alert, PermissionsAndroid } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import MapView, { Marker, Region } from 'react-native-maps';
+import * as Location from 'expo-location';
 import PostCard from './components/PostCard';
 import { getAllPosts } from '../lib/firebaseHelpers';
 
@@ -79,6 +80,36 @@ export default function MapScreen() {
   const mapRef = useRef<MapView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSearch, setShowSearch] = useState(false);
+
+  // Request location permissions on mount
+  useEffect(() => {
+    requestLocationPermission();
+  }, []);
+
+  const requestLocationPermission = async () => {
+    try {
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          {
+            title: 'Location Permission',
+            message: 'This app needs access to your location for maps',
+            buttonPositive: 'OK',
+          }
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          console.warn('Location permission denied');
+        }
+      } else {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('Location permission denied');
+        }
+      }
+    } catch (error) {
+      console.warn('Location permission error:', error);
+    }
+  };
 
   function handlePostPress(post: PostType) {
     const locationName = typeof post.location === 'string' ? post.location : post.location?.name;

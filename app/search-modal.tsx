@@ -102,21 +102,42 @@ export default function SearchModal() {
     setLoadingSuggest(true);
     const timer = setTimeout(async () => {
       try {
-        const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q)}&key=${GOOGLE_MAP_API_KEY}`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Google Maps API failed');
-        const j = await res.json();
-        const items = (j.predictions || []).map((r:any, i:number) => ({
-          id: r.place_id,
-          title: r.structured_formatting?.main_text || r.description,
-          subtitle: r.description,
-          lat: null,
-          lon: null,
-          source: 'google',
+        // Use Nominatim OpenStreetMap API (no key required, more reliable in production)
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1`;
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        const res = await fetch(url, { 
+          signal: controller.signal,
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'TravelSocialApp/1.0'
+          }
+        });
+        clearTimeout(timeoutId);
+        
+        if (!res.ok) {
+          console.warn('Search API status:', res.status);
+          if (!cancelled) setSuggestions([]);
+          return;
+        }
+        
+        const data = await res.json();
+        
+        const items = (data || []).map((r: any) => ({
+          id: r.place_id || String(Math.random()),
+          title: r.display_name?.split(',')[0] || r.name || 'Location',
+          subtitle: r.display_name || '',
+          lat: parseFloat(r.lat),
+          lon: parseFloat(r.lon),
+          source: 'nominatim',
         }));
+        
         if (!cancelled) setSuggestions(items);
-      } catch (e) {
-        console.warn('Suggest error', e);
+      } catch (e: any) {
+        console.warn('Search API error:', e?.message || e);
+        // Don't crash - just show empty suggestions
         if (!cancelled) setSuggestions([]);
       } finally {
         if (!cancelled) setLoadingSuggest(false);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, FlatList, Alert, ActivityIndicator, Platform } from "react-native";
+import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, FlatList, Alert, ActivityIndicator, Platform, PermissionsAndroid } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,8 @@ import { getCurrentUser } from '../lib/firebaseHelpers';
 import { AGORA_CONFIG, generateChannelName, getAgoraToken } from '../config/agora';
 import { db } from '../config/firebase';
 import { collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp, increment, getDoc, setDoc } from 'firebase/firestore';
+import { Camera, CameraView } from 'expo-camera';
+import * as Location from 'expo-location';
 
 // Default avatar from Firebase Storage
 const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
@@ -57,11 +59,51 @@ export default function GoLive() {
     const channel = generateChannelName(currentUser.uid);
     setChannelName(channel);
 
+    // Request camera and microphone permissions
+    requestPermissions();
+
     return () => {
       // Cleanup on unmount
       stopLiveStream();
     };
   }, []);
+
+  const requestPermissions = async () => {
+    try {
+      if (Platform.OS === 'android') {
+        const cameraGranted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+          {
+            title: 'Camera Permission',
+            message: 'This app needs access to your camera for live streaming',
+            buttonPositive: 'OK',
+          }
+        );
+        const audioGranted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: 'Microphone Permission',
+            message: 'This app needs access to your microphone for live streaming',
+            buttonPositive: 'OK',
+          }
+        );
+        
+        if (cameraGranted !== PermissionsAndroid.RESULTS.GRANTED || 
+            audioGranted !== PermissionsAndroid.RESULTS.GRANTED) {
+          Alert.alert('Permissions Required', 'Camera and microphone permissions are required for live streaming');
+        }
+      } else {
+        const { status: cameraStatus } = await Camera.requestCameraPermissionsAsync();
+        const { status: audioStatus } = await Camera.requestMicrophonePermissionsAsync();
+        
+        if (cameraStatus !== 'granted' || audioStatus !== 'granted') {
+          Alert.alert('Permissions Required', 'Camera and microphone permissions are required for live streaming');
+        }
+      }
+    } catch (error) {
+      console.warn('Permission request error:', error);
+    }
+  };
 
   // Subscribe to live stream comments and viewer count
   useEffect(() => {
@@ -245,9 +287,9 @@ export default function GoLive() {
             <ActivityIndicator size="large" color="#fff" />
           </View>
         ) : isLive ? (
-          <View style={styles.videoBackground}>
-            {/* Agora video view */}
-          </View>
+          <CameraView style={styles.videoBackground} facing="back">
+            <View style={{ flex: 1, backgroundColor: 'transparent' }} />
+          </CameraView>
         ) : (
           <Image 
             source={{ uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=60' }} 
@@ -319,14 +361,15 @@ export default function GoLive() {
             <View style={styles.mapHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Ionicons name="location" size={20} color="#ff0000" style={{ marginRight: 6 }} />
-                <Text style={styles.mapTitle}>Live Location</Text>
+                <Text style={styles.mapTitle}>Enable location to show map</Text>
               </View>
               <TouchableOpacity onPress={() => setShowMap(false)}>
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
             <View style={styles.mapPlaceholder}>
-              <Text style={styles.mapText}>Map View Here</Text>
+              <Ionicons name="map" size={48} color="#ccc" />
+              <Text style={styles.mapText}>Location services required</Text>
             </View>
           </View>
         )}

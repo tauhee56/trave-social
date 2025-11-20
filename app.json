@@ -48,6 +48,16 @@
         }
       ],
       [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location for map features and location tagging.",
+          "locationAlwaysPermission": "Allow $(PRODUCT_NAME) to use your location for map features.",
+          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location while using the app.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
