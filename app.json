@@ -20,7 +20,18 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.tauhee56.travesocial"
+      "package": "com.tauhee56.travesocial",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c"
+        }
+      }
     },
     "web": {
       "output": "static",
@@ -28,6 +39,14 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera for posting photos and live streaming.",
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for live streaming.",
+          "recordAudioAndroid": true
+        }
+      ],
       [
         "expo-splash-screen",
         {
