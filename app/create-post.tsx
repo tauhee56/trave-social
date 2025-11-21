@@ -27,6 +27,7 @@ export default function CreatePostScreen() {
   const [taggedUsers, setTaggedUsers] = useState<any[]>([]);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [networkError, setNetworkError] = useState(false);
 
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showVerifiedModal, setShowVerifiedModal] = useState(false);

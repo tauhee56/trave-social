@@ -50,6 +50,13 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos for posting.",
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera for taking photos."
+        }
+      ],
+      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location for map features and location tagging.",

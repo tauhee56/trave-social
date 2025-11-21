@@ -31,10 +31,14 @@ export default function Signup() {
       if (result.success) {
         router.replace('/(tabs)/home');
       } else {
-        setError(result.error || 'Signup failed');
+        const errorMsg = result.error || 'Signup failed';
+        console.error('Signup error:', errorMsg);
+        setError(errorMsg.includes('network') ? 'Network error. Check internet connection.' : errorMsg);
       }
     } catch (e: any) {
-      setError(e.message || 'Signup failed');
+      console.error('Signup exception:', e);
+      const errorMsg = e.message || 'Signup failed';
+      setError(errorMsg.includes('network') || errorMsg.includes('fetch') ? 'Network error. Check internet connection.' : errorMsg);
     } finally {
       setLoading(false);
     }
