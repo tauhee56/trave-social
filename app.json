@@ -32,8 +32,7 @@
         "googleMaps": {
           "apiKey": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c"
         }
-      },
-      "usesCleartextTraffic": true
+      }
     },
     "web": {
       "output": "static",
@@ -41,6 +40,8 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/withCleartextTraffic.js",
+      "./plugins/withNetworkSecurityConfig.js",
       [
         "expo-camera",
         {
