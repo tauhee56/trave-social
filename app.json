@@ -25,13 +25,15 @@
         "CAMERA",
         "RECORD_AUDIO",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET"
       ],
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c"
         }
-      }
+      },
+      "usesCleartextTraffic": true
     },
     "web": {
       "output": "static",

@@ -40,7 +40,7 @@ app-example
 
 # generated native folders
 /ios
-# /android - Uncommented to include manual Android config for Maps API and native modules
+/android
 
 # Ignore system and cache folders
 AppData/

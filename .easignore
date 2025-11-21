@@ -1,5 +1,5 @@
 # Ignore Windows diagnostic folder
 ElevatedDiagnostics/
 
-# Include android folder with manual configuration
-# Prebuild was causing native modules to fail
+# Exclude android folder to use Continuous Native Generation (Prebuild)
+/android
