@@ -25,6 +25,7 @@ export default function SearchModal() {
   const [q, setQ] = useState('');
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const router = useRouter();
+  const [hasError, setHasError] = useState(false);
 
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loadingSuggest, setLoadingSuggest] = useState(false);
@@ -33,6 +34,16 @@ export default function SearchModal() {
   const [users, setUsers] = useState<any[]>([]);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+
+  // Error boundary
+  useEffect(() => {
+    const errorHandler = (error: any) => {
+      console.error('Search modal error:', error);
+      setHasError(true);
+    };
+    
+    return () => {};
+  }, []);
 
   // Optional Mapbox token for better autocomplete. Leave empty to use Nominatim fallback.
   const MAPBOX_TOKEN = "";
@@ -176,6 +187,30 @@ export default function SearchModal() {
       handleClear();
     }
   }, [tab]);
+
+  // Error fallback UI
+  if (hasError) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+        <View style={styles.headerTabsRow}>
+          <TouchableOpacity onPress={() => router.replace('/(tabs)/home')} style={styles.closeBtn}>
+            <Feather name="x" size={16} color="#333" />
+          </TouchableOpacity>
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>
+            Unable to load search. Please check your internet connection.
+          </Text>
+          <TouchableOpacity 
+            onPress={() => { setHasError(false); router.replace('/(tabs)/home'); }}
+            style={{ marginTop: 20, padding: 12, backgroundColor: '#007AFF', borderRadius: 8 }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '600' }}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>

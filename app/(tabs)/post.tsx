@@ -21,7 +21,9 @@ const MOCK_LOCATIONS = [
   { id: "4", name: "Inchel", address: "33H King's Rd, London SW3 4LX, United Kingdom" },
 ];
 
-const GOOGLE_MAP_API_KEY = process.env.Google_map_Api || (Constants.manifest?.extra?.Google_map_Api ?? '');
+// Hardcoded API key for production builds (process.env doesn't work in production APK)
+const GOOGLE_MAP_API_KEY = 'AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c';
+
 export default function PostScreen() {
     // Default avatar from Firebase Storage
     const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
