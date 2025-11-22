@@ -73,12 +73,17 @@ export default function SearchModal() {
   async function loadRecommendations() {
     try {
       setLoadingUsers(true);
+      setHasError(false);
       const result = await searchUsers('', 10);
       if (result.success) {
-        setRecommendations(result.data);
+        setRecommendations(result.data || []);
+      } else {
+        setRecommendations([]);
       }
-    } catch (error) {
-      console.log('Error loading recommendations:', error);
+    } catch (error: any) {
+      console.error('Error loading recommendations:', error);
+      setRecommendations([]);
+      // Don't set hasError for recommendations - not critical
     } finally {
       setLoadingUsers(false);
     }
@@ -87,12 +92,22 @@ export default function SearchModal() {
   async function searchForUsers(query: string) {
     try {
       setLoadingUsers(true);
+      setHasError(false);
       const result = await searchUsers(query, 20);
       if (result.success) {
-        setUsers(result.data);
+        setUsers(result.data || []);
+      } else {
+        // Search failed but didn't throw - show empty results
+        setUsers([]);
+        console.warn('Search failed:', result.error);
       }
-    } catch (error) {
-      console.log('Error searching users:', error);
+    } catch (error: any) {
+      console.error('Error searching users:', error);
+      // Don't crash - just show empty results
+      setUsers([]);
+      if (error?.message?.includes('network') || error?.message?.includes('fetch')) {
+        setHasError(true);
+      }
     } finally {
       setLoadingUsers(false);
     }
