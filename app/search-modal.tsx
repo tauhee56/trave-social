@@ -26,6 +26,7 @@ export default function SearchModal() {
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const router = useRouter();
   const [hasError, setHasError] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loadingSuggest, setLoadingSuggest] = useState(false);
@@ -34,6 +35,19 @@ export default function SearchModal() {
   const [users, setUsers] = useState<any[]>([]);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+
+  // Component mount tracking
+  useEffect(() => {
+    try {
+      setMounted(true);
+    } catch (error) {
+      console.error('Mount error:', error);
+      setHasError(true);
+    }
+    return () => {
+      setMounted(false);
+    };
+  }, []);
 
   // Error boundary
   useEffect(() => {
@@ -50,13 +64,19 @@ export default function SearchModal() {
 
   // Load recommendations when switching to people tab
   useEffect(() => {
+    if (!mounted) return;
+    
     if (tab === 'people' && recommendations.length === 0) {
-      loadRecommendations();
+      loadRecommendations().catch(err => {
+        console.error('Failed to load recommendations:', err);
+        setRecommendations([]);
+      });
     }
-  }, [tab]);
+  }, [tab, mounted]);
 
   // Search users when query changes
   useEffect(() => {
+    if (!mounted) return;
     if (tab !== 'people') return;
     if (q.trim().length < 2) {
       setUsers([]);
@@ -64,19 +84,24 @@ export default function SearchModal() {
     }
 
     const timer = setTimeout(() => {
-      searchForUsers(q.trim());
+      searchForUsers(q.trim()).catch(err => {
+        console.error('Search failed:', err);
+        setUsers([]);
+      });
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [q, tab]);
+  }, [q, tab, mounted]);
 
   async function loadRecommendations() {
     try {
       setLoadingUsers(true);
       setHasError(false);
       const result = await searchUsers('', 10);
-      if (result.success) {
-        setRecommendations(result.data || []);
+      if (result.success && result.data && Array.isArray(result.data)) {
+        // Filter out invalid users
+        const validUsers = result.data.filter(u => u && u.id && u.displayName);
+        setRecommendations(validUsers);
       } else {
         setRecommendations([]);
       }
@@ -94,8 +119,10 @@ export default function SearchModal() {
       setLoadingUsers(true);
       setHasError(false);
       const result = await searchUsers(query, 20);
-      if (result.success) {
-        setUsers(result.data || []);
+      if (result.success && result.data && Array.isArray(result.data)) {
+        // Filter out invalid users
+        const validUsers = result.data.filter(u => u && u.id && u.displayName);
+        setUsers(validUsers);
       } else {
         // Search failed but didn't throw - show empty results
         setUsers([]);
@@ -105,7 +132,7 @@ export default function SearchModal() {
       console.error('Error searching users:', error);
       // Don't crash - just show empty results
       setUsers([]);
-      if (error?.message?.includes('network') || error?.message?.includes('fetch')) {
+      if (error?.message?.includes('network') || error?.message?.includes('fetch') || error?.message?.includes('permission')) {
         setHasError(true);
       }
     } finally {
@@ -369,15 +396,29 @@ export default function SearchModal() {
                       <FlatList
                         data={recommendations}
                         keyExtractor={u => u.id}
-                        renderItem={({ item }) => (
-                          <TouchableOpacity style={styles.personRow} onPress={() => { handleClear(); router.push(`/user-profile?user=${item.id}`); }}>
-                            <Image source={{ uri: item.photoURL || item.avatar || DEFAULT_AVATAR_URL }} style={styles.personAvatar} />
-                            <View style={{ marginLeft: 12, flex: 1 }}>
-                              <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
-                              {item.bio && <Text style={{ fontSize: 12, color: '#666' }} numberOfLines={1}>{item.bio}</Text>}
-                            </View>
-                          </TouchableOpacity>
-                        )}
+                        renderItem={({ item }) => {
+                          const avatarUri = (item.photoURL && item.photoURL.trim() !== "") 
+                            ? item.photoURL 
+                            : ((item.avatar && item.avatar.trim() !== "") 
+                                ? item.avatar 
+                                : DEFAULT_AVATAR_URL);
+                          
+                          return (
+                            <TouchableOpacity style={styles.personRow} onPress={() => { handleClear(); router.push(`/user-profile?user=${item.id}`); }}>
+                              <Image 
+                                source={{ uri: avatarUri }} 
+                                style={styles.personAvatar}
+                                onError={(error) => {
+                                  console.warn('Recommendation avatar load failed:', item.id);
+                                }}
+                              />
+                              <View style={{ marginLeft: 12, flex: 1 }}>
+                                <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
+                                {item.bio && <Text style={{ fontSize: 12, color: '#666' }} numberOfLines={1}>{item.bio}</Text>}
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        }}
                         ListEmptyComponent={<Text style={{ color: '#999', marginTop: 20, textAlign: 'center' }}>No recommendations available</Text>}
                       />
                     </View>
@@ -395,15 +436,29 @@ export default function SearchModal() {
                       <FlatList
                         data={users}
                         keyExtractor={u => u.id}
-                        renderItem={({ item }) => (
-                          <TouchableOpacity style={styles.personRow} onPress={() => { handleClear(); router.push(`/user-profile?user=${item.id}`); }}>
-                            <Image source={{ uri: (item.photoURL && item.photoURL.trim() !== "" ? item.photoURL : (item.avatar && item.avatar.trim() !== "" ? item.avatar : DEFAULT_AVATAR_URL)) }} style={styles.personAvatar} />
-                            <View style={{ marginLeft: 12, flex: 1 }}>
-                              <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
-                              {item.bio && <Text style={{ fontSize: 12, color: '#666' }} numberOfLines={1}>{item.bio}</Text>}
-                            </View>
-                          </TouchableOpacity>
-                        )}
+                        renderItem={({ item }) => {
+                          const avatarUri = (item.photoURL && item.photoURL.trim() !== "") 
+                            ? item.photoURL 
+                            : ((item.avatar && item.avatar.trim() !== "") 
+                                ? item.avatar 
+                                : DEFAULT_AVATAR_URL);
+                          
+                          return (
+                            <TouchableOpacity style={styles.personRow} onPress={() => { handleClear(); router.push(`/user-profile?user=${item.id}`); }}>
+                              <Image 
+                                source={{ uri: avatarUri }} 
+                                style={styles.personAvatar}
+                                onError={(error) => {
+                                  console.warn('User avatar load failed:', item.id);
+                                }}
+                              />
+                              <View style={{ marginLeft: 12, flex: 1 }}>
+                                <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
+                                {item.bio && <Text style={{ fontSize: 12, color: '#666' }} numberOfLines={1}>{item.bio}</Text>}
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        }}
                         ListEmptyComponent={<Text style={{ color: '#999', marginTop: 20, textAlign: 'center' }}>No users found</Text>}
                       />
                     </View>

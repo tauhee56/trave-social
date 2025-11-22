@@ -171,7 +171,31 @@ export default function MapScreen() {
       const response = await fetch(
         `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${GOOGLE_MAP_API_KEY}`
       );
+      
+      if (!response.ok) {
+        console.error('Map search API error:', response.status);
+        setError(`Search failed: ${response.status === 403 ? 'API key issue' : 'Network error'}`);
+        setLoading(false);
+        return;
+      }
+      
       const data = await response.json();
+      
+      // Check Google Maps API response status
+      if (data.status === 'REQUEST_DENIED') {
+        console.error('Google Maps API denied:', data.error_message);
+        setError('Maps API key restricted. Please check Google Cloud Console.');
+        setLoading(false);
+        return;
+      }
+      
+      if (data.status !== 'OK') {
+        console.warn('Maps API status:', data.status);
+        setError(`Search failed: ${data.status}`);
+        setLoading(false);
+        return;
+      }
+      
       if (data.results && data.results.length > 0) {
         const result = data.results[0];
         const lat = result.geometry.location.lat;
@@ -196,8 +220,9 @@ export default function MapScreen() {
       } else {
         setError('Location not found');
       }
-    } catch (e) {
-      setError('Search failed');
+    } catch (e: any) {
+      console.error('Map search error:', e);
+      setError(`Search failed: ${e.message || 'Unknown error'}`);
     }
     setLoading(false);
   }
