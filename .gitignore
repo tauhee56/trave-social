@@ -43,11 +43,19 @@ app-example
 /android
 
 # Ignore system and cache folders
-AppData/
-Documents/
-Downloads/
-Music/
-Videos/
+**/AppData/
+**/Documents/
+**/Downloads/
+**/Music/
+**/Videos/
+**/Local/
+**/Temp/
+*.tmp
+*.log
+*.otc
+*.otc-shm
+*.otc-wal
+*.aodl
 Pictures/
 *.lnk
 *.tmp
