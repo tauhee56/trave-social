@@ -1,8 +1,17 @@
-import React from 'react';
-import SearchModal from './search-modal';
 
-export default function Search() {
-  // Top-level search route (outside of the tabs layout)
-  // Rendering the same `SearchModal` here prevents the bottom tab bar from showing.
-  return <SearchModal />;
+
+import { useRouter } from "expo-router";
+import { useEffect } from "react";
+
+export default function SearchRedirect() {
+  const router = useRouter();
+
+  // Redirect navigation search to the modal search route.
+  useEffect(() => {
+    router.replace("/search-modal");
+  }, []);
+
+  return null;
 }
+
+

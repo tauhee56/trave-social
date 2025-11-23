@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, ActivityIndicator, ScrollView, Modal, FlatList, Dimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { Feather, MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { createPost, getCurrentUser, searchUsers } from '../lib/firebaseHelpers';
 
 const GOOGLE_MAP_API_KEY = 'AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c';
@@ -441,7 +441,11 @@ export default function CreatePostScreen() {
       {/* Location Modal */}
       <Modal visible={showLocationModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalBox}
+            enabled
+          >
             <Text style={styles.modalTitle}>Choose a location to tag</Text>
             <Text style={styles.modalSubtitle}>
               Search for a location using Google Places
@@ -488,7 +492,7 @@ export default function CreatePostScreen() {
                 ) : null
               )}
             />
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: 24 }]}>
               <TouchableOpacity onPress={() => {
                 setShowLocationModal(false);
                 setLocationQuery('');
@@ -497,14 +501,18 @@ export default function CreatePostScreen() {
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
       {/* Verified Location Modal */}
       <Modal visible={showVerifiedModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalBox}
+            enabled
+          >
             <View style={styles.verifiedHeader}>
               <MaterialIcons name="verified" size={24} color="#f39c12" />
               <Text style={styles.modalTitle}>Add a verified location</Text>
@@ -554,7 +562,7 @@ export default function CreatePostScreen() {
                 ) : null
               )}
             />
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: 24 }]}>
               <TouchableOpacity onPress={() => {
                 setShowVerifiedModal(false);
                 setVerifiedQuery('');
@@ -563,14 +571,18 @@ export default function CreatePostScreen() {
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
       {/* Tag People Modal */}
       <Modal visible={showTagModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalBox}
+            enabled
+          >
             <Text style={styles.modalTitle}>Tag people</Text>
             <Text style={styles.modalSubtitle}>
               {taggedUsers.length > 0 ? `${taggedUsers.length} people tagged` : 'Search for people to tag'}
@@ -635,12 +647,12 @@ export default function CreatePostScreen() {
                 ListEmptyComponent={<Text style={styles.emptyText}>No users found</Text>}
               />
             )}
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: 24 }]}>
               <TouchableOpacity onPress={() => setShowTagModal(false)}>
                 <Text style={styles.cancelText}>Done</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>

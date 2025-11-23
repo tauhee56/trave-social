@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react";
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Image, Dimensions, FlatList, Platform, ActivityIndicator } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Dimensions, FlatList, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { searchUsers } from "../lib/firebaseHelpers";
 
 const GOOGLE_MAP_API_KEY = 'AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c';
@@ -100,7 +100,7 @@ export default function SearchModal() {
       const result = await searchUsers('', 10);
       if (result.success && result.data && Array.isArray(result.data)) {
         // Filter out invalid users
-        const validUsers = result.data.filter(u => u && u.id && u.displayName);
+        const validUsers = result.data.filter(u => u && u.id);
         setRecommendations(validUsers);
       } else {
         setRecommendations([]);
@@ -121,7 +121,7 @@ export default function SearchModal() {
       const result = await searchUsers(query, 20);
       if (result.success && result.data && Array.isArray(result.data)) {
         // Filter out invalid users
-        const validUsers = result.data.filter(u => u && u.id && u.displayName);
+        const validUsers = result.data.filter(u => u && u.id);
         setUsers(validUsers);
       } else {
         // Search failed but didn't throw - show empty results
@@ -203,24 +203,40 @@ export default function SearchModal() {
     setQ('');
     setSelectedRegion(null);
     setSuggestions([]);
+    try {
+      // Defensive navigation fallback
+      router.replace('/search-modal');
+    } catch (e) {
+      console.error('Navigation fallback error:', e);
+    }
   }
 
   function handleSearch() {
-    const trimmed = (q || '').trim();
-    if (selectedRegion) {
-      const region = regions.find(r => r.id === selectedRegion);
-      const label = region ? region.name : trimmed;
-      router.push(`/(tabs)/map?q=${encodeURIComponent(label || '')}`);
-      return;
-    }
+    try {
+      const trimmed = (q || '').trim();
+      if (selectedRegion) {
+        const region = regions.find(r => r.id === selectedRegion);
+        const label = region ? region.name : trimmed;
+        router.push(`/(tabs)/map?q=${encodeURIComponent(label || '')}`);
+        return;
+      }
 
-    if (trimmed.length > 0) {
-      router.push(`/(tabs)/map?q=${encodeURIComponent(trimmed)}`);
-      return;
-    }
+      if (trimmed.length > 0) {
+        router.push(`/(tabs)/map?q=${encodeURIComponent(trimmed)}`);
+        return;
+      }
 
-    // fallback: just open map
-    router.push(`/(tabs)/map`);
+      // fallback: just open map
+      router.push(`/(tabs)/map`);
+    } catch (error) {
+      console.error('Search navigation error:', error);
+      // Fallback to home if navigation fails
+      try {
+        router.push('/(tabs)/home');
+      } catch (e) {
+        console.error('Failed to navigate to home:', e);
+      }
+    }
   }
 
   // Clear input when switching to People tab so text doesn't persist
@@ -256,235 +272,241 @@ export default function SearchModal() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      {/* Header */}
-      <View style={styles.headerTabsRow}>
-        <TouchableOpacity onPress={() => router.replace('/(tabs)/home')} style={styles.closeBtn}>
-          <Feather name="x" size={16} color="#333" />
-        </TouchableOpacity>
-        <View style={styles.tabsCenterWrap}>
-          <View style={styles.tabsInline}>
-            <TouchableOpacity onPress={() => setTab('place')} style={styles.tabBtnInline}>
-              <Text style={[styles.tabText, tab === 'place' && styles.tabTextActive]}>Place</Text>
-              {tab === 'place' && <View style={styles.tabUnderlineInline} />}
-            </TouchableOpacity>
-            <Text style={styles.dotSep}>·</Text>
-            <TouchableOpacity onPress={() => setTab('people')} style={styles.tabBtnInline}>
-              <Text style={[styles.tabText, tab === 'people' && styles.tabTextActive]}>People</Text>
-              {tab === 'people' && <View style={styles.tabUnderlineInline} />}
-            </TouchableOpacity>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        enabled
+      >
+        {/* Header */}
+        <View style={styles.headerTabsRow}>
+          <TouchableOpacity onPress={() => router.replace('/(tabs)/home')} style={styles.closeBtn}>
+            <Feather name="x" size={16} color="#333" />
+          </TouchableOpacity>
+          <View style={styles.tabsCenterWrap}>
+            <View style={styles.tabsInline}>
+              <TouchableOpacity onPress={() => setTab('place')} style={styles.tabBtnInline}>
+                <Text style={[styles.tabText, tab === 'place' && styles.tabTextActive]}>Place</Text>
+                {tab === 'place' && <View style={styles.tabUnderlineInline} />}
+              </TouchableOpacity>
+              <Text style={styles.dotSep}>·</Text>
+              <TouchableOpacity onPress={() => setTab('people')} style={styles.tabBtnInline}>
+                <Text style={[styles.tabText, tab === 'people' && styles.tabTextActive]}>People</Text>
+                {tab === 'people' && <View style={styles.tabUnderlineInline} />}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
 
-      {/* Main content */}
-      <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8 }}>
-        <View style={styles.searchRegionBox}>
-          <View style={styles.searchBox}>
-            <Feather name="search" size={20} color="#333" />
-            <TextInput
-              style={styles.input}
-              placeholder={tab === 'people' ? 'Search for traveler' : 'Search a destination'}
-              placeholderTextColor="#999"
-              value={q}
-              onChangeText={setQ}
-            />
-            {q.length > 0 && (
-              <TouchableOpacity onPress={handleClear} style={styles.inputClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Feather name="x" size={16} color="#777" />
-              </TouchableOpacity>
+        {/* Main content */}
+        <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8 }}>
+          <View style={styles.searchRegionBox}>
+            <View style={styles.searchBox}>
+              <Feather name="search" size={20} color="#333" />
+              <TextInput
+                style={styles.input}
+                placeholder={tab === 'people' ? 'Search for traveler' : 'Search a destination'}
+                placeholderTextColor="#999"
+                value={q}
+                onChangeText={setQ}
+              />
+              {q.length > 0 && (
+                <TouchableOpacity onPress={handleClear} style={styles.inputClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Feather name="x" size={16} color="#777" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {q.length >= 2 && tab === 'place' && (
+              <View style={{ marginTop: 10, maxHeight: 220 }}>
+                <FlatList
+                  data={suggestions}
+                  keyExtractor={item => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.suggestionRow}
+                      onPress={() => {
+                        handleClear();
+                        if (item.lat && item.lon) {
+                          router.push(`/(tabs)/map?lat=${item.lat}&lon=${item.lon}&q=${encodeURIComponent(item.subtitle || item.title)}`);
+                        } else {
+                          router.push(`/(tabs)/map?q=${encodeURIComponent(item.subtitle || item.title)}`);
+                        }
+                      }}
+                    >
+                      <Feather name="map-pin" size={18} color="#f39c12" />
+                      <View style={{ marginLeft: 10, flex: 1 }}>
+                        <Text style={{ fontWeight: '600' }}>{item.title}</Text>
+                        <Text style={{ color: '#666', fontSize: 12 }}>{item.subtitle}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                  ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#f0f0f0', marginVertical: 8 }} />}
+                />
+              </View>
+            )}
+
+            {tab === 'place' && (
+              <View style={{ marginTop: 20 }}>
+                <Text style={styles.sectionTitle}>Or select a region</Text>
+
+                <View style={{ height: 140, marginBottom: 12 }}>
+                  <FlatList
+                    data={regions.slice(0, 3)}
+                    keyExtractor={item => item.id}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    renderItem={({ item, index }) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[
+                          styles.regionCard,
+                          selectedRegion === item.id && styles.regionCardActive,
+                          { marginRight: index !== 2 ? 12 : 0 }
+                        ]}
+                        onPress={() => {
+                          setSelectedRegion(item.id);
+                          setQ(item.name);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Image source={{ uri: item.image }} style={styles.regionImage} resizeMode="contain" />
+                        <Text style={styles.regionName}>{item.name}</Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+
+                <View style={{ height: 140 }}>
+                  <FlatList
+                    data={regions.slice(3, 6)}
+                    keyExtractor={item => item.id}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    renderItem={({ item, index }) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[
+                          styles.regionCard,
+                          selectedRegion === item.id && styles.regionCardActive,
+                          { marginRight: index !== 2 ? 12 : 0 }
+                        ]}
+                        onPress={() => {
+                          setSelectedRegion(item.id);
+                          setQ(item.name);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Image source={{ uri: item.image }} style={styles.regionImage} resizeMode="contain" />
+                        <Text style={styles.regionName}>{item.name}</Text>
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              </View>
+            )}
+
+            {tab === 'people' && (
+              <View style={{ marginTop: 20 }}>
+                {q.trim().length === 0 && (
+                  <>
+                    <Text style={styles.sectionTitle}>Recommended travelers</Text>
+                    {loadingUsers ? (
+                      <ActivityIndicator size="small" color="#f39c12" style={{ marginTop: 20 }} />
+                    ) : (
+                      <View style={{ marginTop: 8 }}>
+                        <FlatList
+                          data={recommendations}
+                          keyExtractor={u => u.id}
+                          renderItem={({ item }) => {
+                            const avatarUri = (item.photoURL && item.photoURL.trim() !== "") 
+                              ? item.photoURL 
+                              : ((item.avatar && item.avatar.trim() !== "") 
+                                  ? item.avatar 
+                                  : DEFAULT_AVATAR_URL);
+                          
+                            return (
+                              <TouchableOpacity style={styles.personRow} onPress={() => { handleClear(); router.push(`/user-profile?user=${item.id}`); }}>
+                                <Image 
+                                  source={{ uri: avatarUri }} 
+                                  style={styles.personAvatar}
+                                  onError={(error) => {
+                                    console.warn('Recommendation avatar load failed:', item.id);
+                                  }}
+                                />
+                                <View style={{ marginLeft: 12, flex: 1 }}>
+                                  <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
+                                  {item.bio && <Text style={{ fontSize: 12, color: '#666' }} numberOfLines={1}>{item.bio}</Text>}
+                                </View>
+                              </TouchableOpacity>
+                            );
+                          }}
+                          ListEmptyComponent={<Text style={{ color: '#999', marginTop: 20, textAlign: 'center' }}>No recommendations available</Text>}
+                        />
+                      </View>
+                    )}
+                  </>
+                )}
+
+                {q.trim().length > 0 && (
+                  <>
+                    <Text style={styles.sectionTitle}>Search results</Text>
+                    {loadingUsers ? (
+                      <ActivityIndicator size="small" color="#f39c12" style={{ marginTop: 20 }} />
+                    ) : (
+                      <View style={{ marginTop: 8 }}>
+                        <FlatList
+                          data={users}
+                          keyExtractor={u => u.id}
+                          renderItem={({ item }) => {
+                            const avatarUri = (item.photoURL && item.photoURL.trim() !== "") 
+                              ? item.photoURL 
+                              : ((item.avatar && item.avatar.trim() !== "") 
+                                  ? item.avatar 
+                                  : DEFAULT_AVATAR_URL);
+                          
+                            return (
+                              <TouchableOpacity style={styles.personRow} onPress={() => { handleClear(); router.push(`/user-profile?user=${item.id}`); }}>
+                                <Image 
+                                  source={{ uri: avatarUri }} 
+                                  style={styles.personAvatar}
+                                  onError={(error) => {
+                                    console.warn('User avatar load failed:', item.id);
+                                  }}
+                                />
+                                <View style={{ marginLeft: 12, flex: 1 }}>
+                                  <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
+                                  {item.bio && <Text style={{ fontSize: 12, color: '#666' }} numberOfLines={1}>{item.bio}</Text>}
+                                </View>
+                              </TouchableOpacity>
+                            );
+                          }}
+                          ListEmptyComponent={<Text style={{ color: '#999', marginTop: 20, textAlign: 'center' }}>No users found</Text>}
+                        />
+                      </View>
+                    )}
+                  </>
+                )}
+              </View>
             )}
           </View>
-
-          {q.length >= 2 && tab === 'place' && (
-            <View style={{ marginTop: 10, maxHeight: 220 }}>
-              <FlatList
-                data={suggestions}
-                keyExtractor={item => item.id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.suggestionRow}
-                    onPress={() => {
-                      handleClear();
-                      if (item.lat && item.lon) {
-                        router.push(`/(tabs)/map?lat=${item.lat}&lon=${item.lon}&q=${encodeURIComponent(item.subtitle || item.title)}`);
-                      } else {
-                        router.push(`/(tabs)/map?q=${encodeURIComponent(item.subtitle || item.title)}`);
-                      }
-                    }}
-                  >
-                    <Feather name="map-pin" size={18} color="#f39c12" />
-                    <View style={{ marginLeft: 10, flex: 1 }}>
-                      <Text style={{ fontWeight: '600' }}>{item.title}</Text>
-                      <Text style={{ color: '#666', fontSize: 12 }}>{item.subtitle}</Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
-                ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#f0f0f0', marginVertical: 8 }} />}
-              />
-            </View>
-          )}
-
-          {tab === 'place' && (
-            <View style={{ marginTop: 20 }}>
-              <Text style={styles.sectionTitle}>Or select a region</Text>
-
-              <View style={{ height: 140, marginBottom: 12 }}>
-                <FlatList
-                  data={regions.slice(0, 3)}
-                  keyExtractor={item => item.id}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  renderItem={({ item, index }) => (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={[
-                          styles.regionCard,
-                          selectedRegion === item.id && styles.regionCardActive,
-                          { marginRight: index !== 2 ? 12 : 0 }
-                        ]}
-                        onPress={() => {
-                          setSelectedRegion(item.id);
-                          setQ(item.name);
-                        }}
-                        activeOpacity={0.8}
-                      >
-                        <Image source={{ uri: item.image }} style={styles.regionImage} resizeMode="contain" />
-                        <Text style={styles.regionName}>{item.name}</Text>
-                      </TouchableOpacity>
-                    )}
-                />
-              </View>
-
-              <View style={{ height: 140 }}>
-                <FlatList
-                  data={regions.slice(3, 6)}
-                  keyExtractor={item => item.id}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  renderItem={({ item, index }) => (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={[
-                          styles.regionCard,
-                          selectedRegion === item.id && styles.regionCardActive,
-                          { marginRight: index !== 2 ? 12 : 0 }
-                        ]}
-                        onPress={() => {
-                          setSelectedRegion(item.id);
-                          setQ(item.name);
-                        }}
-                        activeOpacity={0.8}
-                      >
-                        <Image source={{ uri: item.image }} style={styles.regionImage} resizeMode="contain" />
-                        <Text style={styles.regionName}>{item.name}</Text>
-                      </TouchableOpacity>
-                    )}
-                />
-              </View>
-            </View>
-          )}
-
-          {tab === 'people' && (
-            <View style={{ marginTop: 20 }}>
-              {q.trim().length === 0 && (
-                <>
-                  <Text style={styles.sectionTitle}>Recommended travelers</Text>
-                  {loadingUsers ? (
-                    <ActivityIndicator size="small" color="#f39c12" style={{ marginTop: 20 }} />
-                  ) : (
-                    <View style={{ marginTop: 8 }}>
-                      <FlatList
-                        data={recommendations}
-                        keyExtractor={u => u.id}
-                        renderItem={({ item }) => {
-                          const avatarUri = (item.photoURL && item.photoURL.trim() !== "") 
-                            ? item.photoURL 
-                            : ((item.avatar && item.avatar.trim() !== "") 
-                                ? item.avatar 
-                                : DEFAULT_AVATAR_URL);
-                          
-                          return (
-                            <TouchableOpacity style={styles.personRow} onPress={() => { handleClear(); router.push(`/user-profile?user=${item.id}`); }}>
-                              <Image 
-                                source={{ uri: avatarUri }} 
-                                style={styles.personAvatar}
-                                onError={(error) => {
-                                  console.warn('Recommendation avatar load failed:', item.id);
-                                }}
-                              />
-                              <View style={{ marginLeft: 12, flex: 1 }}>
-                                <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
-                                {item.bio && <Text style={{ fontSize: 12, color: '#666' }} numberOfLines={1}>{item.bio}</Text>}
-                              </View>
-                            </TouchableOpacity>
-                          );
-                        }}
-                        ListEmptyComponent={<Text style={{ color: '#999', marginTop: 20, textAlign: 'center' }}>No recommendations available</Text>}
-                      />
-                    </View>
-                  )}
-                </>
-              )}
-
-              {q.trim().length > 0 && (
-                <>
-                  <Text style={styles.sectionTitle}>Search results</Text>
-                  {loadingUsers ? (
-                    <ActivityIndicator size="small" color="#f39c12" style={{ marginTop: 20 }} />
-                  ) : (
-                    <View style={{ marginTop: 8 }}>
-                      <FlatList
-                        data={users}
-                        keyExtractor={u => u.id}
-                        renderItem={({ item }) => {
-                          const avatarUri = (item.photoURL && item.photoURL.trim() !== "") 
-                            ? item.photoURL 
-                            : ((item.avatar && item.avatar.trim() !== "") 
-                                ? item.avatar 
-                                : DEFAULT_AVATAR_URL);
-                          
-                          return (
-                            <TouchableOpacity style={styles.personRow} onPress={() => { handleClear(); router.push(`/user-profile?user=${item.id}`); }}>
-                              <Image 
-                                source={{ uri: avatarUri }} 
-                                style={styles.personAvatar}
-                                onError={(error) => {
-                                  console.warn('User avatar load failed:', item.id);
-                                }}
-                              />
-                              <View style={{ marginLeft: 12, flex: 1 }}>
-                                <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
-                                {item.bio && <Text style={{ fontSize: 12, color: '#666' }} numberOfLines={1}>{item.bio}</Text>}
-                              </View>
-                            </TouchableOpacity>
-                          );
-                        }}
-                        ListEmptyComponent={<Text style={{ color: '#999', marginTop: 20, textAlign: 'center' }}>No users found</Text>}
-                      />
-                    </View>
-                  )}
-                </>
-              )}
-            </View>
-          )}
         </View>
-      </View>
 
-      {/* Bottom Actions */}
-          <View style={styles.bottomBar}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', flex: 1 }}>
-          <View style={{ alignItems: 'center' }}>
-            <TouchableOpacity style={styles.clearBtn} onPress={handleClear}>
-              <Text style={styles.clearText}>Clear all</Text>
+        {/* Bottom Actions */}
+        <View style={styles.bottomBar}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', flex: 1 }}>
+            <View style={{ alignItems: 'center' }}>
+              <TouchableOpacity style={styles.clearBtn} onPress={handleClear}>
+                <Text style={styles.clearText}>Clear all</Text>
+              </TouchableOpacity>
+              <View style={styles.clearUnderline} />
+            </View>
+            <TouchableOpacity style={styles.searchBtn} onPress={handleSearch}>
+              <Feather name="search" size={18} color="#fff" />
+              <Text style={styles.searchBtnText}>Search</Text>
             </TouchableOpacity>
-            <View style={styles.clearUnderline} />
           </View>
-          <TouchableOpacity style={styles.searchBtn} onPress={handleSearch}>
-            <Feather name="search" size={18} color="#fff" />
-            <Text style={styles.searchBtnText}>Search</Text>
-          </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

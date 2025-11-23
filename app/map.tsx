@@ -1,11 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Platform, View, Text, TextInput, StyleSheet, TouchableOpacity, ActivityIndicator, Dimensions, Keyboard, Modal, Pressable, Image, ScrollView, FlatList, Share, Alert, PermissionsAndroid } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import MapView, { Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
-import PostCard from './components/PostCard';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Dimensions, FlatList, Image, Modal, PermissionsAndroid, Platform, Pressable, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import MapView, { Marker, Region } from 'react-native-maps';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getAllPosts } from '../lib/firebaseHelpers';
 
 const { width } = Dimensions.get('window');
@@ -155,12 +154,17 @@ export default function MapScreen() {
           : result.posts;
         console.log('Map: Filtered posts count:', filteredPosts.length);
         setPosts(filteredPosts as PostType[]);
+      } else {
+        console.warn('Map: No posts returned or invalid response');
+        setPosts([]);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Map: Failed to load posts:', e);
-      setError('Failed to load posts');
+      setError(`Unable to load posts: ${e?.message || 'Network error'}`);
+      setPosts([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   async function doSearch() {
@@ -168,9 +172,14 @@ export default function MapScreen() {
     setLoading(true);
     setError(null);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
       const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${GOOGLE_MAP_API_KEY}`
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${GOOGLE_MAP_API_KEY}`,
+        { signal: controller.signal }
       );
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         console.error('Map search API error:', response.status);
@@ -209,7 +218,11 @@ export default function MapScreen() {
         
         // Animate to searched location
         if (mapRef.current) {
-          mapRef.current.animateToRegion(region, 1000);
+          try {
+            mapRef.current.animateToRegion(region, 1000);
+          } catch (animError) {
+            console.warn('Map animation error:', animError);
+          }
         }
         
         // Check if there are posts near this location
@@ -222,9 +235,14 @@ export default function MapScreen() {
       }
     } catch (e: any) {
       console.error('Map search error:', e);
-      setError(`Search failed: ${e.message || 'Unknown error'}`);
+      if (e.name === 'AbortError') {
+        setError('Search timeout - please try again');
+      } else {
+        setError(`Search failed: ${e.message || 'Network error'}`);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   function findPostsNear(lat: number, lon: number, radiusKm: number): PostType[] {
@@ -260,6 +278,7 @@ export default function MapScreen() {
   });
   console.log('Map: Location groups:', Object.keys(locationGroups).length, 'groups');
   console.log('Map: Location groups detail:', locationGroups);
+  console.log('Google Maps API Key:', GOOGLE_MAP_API_KEY); // Debug print for API key
 
   // UI render
   return (

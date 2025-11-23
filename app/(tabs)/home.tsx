@@ -1,24 +1,23 @@
-import React, { useEffect, useState } from "react";
-import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from "expo-router";
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Dimensions,
-  ScrollView,
-  RefreshControl,
-  ActivityIndicator,
-  Modal,
-} from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+    ActivityIndicator,
+    Dimensions,
+    FlatList,
+    Modal,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { addLikedStatusToPosts, getCurrentUser, getFeedPosts, getUserNotifications } from "../../lib/firebaseHelpers";
 import PostCard from "../components/PostCard";
 import StoriesRow from "../components/StoriesRow";
 import StoriesViewer from "../components/StoriesViewer";
-import { useLocalSearchParams } from "expo-router";
-import { getFeedPosts, getCurrentUser, getUserNotifications, addLikedStatusToPosts } from "../../lib/firebaseHelpers";
 
 const { width } = Dimensions.get("window");
 
