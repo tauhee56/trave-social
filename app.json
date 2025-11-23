@@ -22,11 +22,11 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.tauhee56.travesocial",
       "permissions": [
-        "CAMERA",
-        "RECORD_AUDIO",
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "INTERNET"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.INTERNET"
       ],
       "config": {
         "googleMaps": {
@@ -87,8 +87,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "08b25cc6-d31a-4a87-ba2d-f62027a63928"
+        "projectId": "513a1158-d790-4560-869c-77d75b5ffd6e"
       }
-    }
+    },
+    "owner": "tauheedahmad"
   }
 }
