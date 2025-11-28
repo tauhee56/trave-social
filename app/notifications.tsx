@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { getUserNotifications, getCurrentUser, markNotificationAsRead } from '../lib/firebaseHelpers';
+import { useRouter } from 'expo-router';
+import React from 'react';
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { getCurrentUser, getUserNotifications, markNotificationAsRead } from '../lib/firebaseHelpers';
 
 export default function NotificationsScreen() {
     // Default avatar from Firebase Storage
@@ -32,28 +32,72 @@ export default function NotificationsScreen() {
       setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: true } : n));
     }
 
-    // Navigate based on notification type
+    // Instagram-style notification click logic
     switch (notification.type) {
-      case 'like':
-      case 'comment':
-        // Navigate to post (you can open it in profile or create a dedicated post view)
-        if (notification.postId) {
-          router.push(`/(tabs)/profile`);
+      case 'follow-request':
+        // Go to follow requests page (or profile requests)
+        router.push('/privacy');
+        break;
+      case 'follow-approved':
+        // Go to sender's profile
+        if (notification.senderId) {
+          router.push({ pathname: '/user-profile', params: { user: notification.senderId } } as any);
         }
         break;
       case 'follow':
-        // Navigate to follower's profile
+      case 'new-follower':
+        // Go to sender's profile
         if (notification.senderId) {
-          router.push({
-            pathname: '/user-profile',
-            params: { user: notification.senderId }
-          } as any);
+          router.push({ pathname: '/user-profile', params: { user: notification.senderId } } as any);
+        }
+        break;
+      case 'like':
+        // Go to post details
+        if (notification.postId) {
+          router.push({ pathname: '/post', params: { postId: notification.postId } } as any);
+        }
+        break;
+      case 'comment':
+        // Go to post details, scroll to comment
+        if (notification.postId) {
+          router.push({ pathname: '/post', params: { postId: notification.postId, commentId: notification.commentId } } as any);
         }
         break;
       case 'mention':
-        // Navigate to post where mentioned
+        // Go to post or comment where mentioned
         if (notification.postId) {
-          router.push(`/(tabs)/profile`);
+          router.push({ pathname: '/post', params: { postId: notification.postId, mentionId: notification.mentionId } } as any);
+        }
+        break;
+      case 'dm':
+      case 'message':
+        // Go to DM/chat screen
+        if (notification.senderId) {
+          router.push({ pathname: '/dm', params: { otherUserId: notification.senderId } } as any);
+        }
+        break;
+      case 'story-mention':
+        // Go to story viewer
+        if (notification.storyId) {
+          router.push({ pathname: '/highlight/[id]', params: { id: notification.storyId } } as any);
+        }
+        break;
+      case 'story-reply':
+        // Go to DM/chat screen, highlight reply
+        if (notification.senderId) {
+          router.push({ pathname: '/dm', params: { otherUserId: notification.senderId, replyId: notification.replyId } } as any);
+        }
+        break;
+      case 'tag':
+        // Go to tagged post
+        if (notification.postId) {
+          router.push({ pathname: '/post', params: { postId: notification.postId, tagId: notification.tagId } } as any);
+        }
+        break;
+      default:
+        // Fallback: go to sender's profile
+        if (notification.senderId) {
+          router.push({ pathname: '/user-profile', params: { user: notification.senderId } } as any);
         }
         break;
     }
@@ -64,17 +108,33 @@ export default function NotificationsScreen() {
       case 'like': return 'heart';
       case 'comment': return 'message-circle';
       case 'follow': return 'user-plus';
+      case 'follow-request': return 'user-plus';
+      case 'follow-approved': return 'user-check';
+      case 'new-follower': return 'user-plus';
       case 'mention': return 'at-sign';
+      case 'dm':
+      case 'message': return 'send';
+      case 'story-mention': return 'star';
+      case 'story-reply': return 'message-square';
+      case 'tag': return 'tag';
       default: return 'bell';
     }
   }
 
   function getNotificationColor(type: string) {
     switch (type) {
-      case 'like': return '#e0245e';
-      case 'comment': return '#1da1f2';
-      case 'follow': return '#f39c12';
+      case 'like': return '#FF6B00';
+      case 'comment': return '#007aff';
+      case 'follow': return '#FF6B00';
+      case 'follow-request': return '#FF6B00';
+      case 'follow-approved': return '#007aff';
+      case 'new-follower': return '#FF6B00';
       case 'mention': return '#8b5cf6';
+      case 'dm':
+      case 'message': return '#007aff';
+      case 'story-mention': return '#FF6B00';
+      case 'story-reply': return '#007aff';
+      case 'tag': return '#FF6B00';
       default: return '#666';
     }
   }
@@ -132,7 +192,7 @@ export default function NotificationsScreen() {
               <Image source={{ uri: item.senderAvatar && item.senderAvatar.trim() !== "" ? item.senderAvatar : DEFAULT_AVATAR_URL }} style={styles.nAvatar} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.nTitle}>
-                  <Text style={{ fontWeight: '700' }}>{item.senderName}</Text>
+                  <Text style={{ fontWeight: '700', color: '#FF6B00' }}>{item.senderName}</Text>
                   <Text style={{ fontWeight: '400', color: '#444' }}> {item.message}</Text>
                 </Text>
                 <Text style={styles.nBody}>{formatTime(item.createdAt)}</Text>

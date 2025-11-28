@@ -1,4 +1,66 @@
-# Ignore Windows diagnostic folder
+# Ignore unnecessary files and folders for EAS Build
+node_modules/
+output/
+android/.gradle/
+android/app/build/
+android/build/
+*.aab
+*.apk
+*.pb
+*.log
+*.tmp
+*.bak
+assets/images/raw/
+assets/images/test/
+assets/test/
+coverage/
+__tests__/
+__mocks__/
+*.md
+*.DS_Store
+.env
+.env.local
+.env.*
+expo-env.d.ts
+.vscode/
+.idea/
+*.iml
+ElevatedDiagnostics/
+/android
+output/
+*.aab
+*.apk
+*.pb
+crashlog.txt
+# assets/images/ (removed to allow image files for build)
+.git
+.gitignore
+*.log
+*.md
+*.DS_Store
+android/build
+android/app/build
+android/.gradle
+android/.idea
+ios/build
+ios/Pods
+assets/images/raw
+assets/images/test
+assets/test
+coverage
+__tests__
+__mocks__
+.env
+.env.local
+.env.*
+*.iml
+*.bak
+*.tmp
+*.swp
+*.swo
+.vscode
+.idea
+expo-env.d.ts# Ignore Windows diagnostic folder
 ElevatedDiagnostics/
 
 # Exclude android folder to use Continuous Native Generation (Prebuild)

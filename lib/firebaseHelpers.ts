@@ -1,3 +1,132 @@
+// Add a reply to a story comment
+export async function addStoryCommentReply(storyId: string, parentCommentId: string, reply: any) {
+  try {
+    const storyRef = doc(db, 'stories', storyId);
+    const storySnap = await getDoc(storyRef);
+
+    if (!storySnap.exists()) throw new Error('Story not found');
+
+    const storyData = storySnap.data();
+    const comments = storyData.comments || [];
+
+    // Find the parent comment and add the reply
+    const updatedComments = comments.map((comment: any) => {
+      if (comment.id === parentCommentId) {
+        const replies = comment.replies || [];
+        return {
+          ...comment,
+          replies: [...replies, reply]
+        };
+      }
+      return comment;
+    });
+
+    await updateDoc(storyRef, {
+      comments: updatedComments
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+// Save all sections order for a user
+export async function updateUserSectionsOrder(userId: string, sections: { name: string, postIds: string[], coverImage?: string }[]) {
+  try {
+    const batch = [];
+    // Remove all old sections first (optional, for clean order)
+    // Then set new order
+    const userSectionsRef = collection(db, 'users', userId, 'sections');
+    // Delete all existing sections
+    const existing = await getDocs(userSectionsRef);
+    for (const docSnap of existing.docs) {
+      batch.push(deleteDoc(docSnap.ref));
+    }
+    // Add new sections in order
+    for (const section of sections) {
+      batch.push(setDoc(doc(userSectionsRef, section.name), {
+        postIds: section.postIds || [],
+        coverImage: section.coverImage || ''
+      }));
+    }
+    await Promise.all(batch);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+// ============= PASSPORT TICKETS =============
+export async function addPassportTicket(userId: string, ticket: any) {
+  try {
+    const ticketRef = collection(db, 'users', userId, 'passportTickets');
+    // Check if ticket for this country already exists
+    const q = query(ticketRef, where('countryCode', '==', ticket.countryCode));
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      // Already exists, don't add again
+      return { success: false, error: 'Ticket already exists for this country' };
+    }
+    await addDoc(ticketRef, {
+      ...ticket,
+      createdAt: new Date().toISOString(),
+    });
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error adding passport ticket:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getPassportTickets(userId: string) {
+  try {
+    const ticketsRef = collection(db, 'users', userId, 'passportTickets');
+    const q = query(ticketsRef, orderBy('visitDate', 'desc'));
+    const snapshot = await getDocs(q);
+    
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error: any) {
+    console.error('Error getting passport tickets:', error);
+    return [];
+  }
+}
+
+export async function updatePassportTicket(userId: string, ticketId: string, updates: any) {
+  try {
+    const ticketRef = doc(db, 'users', userId, 'passportTickets', ticketId);
+    await updateDoc(ticketRef, {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    });
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error updating passport ticket:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deletePassportTicket(userId: string, ticketId: string) {
+  try {
+    const ticketRef = doc(db, 'users', userId, 'passportTickets', ticketId);
+    await deleteDoc(ticketRef);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error deleting passport ticket:', error);
+    return { success: false, error: error.message };
+  }
+}
+// ============= VISITS =============
+export async function incrementPostVisits(postId: string) {
+  try {
+    const postRef = doc(db, 'posts', postId);
+    await updateDoc(postRef, {
+      visits: increment(1)
+    });
+    return { success: true };
+  } catch (error: any) {
+    console.error('incrementPostVisits error:', error);
+    return { success: false, error: error.message };
+  }
+}
 // ============= REAL-TIME CONVERSATIONS =============
 export function subscribeToConversations(userId: string, callback: (conversations: any[]) => void) {
   const q = query(
@@ -19,8 +148,8 @@ export function subscribeToConversations(userId: string, callback: (conversation
           ...data,
           otherUser: {
             id: otherUserId,
-            name: otherUser?.displayName || 'User',
-            avatar: otherUser?.photoURL || '',
+            name: otherUser?.displayName || otherUser?.name || 'User',
+            avatar: otherUser?.avatar || otherUser?.photoURL || '',
           },
           unread: data.unreadCount?.[userId] || 0
         };
@@ -29,37 +158,165 @@ export function subscribeToConversations(userId: string, callback: (conversation
     callback(conversations);
   });
 }
-import { auth, db, storage } from '../config/firebase';
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut,
-  updateProfile
+import {
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    signOut,
+    updateProfile
 } from 'firebase/auth';
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  updateDoc, 
-  query, 
-  where, 
-  orderBy, 
-  limit,
-  getDocs,
-  addDoc,
-  serverTimestamp,
-  onSnapshot,
-  deleteDoc,
-  Timestamp,
-  increment
+import {
+    addDoc,
+    collection,
+    deleteDoc,
+    doc,
+    getDoc,
+    getDocs,
+    increment,
+    limit,
+    onSnapshot,
+    orderBy,
+    query,
+    serverTimestamp,
+    setDoc,
+    Timestamp,
+    updateDoc,
+    where
 } from 'firebase/firestore';
-import { 
-  ref, 
-  uploadBytes, 
-  getDownloadURL,
-  deleteObject 
+import {
+    deleteObject,
+    getDownloadURL,
+    ref,
+    uploadBytes
 } from 'firebase/storage';
+import { auth, db, storage } from '../config/firebase';
+
+// ============= FOLLOW REQUESTS (PRIVATE ACCOUNTS) =============
+// Send a follow request to a private account
+export async function sendFollowRequest(fromUserId: string, toUserId: string) {
+  try {
+    const requestRef = doc(db, 'users', toUserId, 'followRequests', fromUserId);
+    await setDoc(requestRef, {
+      fromUserId,
+      toUserId,
+      status: 'requested',
+      createdAt: serverTimestamp(),
+    });
+    // Create notification for private user
+    await addNotification({
+      recipientId: toUserId,
+      senderId: fromUserId,
+      type: 'follow-request',
+      message: 'Follow Request Received',
+      createdAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Get all follow requests for a user (private account)
+export async function getFollowRequests(userId: string) {
+  try {
+    const requestsRef = collection(db, 'users', userId, 'followRequests');
+    const snapshot = await getDocs(requestsRef);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error: any) {
+    return [];
+  }
+}
+
+// Approve a follow request
+export async function approveFollowRequest(privateUserId: string, requesterId: string) {
+  try {
+    // Add requester to followers
+    const userRef = doc(db, 'users', privateUserId);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) throw new Error('User not found');
+    const userData = userSnap.data();
+    const followers = userData.followers || [];
+    if (!followers.includes(requesterId)) {
+      followers.push(requesterId);
+    }
+    await updateDoc(userRef, {
+      followers,
+      followersCount: (userData.followersCount || 0) + 1,
+    });
+    // Remove follow request
+    await deleteDoc(doc(db, 'users', privateUserId, 'followRequests', requesterId));
+    // Create notification for requester
+    await addNotification({
+      recipientId: requesterId,
+      senderId: privateUserId,
+      type: 'follow-approved',
+      message: 'Your follow request was approved',
+      createdAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Reject a follow request
+export async function rejectFollowRequest(privateUserId: string, requesterId: string) {
+  try {
+    await deleteDoc(doc(db, 'users', privateUserId, 'followRequests', requesterId));
+    // Create notification for requester
+    await addNotification({
+      recipientId: requesterId,
+      senderId: privateUserId,
+      type: 'follow-rejected',
+      message: 'Your follow request was rejected',
+      createdAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+// Add notification to user's notifications subcollection
+export async function addNotification({ recipientId, senderId, type, message, createdAt }: any) {
+  try {
+    const notificationsRef = collection(db, 'users', recipientId, 'notifications');
+    await addDoc(notificationsRef, {
+      recipientId,
+      senderId,
+      type,
+      message,
+      createdAt: createdAt || serverTimestamp(),
+      read: false,
+    });
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Check if user is approved follower
+export async function isApprovedFollower(privateUserId: string, userId: string) {
+  try {
+    const userRef = doc(db, 'users', privateUserId);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) return false;
+    const userData = userSnap.data();
+    const followers = userData.followers || [];
+    return followers.includes(userId);
+  } catch {
+    return false;
+  }
+}
+
+// Check if follow request is pending
+export async function isFollowRequestPending(privateUserId: string, userId: string) {
+  try {
+    const requestRef = doc(db, 'users', privateUserId, 'followRequests', userId);
+    const requestSnap = await getDoc(requestRef);
+    return requestSnap.exists();
+  } catch {
+    return false;
+  }
+}
 
 // ============= AUTHENTICATION =============
 
@@ -241,6 +498,32 @@ export async function deleteImage(path: string) {
 }
 
 // ============= POSTS =============
+// ============= CATEGORIES =============
+export const DEFAULT_CATEGORIES = [
+  { name: 'Winter holidays', image: 'https://images.unsplash.com/photo-1519125323398-675f0ddb6308' },
+  { name: 'Beach', image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e' },
+  { name: 'City life', image: 'https://images.unsplash.com/photo-1467269204594-9661b134dd2b' },
+  { name: 'London', image: 'https://images.unsplash.com/photo-1465101046530-73398c7f28ca' },
+  { name: 'Christmas', image: 'https://images.unsplash.com/photo-1519125323398-675f0ddb6308' },
+];
+
+export async function ensureDefaultCategories() {
+  const categoriesRef = collection(db, 'categories');
+  const snapshot = await getDocs(categoriesRef);
+  if (snapshot.empty) {
+    // Add default categories
+    await Promise.all(DEFAULT_CATEGORIES.map(cat => setDoc(doc(categoriesRef, cat.name), cat)));
+    return { success: true, created: true };
+  }
+  return { success: true, created: false };
+}
+
+export async function getCategories() {
+  const categoriesRef = collection(db, 'categories');
+  const snapshot = await getDocs(categoriesRef);
+  const categories = snapshot.docs.map(doc => doc.data());
+  return categories.length > 0 ? categories : DEFAULT_CATEGORIES;
+}
 // ============= SECTIONS =============
 // Sections are stored in 'users/{userId}/sections' subcollection
 export async function getUserSections(userId: string) {
@@ -291,6 +574,18 @@ export async function updateUserSection(userId: string, section: { name: string,
 }
 
 // ============= GLOBAL POSTS =============
+// Get visit count for a location (number of posts tagged with that location)
+export async function getLocationVisitCount(location: string): Promise<number> {
+  try {
+    if (!location || typeof location !== 'string') return 0;
+    const q = query(collection(db, 'posts'), where('location', '==', location));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.size;
+  } catch (error) {
+    console.error('getLocationVisitCount error:', error);
+    return 0;
+  }
+}
 export async function getAllPosts() {
   try {
     const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
@@ -306,25 +601,30 @@ export async function getAllPosts() {
 }
 
 export async function createPost(
-  userId: string, 
-  mediaUri: string, 
-  caption: string, 
-  location?: string, 
+  userId: string,
+  mediaUris: string[],
+  caption: string,
+  location?: string,
   mediaType: 'image' | 'video' = 'image',
   locationData?: { name: string; address: string; lat: number; lon: number; verified?: boolean } | null,
-  taggedUserIds?: string[]
+  taggedUserIds?: string[],
+  category?: string
 ) {
   try {
     const userResult = await getUserProfile(userId);
     if (!userResult.success) throw new Error('User not found');
     
-    // Upload media (image or video)
-    const fileExtension = mediaType === 'video' ? 'mp4' : 'jpg';
-    const mediaPath = `posts/${userId}/${Date.now()}.${fileExtension}`;
-    const uploadResult = await uploadImage(mediaUri, mediaPath);
-    if (!uploadResult.success) throw new Error(uploadResult.error);
-    
-    console.log('Post media upload successful:', uploadResult.url);
+    // Upload all images
+    const imageUrls: string[] = [];
+    for (let i = 0; i < mediaUris.length; i++) {
+      const uri = mediaUris[i];
+      const fileExtension = mediaType === 'video' ? 'mp4' : 'jpg';
+      const mediaPath = `posts/${userId}/${Date.now()}_${i}.${fileExtension}`;
+      const uploadResult = await uploadImage(uri, mediaPath);
+      if (!uploadResult.success) throw new Error(uploadResult.error);
+      if (uploadResult.url) imageUrls.push(uploadResult.url);
+    }
+    console.log('Post media upload successful:', imageUrls);
     
     // Get current auth user's photo URL for consistency
     const currentUser = auth.currentUser;
@@ -336,12 +636,13 @@ export async function createPost(
       userId,
       userName: userData.name !== undefined ? userData.name : '',
       userAvatar: currentAvatar,
-      imageUrl: uploadResult.url,
-      videoUrl: mediaType === 'video' ? uploadResult.url : null,
-      imagePath: mediaPath,
+      imageUrls,
+      imageUrl: imageUrls[0],
+      videoUrl: mediaType === 'video' ? imageUrls[0] : null,
       mediaType: mediaType,
       caption,
       location: location || '',
+      category: category || '',
       likes: [],
       likesCount: 0,
       commentsCount: 0,
@@ -488,7 +789,7 @@ export async function unlikePost(postId: string, userId: string) {
   }
 }
 
-export async function deletePost(postId: string) {
+export async function deletePost(postId: string, currentUserId?: string) {
   try {
     // Get the post to find the image path and user ID
     const postDoc = await getDoc(doc(db, 'posts', postId));
@@ -499,6 +800,11 @@ export async function deletePost(postId: string) {
     const postData = postDoc.data();
     const userId = postData.userId;
     const imagePath = postData.imagePath;
+
+    // Only allow delete if currentUserId matches post owner
+    if (currentUserId && userId !== currentUserId) {
+      throw new Error('You are not allowed to delete this post');
+    }
 
     // Delete the image from storage if path exists
     if (imagePath) {
@@ -626,13 +932,16 @@ export async function getPostComments(postId: string) {
       collection(db, 'posts', postId, 'comments'),
       orderBy('createdAt', 'desc')
     );
-    
     const querySnapshot = await getDocs(q);
-    const comments = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    
+    const comments = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      // Ensure replies is always an array
+      return {
+        id: doc.id,
+        ...data,
+        replies: Array.isArray(data.replies) ? data.replies : [],
+      };
+    });
     return { success: true, data: comments };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -651,6 +960,163 @@ export async function deleteComment(postId: string, commentId: string) {
       await updateDoc(postRef, { commentsCount });
     }
     
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function editComment(postId: string, commentId: string, newText: string) {
+  try {
+    const commentRef = doc(db, 'posts', postId, 'comments', commentId);
+    await updateDoc(commentRef, {
+      text: newText,
+      editedAt: serverTimestamp()
+    });
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function addCommentReply(postId: string, parentCommentId: string, reply: any) {
+  try {
+    const parentRef = doc(db, 'posts', postId, 'comments', parentCommentId);
+    const parentSnap = await getDoc(parentRef);
+    if (!parentSnap.exists()) throw new Error('Parent comment not found');
+    const parentData = parentSnap.data();
+    const replies = parentData.replies || [];
+    const newReplies = [...replies, reply];
+    await updateDoc(parentRef, { replies: newReplies });
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Like a story comment
+export async function likeStoryComment(storyId: string, commentId: string, userId: string) {
+  try {
+    const storyRef = doc(db, 'stories', storyId);
+    const storySnap = await getDoc(storyRef);
+
+    if (!storySnap.exists()) throw new Error('Story not found');
+
+    const storyData = storySnap.data();
+    const comments = storyData.comments || [];
+
+    // Find and update the comment
+    const updatedComments = comments.map((comment: any) => {
+      if (comment.id === commentId) {
+        const likes = comment.likes || [];
+        if (!likes.includes(userId)) {
+          return {
+            ...comment,
+            likes: [...likes, userId],
+            likesCount: (comment.likesCount || 0) + 1
+          };
+        }
+      }
+      return comment;
+    });
+
+    await updateDoc(storyRef, {
+      comments: updatedComments
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Unlike a story comment
+export async function unlikeStoryComment(storyId: string, commentId: string, userId: string) {
+  try {
+    const storyRef = doc(db, 'stories', storyId);
+    const storySnap = await getDoc(storyRef);
+
+    if (!storySnap.exists()) throw new Error('Story not found');
+
+    const storyData = storySnap.data();
+    const comments = storyData.comments || [];
+
+    // Find and update the comment
+    const updatedComments = comments.map((comment: any) => {
+      if (comment.id === commentId) {
+        const likes = comment.likes || [];
+        if (likes.includes(userId)) {
+          return {
+            ...comment,
+            likes: likes.filter((id: string) => id !== userId),
+            likesCount: Math.max(0, (comment.likesCount || 0) - 1)
+          };
+        }
+      }
+      return comment;
+    });
+
+    await updateDoc(storyRef, {
+      comments: updatedComments
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Edit a story comment
+export async function editStoryComment(storyId: string, commentId: string, newText: string) {
+  try {
+    const storyRef = doc(db, 'stories', storyId);
+    const storySnap = await getDoc(storyRef);
+
+    if (!storySnap.exists()) throw new Error('Story not found');
+
+    const storyData = storySnap.data();
+    const comments = storyData.comments || [];
+
+    // Find and update the comment
+    const updatedComments = comments.map((comment: any) => {
+      if (comment.id === commentId) {
+        return {
+          ...comment,
+          text: newText,
+          editedAt: Timestamp.now()
+        };
+      }
+      return comment;
+    });
+
+    await updateDoc(storyRef, {
+      comments: updatedComments
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Delete a story comment
+export async function deleteStoryComment(storyId: string, commentId: string) {
+  try {
+    const storyRef = doc(db, 'stories', storyId);
+    const storySnap = await getDoc(storyRef);
+
+    if (!storySnap.exists()) throw new Error('Story not found');
+
+    const storyData = storySnap.data();
+    const comments = storyData.comments || [];
+
+    // Remove the comment from the array
+    const updatedComments = comments.filter((comment: any) => comment.id !== commentId);
+
+    await updateDoc(storyRef, {
+      comments: updatedComments
+    });
+
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -1170,7 +1636,7 @@ export async function getUserNotifications(userId?: string) {
 }
 
 /**
- * Create a notification
+ * Create a notification and send push notification
  */
 export async function createNotification(data: {
   recipientId: string;
@@ -1183,15 +1649,93 @@ export async function createNotification(data: {
   commentId?: string;
 }) {
   try {
+    // Save notification to Firestore
     await addDoc(collection(db, 'notifications'), {
       ...data,
       read: false,
       createdAt: serverTimestamp()
     });
 
+    // Get recipient's push token
+    const recipientDoc = await getDoc(doc(db, 'users', data.recipientId));
+    const pushToken = recipientDoc.data()?.pushToken;
+
+    // Send push notification if token exists
+    if (pushToken) {
+      await sendPushNotification(pushToken, {
+        title: getNotificationTitle(data.type, data.senderName),
+        body: data.message,
+        data: {
+          type: data.type,
+          senderId: data.senderId,
+          postId: data.postId,
+          commentId: data.commentId,
+        },
+      });
+    }
+
     return { success: true };
   } catch (error: any) {
+    console.error('createNotification error:', error);
     return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Get notification title based on type
+ */
+function getNotificationTitle(type: string, senderName: string): string {
+  switch (type) {
+    case 'like':
+      return `❤️ ${senderName}`;
+    case 'comment':
+      return `💬 ${senderName}`;
+    case 'follow':
+      return `👤 ${senderName}`;
+    case 'mention':
+      return `📢 ${senderName}`;
+    default:
+      return senderName;
+  }
+}
+
+/**
+ * Send push notification via Expo Push API
+ */
+async function sendPushNotification(
+  pushToken: string,
+  notification: {
+    title: string;
+    body: string;
+    data?: any;
+  }
+) {
+  try {
+    const message = {
+      to: pushToken,
+      sound: 'default',
+      title: notification.title,
+      body: notification.body,
+      data: notification.data || {},
+      badge: 1,
+    };
+
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(message),
+    });
+
+    const result = await response.json();
+    console.log('Push notification sent:', result);
+    return { success: true, result };
+  } catch (error) {
+    console.error('Error sending push notification:', error);
+    return { success: false, error };
   }
 }
 

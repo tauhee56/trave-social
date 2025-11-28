@@ -1,15 +1,33 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Dimensions, FlatList, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { FlatList, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { searchUsers } from "../lib/firebaseHelpers";
 
-const GOOGLE_MAP_API_KEY = 'AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c';
+// Type definitions
+type Region = {
+  id: string;
+  name: string;
+  image: string;
+};
 
-const { width } = Dimensions.get("window");
+type Suggestion = {
+  id: string;
+  title: string;
+  subtitle: string;
+  placeId: string;
+};
 
-const regions = [
+type User = {
+  uid: string;
+  displayName?: string;
+  photoURL?: string;
+  bio?: string;
+};
+
+const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+const regions: Region[] = [
   { id: 'world', name: 'World', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Equirectangular_projection_SW.jpg/320px-Equirectangular_projection_SW.jpg' },
   { id: 'us', name: 'United States', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/USA_orthographic.svg/300px-USA_orthographic.svg.png' },
   { id: 'italy', name: 'Italy', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Italy_on_the_globe_%28Europe_centered%29.svg/300px-Italy_on_the_globe_%28Europe_centered%29.svg.png' },
@@ -19,251 +37,102 @@ const regions = [
 ];
 
 export default function SearchModal() {
-    // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
   const [tab, setTab] = useState<'place'|'people'>('place');
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState<string>('');
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const router = useRouter();
-  const [hasError, setHasError] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [loadingSuggest, setLoadingSuggest] = useState<boolean>(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [recommendations, setRecommendations] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState<boolean>(false);
+  const [hasError, setHasError] = useState<boolean>(false);
 
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [loadingSuggest, setLoadingSuggest] = useState(false);
-
-  // People search
-  const [users, setUsers] = useState<any[]>([]);
-  const [recommendations, setRecommendations] = useState<any[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
-
-  // Component mount tracking
+  // Reset data when tab changes
   useEffect(() => {
-    try {
-      setMounted(true);
-    } catch (error) {
-      console.error('Mount error:', error);
-      setHasError(true);
-    }
-    return () => {
-      setMounted(false);
-    };
-  }, []);
+    setQ('');
+    setSuggestions([]);
+    setUsers([]); // Only reset to empty array, never set region objects
+    setRecommendations([]); // Only reset to empty array, never set region objects
+    setSelectedRegion(null);
+  }, [tab]);
 
-  // Error boundary
+  // Place search (Google Maps Places API)
   useEffect(() => {
-    const errorHandler = (error: any) => {
-      console.error('Search modal error:', error);
-      setHasError(true);
-    };
-    
-    return () => {};
-  }, []);
-
-  // Optional Mapbox token for better autocomplete. Leave empty to use Nominatim fallback.
-  const MAPBOX_TOKEN = "";
-
-  // Load recommendations when switching to people tab
-  useEffect(() => {
-    if (!mounted) return;
-    
-    if (tab === 'people' && recommendations.length === 0) {
-      loadRecommendations().catch(err => {
-        console.error('Failed to load recommendations:', err);
-        setRecommendations([]);
-      });
-    }
-  }, [tab, mounted]);
-
-  // Search users when query changes
-  useEffect(() => {
-    if (!mounted) return;
-    if (tab !== 'people') return;
-    if (q.trim().length < 2) {
-      setUsers([]);
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      searchForUsers(q.trim()).catch(err => {
-        console.error('Search failed:', err);
-        setUsers([]);
-      });
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [q, tab, mounted]);
-
-  async function loadRecommendations() {
-    try {
-      setLoadingUsers(true);
-      setHasError(false);
-      const result = await searchUsers('', 10);
-      if (result.success && result.data && Array.isArray(result.data)) {
-        // Filter out invalid users
-        const validUsers = result.data.filter(u => u && u.id);
-        setRecommendations(validUsers);
-      } else {
-        setRecommendations([]);
-      }
-    } catch (error: any) {
-      console.error('Error loading recommendations:', error);
-      setRecommendations([]);
-      // Don't set hasError for recommendations - not critical
-    } finally {
-      setLoadingUsers(false);
-    }
-  }
-
-  async function searchForUsers(query: string) {
-    try {
-      setLoadingUsers(true);
-      setHasError(false);
-      const result = await searchUsers(query, 20);
-      if (result.success && result.data && Array.isArray(result.data)) {
-        // Filter out invalid users
-        const validUsers = result.data.filter(u => u && u.id);
-        setUsers(validUsers);
-      } else {
-        // Search failed but didn't throw - show empty results
-        setUsers([]);
-        console.warn('Search failed:', result.error);
-      }
-    } catch (error: any) {
-      console.error('Error searching users:', error);
-      // Don't crash - just show empty results
-      setUsers([]);
-      if (error?.message?.includes('network') || error?.message?.includes('fetch') || error?.message?.includes('permission')) {
-        setHasError(true);
-      }
-    } finally {
-      setLoadingUsers(false);
-    }
-  }
-
-  const SAMPLE_USERS = [
-    { id: 'u1', name: 'Aisha Khan', avatar: '' },
-    { id: 'u2', name: 'Carlos M', avatar: '' },
-    { id: 'u3', name: 'Sophie L', avatar: '' },
-  ];
-
-  useEffect(() => {
-    if (!q || q.length < 2 || tab !== 'place') {
+    if (tab !== 'place' || q.length < 2) {
       setSuggestions([]);
       return;
     }
-    let cancelled = false;
     setLoadingSuggest(true);
     const timer = setTimeout(async () => {
       try {
-        // Use Nominatim OpenStreetMap API (no key required, more reliable in production)
-        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=8&addressdetails=1`;
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-        
-        const res = await fetch(url, { 
-          signal: controller.signal,
-          headers: {
-            'Accept': 'application/json',
-            'User-Agent': 'TravelSocialApp/1.0'
-          }
-        });
-        clearTimeout(timeoutId);
-        
-        if (!res.ok) {
-          console.warn('Search API status:', res.status);
-          if (!cancelled) setSuggestions([]);
-          return;
-        }
-        
+        const apiKey = 'AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c';
+        const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q)}&types=(cities)&key=${apiKey}`;
+        const res = await fetch(url);
+        if (!res.ok) { setSuggestions([]); return; }
         const data = await res.json();
-        
-        const items = (data || []).map((r: any) => ({
+        setSuggestions((data.predictions || []).map((r: any) => ({
           id: r.place_id || String(Math.random()),
-          title: r.display_name?.split(',')[0] || r.name || 'Location',
-          subtitle: r.display_name || '',
-          lat: parseFloat(r.lat),
-          lon: parseFloat(r.lon),
-          source: 'nominatim',
-        }));
-        
-        if (!cancelled) setSuggestions(items);
-      } catch (e: any) {
-        console.warn('Search API error:', e?.message || e);
-        // Don't crash - just show empty suggestions
-        if (!cancelled) setSuggestions([]);
+          title: r.structured_formatting?.main_text || r.description || 'Location',
+          subtitle: r.structured_formatting?.secondary_text || r.description || '',
+          placeId: r.place_id,
+        })));
+      } catch (err) {
+        setSuggestions([]);
       } finally {
-        if (!cancelled) setLoadingSuggest(false);
+        setLoadingSuggest(false);
       }
     }, 300);
-    return () => { cancelled = true; clearTimeout(timer); };
+    return () => clearTimeout(timer);
   }, [q, tab]);
 
-  function handleClear() {
-    setQ('');
-    setSelectedRegion(null);
-    setSuggestions([]);
-    try {
-      // Defensive navigation fallback
-      router.replace('/search-modal');
-    } catch (e) {
-      console.error('Navigation fallback error:', e);
-    }
-  }
-
-  function handleSearch() {
-    try {
-      const trimmed = (q || '').trim();
-      if (selectedRegion) {
-        const region = regions.find(r => r.id === selectedRegion);
-        const label = region ? region.name : trimmed;
-        router.push(`/(tabs)/map?q=${encodeURIComponent(label || '')}`);
-        return;
-      }
-
-      if (trimmed.length > 0) {
-        router.push(`/(tabs)/map?q=${encodeURIComponent(trimmed)}`);
-        return;
-      }
-
-      // fallback: just open map
-      router.push(`/(tabs)/map`);
-    } catch (error) {
-      console.error('Search navigation error:', error);
-      // Fallback to home if navigation fails
-      try {
-        router.push('/(tabs)/home');
-      } catch (e) {
-        console.error('Failed to navigate to home:', e);
-      }
-    }
-  }
-
-  // Clear input when switching to People tab so text doesn't persist
+  // People recommendations
   useEffect(() => {
-    if (tab === 'people') {
-      handleClear();
+    if (tab === 'people' && recommendations.length === 0) {
+      setLoadingUsers(true);
+      searchUsers('', 10).then(result => {
+        const users = result.success ? result.data.map((u: any) => ({
+          uid: u.uid || u.id,
+          displayName: u.displayName,
+          photoURL: u.photoURL,
+          bio: u.bio
+        })) : [];
+        setRecommendations(users);
+        setLoadingUsers(false);
+      });
     }
-  }, [tab]);
+  }, [tab, recommendations.length]);
 
-  // Error fallback UI
+  // People search (Firebase)
+  useEffect(() => {
+    if (tab !== 'people' || q.length < 2) {
+      setUsers([]);
+      return;
+    }
+    setLoadingUsers(true);
+    const timer = setTimeout(async () => {
+      const result = await searchUsers(q, 20);
+      const users = result.success ? result.data.map((u: any) => ({
+        uid: u.uid || u.id,
+        displayName: u.displayName,
+        photoURL: u.photoURL,
+        bio: u.bio
+      })) : [];
+      setUsers(users);
+      setLoadingUsers(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [q, tab]);
+
+  // UI
+  // Error boundary fallback UI
   if (hasError) {
     return (
       <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-        <View style={styles.headerTabsRow}>
-          <TouchableOpacity onPress={() => router.replace('/(tabs)/home')} style={styles.closeBtn}>
-            <Feather name="x" size={16} color="#333" />
-          </TouchableOpacity>
-        </View>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>
-            Unable to load search. Please check your internet connection.
-          </Text>
-          <TouchableOpacity 
-            onPress={() => { setHasError(false); router.replace('/(tabs)/home'); }}
-            style={{ marginTop: 20, padding: 12, backgroundColor: '#007AFF', borderRadius: 8 }}
-          >
-            <Text style={{ color: '#fff', fontWeight: '600' }}>Go Back</Text>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: 'red', fontSize: 16, marginBottom: 12 }}>Something went wrong. Please try again.</Text>
+          <TouchableOpacity onPress={() => setHasError(false)} style={styles.searchBtnBar}>
+            <Text style={styles.searchBtnBarText}>Retry</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -272,34 +141,29 @@ export default function SearchModal() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-        enabled
-      >
-        {/* Header */}
-        <View style={styles.headerTabsRow}>
-          <TouchableOpacity onPress={() => router.replace('/(tabs)/home')} style={styles.closeBtn}>
-            <Feather name="x" size={16} color="#333" />
-          </TouchableOpacity>
-          <View style={styles.tabsCenterWrap}>
-            <View style={styles.tabsInline}>
-              <TouchableOpacity onPress={() => setTab('place')} style={styles.tabBtnInline}>
-                <Text style={[styles.tabText, tab === 'place' && styles.tabTextActive]}>Place</Text>
-                {tab === 'place' && <View style={styles.tabUnderlineInline} />}
-              </TouchableOpacity>
-              <Text style={styles.dotSep}>·</Text>
-              <TouchableOpacity onPress={() => setTab('people')} style={styles.tabBtnInline}>
-                <Text style={[styles.tabText, tab === 'people' && styles.tabTextActive]}>People</Text>
-                {tab === 'people' && <View style={styles.tabUnderlineInline} />}
-              </TouchableOpacity>
+      <View style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          {/* Header Tabs */}
+          <View style={styles.headerTabsRow}>
+            <TouchableOpacity onPress={() => router.replace('/(tabs)/home')} style={styles.closeBtn}>
+              <Feather name="x" size={16} color="#333" />
+            </TouchableOpacity>
+            <View style={styles.tabsCenterWrap}>
+              <View style={styles.tabsInline}>
+                <TouchableOpacity onPress={() => setTab('place')} style={styles.tabBtnInline}>
+                  <Text style={[styles.tabText, tab === 'place' && styles.tabTextActive]}>Place</Text>
+                  {tab === 'place' && <View style={styles.tabUnderlineInline} />}
+                </TouchableOpacity>
+                <Text style={styles.dotSep}>·</Text>
+                <TouchableOpacity onPress={() => setTab('people')} style={styles.tabBtnInline}>
+                  <Text style={[styles.tabText, tab === 'people' && styles.tabTextActive]}>People</Text>
+                  {tab === 'people' && <View style={styles.tabUnderlineInline} />}
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-
-        {/* Main content */}
-        <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8 }}>
-          <View style={styles.searchRegionBox}>
+          {/* Search and Region Select in bordered box */}
+          <View style={styles.searchRegionBorderBox}>
             <View style={styles.searchBox}>
               <Feather name="search" size={20} color="#333" />
               <TextInput
@@ -308,348 +172,180 @@ export default function SearchModal() {
                 placeholderTextColor="#999"
                 value={q}
                 onChangeText={setQ}
+                autoCapitalize="none"
+                autoCorrect={false}
+                importantForAutofill="no"
               />
               {q.length > 0 && (
-                <TouchableOpacity onPress={handleClear} style={styles.inputClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity onPress={() => setQ('')} style={styles.inputClear}>
                   <Feather name="x" size={16} color="#777" />
                 </TouchableOpacity>
               )}
             </View>
-
-            {q.length >= 2 && tab === 'place' && (
-              <View style={{ marginTop: 10, maxHeight: 220 }}>
+            {/* Region Select Grid (background) */}
+            {tab === 'place' && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={styles.sectionTitle}>Or select a region</Text>
+                <View style={styles.regionGridWrap}>
+                  {Array.from({ length: 2 }).map((_, rowIdx) => (
+                    <View key={rowIdx} style={styles.regionGridRow}>
+                      {regions.slice(rowIdx * 3, rowIdx * 3 + 3).map(item => (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={[styles.regionCard, selectedRegion === item.id && styles.regionCardActive]}
+                          onPress={() => { setSelectedRegion(item.id); setQ(item.name); }}
+                          accessibilityLabel={`Select region ${item.name}`}
+                        >
+                          <Image source={{ uri: item.image }} style={styles.regionImage} resizeMode="contain" />
+                          <Text style={styles.regionName}>{item.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+            {/* Place Tab Results (Google Maps suggestions) - overlay above region grid */}
+            {tab === 'place' && q.length >= 2 && (
+              <View style={styles.suggestionListOverlay} pointerEvents="box-none">
+                {loadingSuggest && <Text style={{ textAlign: 'center', color: '#888', marginBottom: 8 }}>Loading suggestions...</Text>}
                 <FlatList
                   data={suggestions}
-                  keyExtractor={item => item.id}
-                  renderItem={({ item }) => (
+                  keyExtractor={(item: Suggestion) => item.id}
+                  renderItem={({ item }: { item: Suggestion }) => (
                     <TouchableOpacity
-                      style={styles.suggestionRow}
+                      style={styles.suggestionCardList}
                       onPress={() => {
-                        handleClear();
-                        if (item.lat && item.lon) {
-                          router.push(`/(tabs)/map?lat=${item.lat}&lon=${item.lon}&q=${encodeURIComponent(item.subtitle || item.title)}`);
-                        } else {
-                          router.push(`/(tabs)/map?q=${encodeURIComponent(item.subtitle || item.title)}`);
-                        }
+                        // Navigate to location details page with placeId
+                        router.push({ pathname: '/location/[placeId]', params: { placeId: item.placeId, q: item.title } });
                       }}
                     >
-                      <Feather name="map-pin" size={18} color="#f39c12" />
-                      <View style={{ marginLeft: 10, flex: 1 }}>
-                        <Text style={{ fontWeight: '600' }}>{item.title}</Text>
-                        <Text style={{ color: '#666', fontSize: 12 }}>{item.subtitle}</Text>
+                      <View style={styles.suggestionIconList}>
+                        <Feather name="map-pin" size={20} color="#222" />
                       </View>
+                      <Text style={styles.suggestionTitleList}>{item.title}</Text>
                     </TouchableOpacity>
                   )}
-                  ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#f0f0f0', marginVertical: 8 }} />}
+                  ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12, textAlign: 'center' }}>No results</Text>}
+                  style={{ marginTop: 0, maxHeight: 400 }}
+                  contentContainerStyle={{ paddingVertical: 4 }}
+                  showsVerticalScrollIndicator={false}
                 />
               </View>
             )}
-
-            {tab === 'place' && (
-              <View style={{ marginTop: 20 }}>
-                <Text style={styles.sectionTitle}>Or select a region</Text>
-
-                <View style={{ height: 140, marginBottom: 12 }}>
-                  <FlatList
-                    data={regions.slice(0, 3)}
-                    keyExtractor={item => item.id}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    renderItem={({ item, index }) => (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={[
-                          styles.regionCard,
-                          selectedRegion === item.id && styles.regionCardActive,
-                          { marginRight: index !== 2 ? 12 : 0 }
-                        ]}
-                        onPress={() => {
-                          setSelectedRegion(item.id);
-                          setQ(item.name);
-                        }}
-                        activeOpacity={0.8}
-                      >
-                        <Image source={{ uri: item.image }} style={styles.regionImage} resizeMode="contain" />
-                        <Text style={styles.regionName}>{item.name}</Text>
-                      </TouchableOpacity>
-                    )}
-                  />
-                </View>
-
-                <View style={{ height: 140 }}>
-                  <FlatList
-                    data={regions.slice(3, 6)}
-                    keyExtractor={item => item.id}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    renderItem={({ item, index }) => (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={[
-                          styles.regionCard,
-                          selectedRegion === item.id && styles.regionCardActive,
-                          { marginRight: index !== 2 ? 12 : 0 }
-                        ]}
-                        onPress={() => {
-                          setSelectedRegion(item.id);
-                          setQ(item.name);
-                        }}
-                        activeOpacity={0.8}
-                      >
-                        <Image source={{ uri: item.image }} style={styles.regionImage} resizeMode="contain" />
-                        <Text style={styles.regionName}>{item.name}</Text>
-                      </TouchableOpacity>
-                    )}
-                  />
-                </View>
-              </View>
-            )}
-
-            {tab === 'people' && (
-              <View style={{ marginTop: 20 }}>
-                {q.trim().length === 0 && (
-                  <>
-                    <Text style={styles.sectionTitle}>Recommended travelers</Text>
-                    {loadingUsers ? (
-                      <ActivityIndicator size="small" color="#f39c12" style={{ marginTop: 20 }} />
-                    ) : (
-                      <View style={{ marginTop: 8 }}>
-                        <FlatList
-                          data={recommendations}
-                          keyExtractor={u => u.id}
-                          renderItem={({ item }) => {
-                            const avatarUri = (item.photoURL && item.photoURL.trim() !== "") 
-                              ? item.photoURL 
-                              : ((item.avatar && item.avatar.trim() !== "") 
-                                  ? item.avatar 
-                                  : DEFAULT_AVATAR_URL);
-                          
-                            return (
-                              <TouchableOpacity style={styles.personRow} onPress={() => { handleClear(); router.push(`/user-profile?user=${item.id}`); }}>
-                                <Image 
-                                  source={{ uri: avatarUri }} 
-                                  style={styles.personAvatar}
-                                  onError={(error) => {
-                                    console.warn('Recommendation avatar load failed:', item.id);
-                                  }}
-                                />
-                                <View style={{ marginLeft: 12, flex: 1 }}>
-                                  <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
-                                  {item.bio && <Text style={{ fontSize: 12, color: '#666' }} numberOfLines={1}>{item.bio}</Text>}
-                                </View>
-                              </TouchableOpacity>
-                            );
-                          }}
-                          ListEmptyComponent={<Text style={{ color: '#999', marginTop: 20, textAlign: 'center' }}>No recommendations available</Text>}
-                        />
-                      </View>
-                    )}
-                  </>
+            {/* People Tab Results (Firebase users) */}
+            {tab === 'people' && q.length >= 2 && (
+              <FlatList
+                data={users}
+                keyExtractor={(item: User) => item.uid}
+                renderItem={({ item }: { item: User }) => (
+                  <TouchableOpacity
+                    style={styles.suggestionRow}
+                    onPress={() => router.push(`/user-profile?uid=${item.uid}`)}
+                    accessibilityLabel={`Open profile for ${item.displayName || 'Traveler'}`}
+                  >
+                    <Image source={{ uri: item.photoURL || DEFAULT_AVATAR_URL }} style={styles.avatarImage} />
+                    <View style={{ marginLeft: 10, flex: 1 }}>
+                      <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
+                      <Text style={{ color: '#666', fontSize: 12 }}>{item.bio || 'No bio available'}</Text>
+                    </View>
+                  </TouchableOpacity>
                 )}
-
-                {q.trim().length > 0 && (
-                  <>
-                    <Text style={styles.sectionTitle}>Search results</Text>
-                    {loadingUsers ? (
-                      <ActivityIndicator size="small" color="#f39c12" style={{ marginTop: 20 }} />
-                    ) : (
-                      <View style={{ marginTop: 8 }}>
-                        <FlatList
-                          data={users}
-                          keyExtractor={u => u.id}
-                          renderItem={({ item }) => {
-                            const avatarUri = (item.photoURL && item.photoURL.trim() !== "") 
-                              ? item.photoURL 
-                              : ((item.avatar && item.avatar.trim() !== "") 
-                                  ? item.avatar 
-                                  : DEFAULT_AVATAR_URL);
-                          
-                            return (
-                              <TouchableOpacity style={styles.personRow} onPress={() => { handleClear(); router.push(`/user-profile?user=${item.id}`); }}>
-                                <Image 
-                                  source={{ uri: avatarUri }} 
-                                  style={styles.personAvatar}
-                                  onError={(error) => {
-                                    console.warn('User avatar load failed:', item.id);
-                                  }}
-                                />
-                                <View style={{ marginLeft: 12, flex: 1 }}>
-                                  <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
-                                  {item.bio && <Text style={{ fontSize: 12, color: '#666' }} numberOfLines={1}>{item.bio}</Text>}
-                                </View>
-                              </TouchableOpacity>
-                            );
-                          }}
-                          ListEmptyComponent={<Text style={{ color: '#999', marginTop: 20, textAlign: 'center' }}>No users found</Text>}
-                        />
-                      </View>
-                    )}
-                  </>
-                )}
-              </View>
+                ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No travelers found</Text>}
+                style={{ marginTop: 16, maxHeight: 120 }}
+              />
             )}
           </View>
+        </KeyboardAvoidingView>
+        {/* Bottom Action Bar: always visible above keyboard */}
+        <View style={styles.actionBtnBar}>
+          <TouchableOpacity
+            style={styles.clearAllBtn}
+            onPress={() => {
+              setQ('');
+              setSelectedRegion(null);
+              setUsers([]);
+              setSuggestions([]);
+            }}
+            accessibilityLabel="Clear all search fields"
+          >
+            <Text style={styles.clearAllText}>Clear all</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.searchBtnBar, (tab === 'place' && (suggestions.length === 0 || loadingSuggest)) && { opacity: 0.5 }]}
+            disabled={tab === 'place' && (suggestions.length === 0 || loadingSuggest)}
+            onPress={() => {
+              if (tab === 'place' && suggestions.length > 0) {
+                // Use first suggestion always, navigate to location details
+                const selected = suggestions[0];
+                router.push({ pathname: '/location/[placeId]', params: { placeId: selected.placeId, q: selected.title } });
+              } else if (tab === 'people' && q.length >= 2 && users.length > 0) {
+                // Open first user's profile
+                const user = users[0];
+                if (user?.uid) {
+                  router.push(`/user-profile?uid=${user.uid}`);
+                }
+              }
+            }}
+            accessibilityLabel="Search with current query"
+          >
+            <Feather name="search" size={18} color="#fff" />
+            <Text style={styles.searchBtnBarText}>Search</Text>
+          </TouchableOpacity>
         </View>
-
-        {/* Bottom Actions */}
-        <View style={styles.bottomBar}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', flex: 1 }}>
-            <View style={{ alignItems: 'center' }}>
-              <TouchableOpacity style={styles.clearBtn} onPress={handleClear}>
-                <Text style={styles.clearText}>Clear all</Text>
-              </TouchableOpacity>
-              <View style={styles.clearUnderline} />
-            </View>
-            <TouchableOpacity style={styles.searchBtn} onPress={handleSearch}>
-              <Feather name="search" size={18} color="#fff" />
-              <Text style={styles.searchBtnText}>Search</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  searchRegionBox: {
-    width: 327,
-    height: 492,
+  container: {
+    flex: 1,
     backgroundColor: '#fff',
-    borderRadius: 24,
-    alignSelf: 'center',
-    marginTop: 8,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 2,
-  },
-  suggestionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
-  personRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
-  personAvatar: { width: 36, height: 36, borderRadius: 18 },
-  container: { 
-    flex: 1, 
-    backgroundColor: '#fff', 
     paddingTop: 12,
   },
   headerTabsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingTop: 12,
     paddingBottom: 8,
-    height: 44,
+    borderBottomWidth: 1,
+    borderColor: '#eee',
   },
   tabsCenterWrap: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    height: 44,
   },
   tabsInline: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    height: 34,
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
   },
-  dotSep: {
-    fontSize: 18,
-    color: '#bbb',
-    marginHorizontal: 2,
-    marginTop: 2,
+  dotSep: { fontSize: 18, color: '#bbb', marginHorizontal: 2, marginTop: 2 },
+  tabBtnInline: { paddingVertical: 0, paddingHorizontal: 0, position: 'relative', marginRight: 0, minWidth: 70, alignItems: 'center', justifyContent: 'center', height: 34 },
+  tabText: { fontSize: 16, color: '#999', fontWeight: '400', textAlign: 'center' },
+  tabTextActive: { color: '#111', fontWeight: '700', textAlign: 'center' },
+  tabUnderlineInline: { position: 'absolute', bottom: -2, left: '22%', right: '22%', height: 2, backgroundColor: '#111', borderRadius: 1 },
+  closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f5f5f5', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 16 },
+  regionGridWrap: {
+    flexDirection: 'column',
+    gap: 12,
+    marginTop: 8,
   },
-  tabBtnInline: {
-    paddingVertical: 0,
-    paddingHorizontal: 0,
-    position: 'relative',
-    marginRight: 0,
-    minWidth: 70,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 34,
-  },
-  tabText: {
-    fontSize: 16,
-    color: '#999',
-    fontWeight: '400',
-    textAlign: 'center',
-  },
-  tabTextActive: {
-    color: '#111',
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  tabUnderlineInline: {
-    position: 'absolute',
-    bottom: -2,
-    left: '22%',
-    right: '22%',
-    height: 2,
-    backgroundColor: '#111',
-    borderRadius: 1,
-  },
-  closeBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f5f5f5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  tabRow: { 
-    flexDirection: 'row', 
-    gap: 20,
-  },
-  tabBtn: { 
-    paddingVertical: 8,
-    position: 'relative',
-  },
-  /* tabText and tabTextActive already defined above; duplicates removed */
-  tabUnderline: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: '#333',
-  },
-  searchBox: { 
-    backgroundColor: '#f9f9f9', 
-    height: 50, 
-    borderRadius: 12, 
-    paddingHorizontal: 16, 
-    flexDirection: 'row', 
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  input: { 
-    flex: 1, 
-    marginLeft: 12,
-    fontSize: 15,
-    color: '#333',
-    paddingRight: 8,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 16,
-  },
-  regionsGrid: {
+  regionGridRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    paddingBottom: 8,
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 0,
   },
   regionCard: {
-    width: 124,
-    height: 124,
+    flex: 1,
+    minWidth: 0,
+    maxWidth: '32%',
+    aspectRatio: 1,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: '#eee',
@@ -658,77 +354,198 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 8,
+    marginHorizontal: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
   },
   regionCardActive: {
     borderColor: '#111',
-    borderWidth: 3,
-    borderRadius: 20,
+    borderWidth: 2.5,
+    borderRadius: 16,
   },
-  regionImage: {
-    width: '100%',
-    height: '70%',
-    marginBottom: 4,
-  },
-  regionName: {
-    fontSize: 11,
-    color: '#333',
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  bottomBar: {
+  regionImage: { width: '100%', height: '70%', marginBottom: 4, borderRadius: 10 },
+  regionName: { fontSize: 13, color: '#333', textAlign: 'center', fontWeight: '500', marginTop: 2 },
+  actionBtnBar: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 10,
     backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-    gap: 12,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
+    borderColor: '#eee',
+    // Remove position absolute so it stays above keyboard and never gets cut off
+    minHeight: 60,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  clearBtn: {
-    width: 122,
-    height: 46,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 0,
-    borderColor: 'transparent',
+  clearAllBtn: {
+    paddingHorizontal: 2,
+    paddingVertical: 2,
   },
-  clearUnderline: {
-    marginTop: 2,
-    alignSelf: 'center',
-    width: 70,
-    height: 2,
-    backgroundColor: '#111',
-    borderRadius: 1,
-  },
-  clearText: {
+  clearAllText: {
     fontSize: 15,
-    color: '#333',
+    color: '#222',
     fontWeight: '500',
+    textDecorationLine: 'underline',
   },
-  searchBtn: {
-    width: 122,
-    height: 46,
-    borderRadius: 8,
-    backgroundColor: '#f39c12',
+  searchBtnBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+    backgroundColor: '#f39c12',
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
   },
-  searchBtnText: {
-    fontSize: 15,
-    color: '#fff',
+  searchBtnBarText: {
+    fontSize: 16,
     fontWeight: '600',
+    color: '#fff',
+    marginLeft: 6,
+  },
+  searchRegionBorderBox: {
+    width: 327,
+    height: 492,
+    alignSelf: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: '#eee',
+    padding: 16,
+    marginTop: 8,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9f9f9',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    marginBottom: 16,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    paddingVertical: 0,
+    paddingHorizontal: 8,
   },
   inputClear: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  actionBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
+  },
+  clearBtn: {
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  searchBtn: {
+    backgroundColor: '#f39c12',
+  },
+  actionBtnText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderColor: '#eee',
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+  },
+  suggestionListWrap: {
+    marginTop: 0,
+    marginBottom: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+    backgroundColor: '#fff',
+    paddingVertical: 4,
+    paddingHorizontal: 0,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  suggestionListOverlay: {
+    position: 'absolute',
+    top: 70,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#eee',
+    marginHorizontal: 0,
+    paddingVertical: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 8,
+    maxHeight: 400,
+  },
+  suggestionCardList: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fafafa',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    marginHorizontal: 12,
+    borderWidth: 0,
+    shadowColor: '#000',
+    shadowOpacity: 0.02,
+    shadowRadius: 2,
+    elevation: 0,
+  },
+  suggestionIconList: {
     width: 36,
     height: 36,
     borderRadius: 18,
+    backgroundColor: '#f5f5f5',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginRight: 14,
+  },
+  suggestionTitleList: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#222',
   },
 });

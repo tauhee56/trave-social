@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCurrentUser, getUserProfile, updateUserProfile, uploadImage } from '../lib/firebaseHelpers';
 
 // Runtime import with fallback
@@ -141,37 +141,106 @@ export default function EditProfile() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* Header */}
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.cancel}>Cancel</Text>
+          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+            <Text style={styles.closeIcon}>✕</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Edit Profile</Text>
-          <TouchableOpacity onPress={handleSave} style={[styles.saveBtn, saving && { opacity: 0.7 }]} disabled={saving}>
-            <Text style={styles.saveText}>{saving ? 'Saving...' : 'Save'}</Text>
-          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Edit profile</Text>
+          <View style={{ width: 40 }} />
         </View>
 
         <View style={styles.content}>
-          <View style={styles.avatarSection}>
+          {/* Avatar */}
+          <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
             <Image source={{ uri: avatar || DEFAULT_AVATAR_URL }} style={styles.avatar} />
-            <TouchableOpacity style={styles.changePhotoBtn} onPress={pickImage}>
-              <Text style={styles.changePhotoText}>Change Photo</Text>
-            </TouchableOpacity>
+          </TouchableOpacity>
+
+          {/* Form Fields */}
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>Name</Text>
+            <TextInput 
+              value={name} 
+              onChangeText={setName} 
+              style={styles.input} 
+              placeholder="Emma Lumna" 
+              placeholderTextColor="#999" 
+            />
           </View>
 
-          <Text style={styles.fieldLabel}>Full name</Text>
-          <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Your name" placeholderTextColor="#999" />
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>Username</Text>
+            <TextInput 
+              value={bio} 
+              onChangeText={setBio} 
+              style={styles.input} 
+              placeholder="Lumna travel" 
+              placeholderTextColor="#999" 
+            />
+          </View>
 
-          <Text style={styles.fieldLabel}>Bio</Text>
-          <TextInput value={bio} onChangeText={setBio} style={[styles.input, { height: 100 }]} placeholder="Short bio" placeholderTextColor="#999" multiline />
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>Bio</Text>
+            <TextInput 
+              value={bio} 
+              onChangeText={setBio} 
+              style={styles.input} 
+              placeholder="Add bio" 
+              placeholderTextColor="#999" 
+            />
+          </View>
 
-          <Text style={styles.fieldLabel}>Website</Text>
-          <TextInput value={website} onChangeText={setWebsite} style={styles.input} placeholder="https://example.com" placeholderTextColor="#999" />
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>Links</Text>
+            <TextInput 
+              value={website} 
+              onChangeText={setWebsite} 
+              style={styles.input} 
+              placeholder="Add links" 
+              placeholderTextColor="#999" 
+            />
+          </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
+        </View>
 
-          <TouchableOpacity style={styles.btn} onPress={handleSave} disabled={saving}>
-            <Text style={styles.btnText}>{saving ? 'Saving...' : 'Save Changes'}</Text>
+        {/* Bottom Buttons */}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity 
+            style={styles.logoutBtn}
+            onPress={async () => {
+              Alert.alert(
+                'Log out',
+                'Are you sure you want to log out?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Log out',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        const { getAuth, signOut } = await import('firebase/auth');
+                        const auth = getAuth();
+                        await signOut(auth);
+                        console.log('Logout successful, redirecting to welcome');
+                        router.replace('/auth/welcome');
+                      } catch (err) {
+                        Alert.alert('Error', 'Failed to log out');
+                      }
+                    }
+                  }
+                ]
+              );
+            }}
+          >
+            <Text style={styles.logoutText}>Log out</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.shareBtn, saving && { opacity: 0.7 }]} 
+            onPress={handleSave} 
+            disabled={saving}
+          >
+            <Text style={styles.shareText}>{saving ? 'Saving...' : 'Share'}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -185,19 +254,96 @@ const SECONDARY = '#111';
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
   container: { flex: 1 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  cancel: { color: '#666' },
-  headerTitle: { fontWeight: '700', fontSize: 16, color: SECONDARY },
-  saveBtn: { backgroundColor: PRIMARY, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  saveText: { color: '#fff', fontWeight: '700' },
-  content: { padding: 16 },
-  avatarSection: { alignItems: 'center', marginBottom: 20 },
-  avatar: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#eee' },
-  changePhotoBtn: { marginTop: 12 },
-  changePhotoText: { color: PRIMARY, fontWeight: '700' },
-  fieldLabel: { color: '#666', marginBottom: 6, marginTop: 8 },
-  input: { height: 48, borderRadius: 10, backgroundColor: '#f7f7f7', paddingHorizontal: 12, borderWidth: 1, borderColor: '#f0f0f0', color: SECONDARY },
-  btn: { height: 48, borderRadius: 10, backgroundColor: PRIMARY, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
-  btnText: { color: '#fff', fontWeight: '700' },
-  error: { color: '#e0245e', marginTop: 12 },
+  headerRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: 16, 
+    paddingVertical: 14, 
+    borderBottomWidth: 0.5, 
+    borderBottomColor: '#e0e0e0' 
+  },
+  closeBtn: { 
+    width: 40, 
+    height: 40, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+  closeIcon: { 
+    fontSize: 24, 
+    color: '#000', 
+    fontWeight: '300' 
+  },
+  headerTitle: { 
+    fontWeight: '600', 
+    fontSize: 16, 
+    color: '#000', 
+    textAlign: 'center',
+    flex: 1
+  },
+  content: { 
+    flex: 1,
+    paddingTop: 24 
+  },
+  avatarContainer: { 
+    alignItems: 'center', 
+    marginBottom: 32 
+  },
+  avatar: { 
+    width: 100, 
+    height: 100, 
+    borderRadius: 50, 
+    backgroundColor: '#f0f0f0' 
+  },
+  formGroup: { 
+    paddingHorizontal: 16, 
+    paddingVertical: 12, 
+    borderBottomWidth: 0.5, 
+    borderBottomColor: '#e0e0e0' 
+  },
+  fieldLabel: { 
+    fontSize: 13, 
+    color: '#000', 
+    fontWeight: '600', 
+    marginBottom: 6 
+  },
+  input: { 
+    fontSize: 14, 
+    color: '#999', 
+    paddingVertical: 4 
+  },
+  error: { 
+    color: '#e0245e', 
+    marginTop: 12, 
+    paddingHorizontal: 16 
+  },
+  bottomBar: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    paddingHorizontal: 16, 
+    paddingVertical: 16, 
+    borderTopWidth: 0.5, 
+    borderTopColor: '#e0e0e0' 
+  },
+  logoutBtn: { 
+    paddingVertical: 12, 
+    paddingHorizontal: 20 
+  },
+  logoutText: { 
+    fontSize: 15, 
+    color: '#000', 
+    fontWeight: '400' 
+  },
+  shareBtn: { 
+    backgroundColor: PRIMARY, 
+    paddingVertical: 10, 
+    paddingHorizontal: 32, 
+    borderRadius: 8 
+  },
+  shareText: { 
+    color: '#fff', 
+    fontWeight: '600', 
+    fontSize: 15 
+  },
 });

@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from '@react-navigation/native';
+import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -14,14 +15,16 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import { addLikedStatusToPosts, getCurrentUser, getFeedPosts, getUserNotifications } from "../../lib/firebaseHelpers";
+import { addLikedStatusToPosts, DEFAULT_CATEGORIES, getCategories, getCurrentUser, getFeedPosts, getUserNotifications } from "../../lib/firebaseHelpers";
 import PostCard from "../components/PostCard";
 import StoriesRow from "../components/StoriesRow";
 import StoriesViewer from "../components/StoriesViewer";
+import { useTabEvent } from './_layout';
 
 const { width } = Dimensions.get("window");
 
 export default function Home() {
+    const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const params = useLocalSearchParams();
   const filter = (params.filter as string) || '';
   const router = useRouter();
@@ -29,16 +32,31 @@ export default function Home() {
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [feedReloadKey, setFeedReloadKey] = useState(0); // For FlatList force update
   const [unreadCount, setUnreadCount] = useState(0);
   const [showStoriesViewer, setShowStoriesViewer] = useState(false);
   const [selectedStories, setSelectedStories] = useState<any[]>([]);
+  const [storiesRefreshTrigger, setStoriesRefreshTrigger] = useState(0);
 
   // Refresh logic: reload posts when Home tab is focused (only clear filter if no filter in URL)
   useFocusEffect(
     React.useCallback(() => {
       loadPosts();
+      loadCategories();
     }, [])
   );
+
+  // Listen for home tab press event from context
+  const tabEvent = useTabEvent();
+  useEffect(() => {
+    if (!tabEvent) return;
+    const unsubscribe = tabEvent.subscribeHomeTabPress(() => {
+      if (typeof resetFeed === 'function') {
+        resetFeed();
+      }
+    });
+    return unsubscribe;
+  }, [tabEvent]);
 
   useEffect(() => {
     async function fetchNotifications() {
@@ -57,14 +75,33 @@ export default function Home() {
     const user = getCurrentUser();
     if (!user) {
       setLoading(false);
+      console.log('Feed: No user found');
       return;
     }
     const result = await getFeedPosts();
+    console.log('Feed: getFeedPosts result:', result);
     if (result.success && Array.isArray(result.posts)) {
       const postsWithLikes = await addLikedStatusToPosts(result.posts, user.uid);
+      console.log('Feed: postsWithLikes:', postsWithLikes);
       setPosts(postsWithLikes);
+    } else {
+      console.log('Feed: getFeedPosts failed or returned no posts');
     }
     setLoading(false);
+    }
+
+    async function loadCategories() {
+      const cats = await getCategories();
+      // Map each category to correct shape
+      const mappedCats = Array.isArray(cats)
+        ? cats
+            .map((c: any) => ({
+                name: typeof c.name === 'string' ? c.name : '',
+                image: typeof c.image === 'string' ? c.image : ''
+            }))
+            .filter((c: any) => c.name && c.image)
+        : [];
+      setCategories(mappedCats.length > 0 ? mappedCats : DEFAULT_CATEGORIES);
   }
 
   async function onRefresh() {
@@ -73,9 +110,28 @@ export default function Home() {
     setRefreshing(false);
   }
 
-  const filtered = filter
-    ? posts.filter((p: any) => p.location && p.location.toLowerCase().includes(filter.toLowerCase()))
-    : posts;
+  const selectedPostId = (params.postId as string) || '';
+const locationFilter = (params.location as string) || '';
+
+let filtered = posts;
+if (locationFilter) {
+  // Show selected post first, then all other posts from same location
+  const locationPosts = posts.filter((p: any) => {
+    if (typeof p.location === 'string') {
+      return p.location.toLowerCase() === locationFilter.toLowerCase();
+    }
+    if (typeof p.location === 'object' && p.location?.name) {
+      return p.location.name.toLowerCase() === locationFilter.toLowerCase();
+    }
+    return false;
+  });
+  // Move selected post to top
+  const selectedPost = locationPosts.find(p => p.id === selectedPostId);
+  const otherPosts = locationPosts.filter(p => p.id !== selectedPostId);
+  filtered = selectedPost ? [selectedPost, ...otherPosts] : otherPosts;
+} else if (filter) {
+  filtered = posts.filter((p: any) => p.category && p.category.toLowerCase() === filter.toLowerCase());
+}
 
   if (loading) {
     return (
@@ -84,6 +140,19 @@ export default function Home() {
       </View>
     );
   }
+
+  const resetFeed = () => {
+    setLoading(true);
+    setPosts([]);
+    router.replace('/(tabs)/home');
+    router.setParams({ filter: undefined, location: undefined, postId: undefined });
+    setTimeout(() => {
+      loadPosts(); // Reload all posts from backend
+      setFeedReloadKey(prev => prev + 1); // Force FlatList rerender
+    }, 100);
+  };
+
+  const searchText = (!filter && !locationFilter) ? 'Search' : (locationFilter ? locationFilter : filter);
 
   return (
     <View style={styles.container}>
@@ -100,6 +169,7 @@ export default function Home() {
         data={filtered}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#f39c12" />}
+        key={feedReloadKey} // Force rerender on feed reload
         ListHeaderComponent={() => (
           <View>
             <StoriesRow
@@ -107,37 +177,37 @@ export default function Home() {
                 setSelectedStories(stories);
                 setShowStoriesViewer(true);
               }}
+              refreshTrigger={storiesRefreshTrigger}
             />
             <View style={styles.headerSection}>
               <TouchableOpacity style={styles.searchBar} onPress={() => router.push('/search-modal' as any)} activeOpacity={0.7}>
                 <Feather name="search" size={18} color="#777" />
-                <Text style={styles.searchText}>{filter ? filter : 'Search'}</Text>
+                <Text style={styles.searchText}>{loading ? 'Loading...' : searchText}</Text>
               </TouchableOpacity>
               <View style={styles.chipsRow}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
                   <View style={{ flexDirection: 'row' }}>
-                    {[{ key: 'London', icon: 'map-pin' },
-                      { key: 'Dubai', icon: 'sun' },
-                      { key: 'Arctic', icon: 'cloud' },
-                      { key: 'Islands', icon: 'globe' },
-                      { key: 'Winter', icon: 'cloud' },
-                      { key: 'Paris', icon: 'coffee' },
-                    ].map((c) => (
+                    {categories.map((cat) => (
                       <TouchableOpacity
-                        key={c.key}
-                        style={[styles.chip, filter === c.key && styles.chipActive]}
+                        key={cat.name}
+                        style={[styles.chip, filter === cat.name && styles.chipActive]}
                         onPress={() => {
-                          const next = c.key === filter ? '' : c.key;
+                          const next = cat.name === filter ? '' : cat.name;
                           if (next) router.push(`/(tabs)/home?filter=${encodeURIComponent(next)}`);
                           else router.push(`/(tabs)/home`);
                         }}
                         activeOpacity={0.8}
                       >
-                        <View style={[styles.chipIconWrap, filter === c.key && styles.chipIconWrapActive]}>
-                          <Feather name={(c.icon as any) || 'map-pin'} size={18} color={filter === c.key ? '#f39c12' : '#777'} />
+                        <View style={[styles.chipIconWrap, filter === cat.name && styles.chipIconWrapActive]}>
+                          <ExpoImage
+                            source={{ uri: cat.image }}
+                            style={{ width: 40, height: 40, borderRadius: 10 }}
+                            contentFit="cover"
+                            transition={300}
+                          />
                         </View>
-                        <Text style={[styles.chipText, filter === c.key && styles.chipTextActive]}>{c.key}</Text>
-                        {filter === c.key && <View style={styles.chipUnderline} />}
+                        <Text style={[styles.chipText, filter === cat.name && styles.chipTextActive]}>{cat.name}</Text>
+                        {filter === cat.name && <View style={styles.chipUnderline} />}
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -146,8 +216,26 @@ export default function Home() {
             </View>
           </View>
         )}
-        renderItem={({ item }) => <PostCard post={item} />}
+        renderItem={({ item }) => {
+          const currentUser = getCurrentUser();
+          return item ? <PostCard post={item} currentUser={currentUser} showMenu={false} /> : null;
+        }}
+        ListEmptyComponent={() => (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 }}>
+            <Feather name="image" size={80} color="#dbdbdb" style={{ marginBottom: 16 }} />
+            <Text style={{ fontSize: 22, fontWeight: '700', color: '#000', marginBottom: 8 }}>No posts found</Text>
+            <Text style={{ fontSize: 14, color: '#8e8e8e' }}>
+              Try refreshing or check your connection.
+            </Text>
+          </View>
+        )}
         showsVerticalScrollIndicator={false}
+        initialNumToRender={5}
+        windowSize={10}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={5}
+        updateCellsBatchingPeriod={50}
+        contentContainerStyle={{ flexGrow: 1 }}
       />
       {showStoriesViewer && selectedStories.length > 0 && (
         <Modal
@@ -158,7 +246,10 @@ export default function Home() {
         >
           <StoriesViewer
             stories={selectedStories}
-            onClose={() => setShowStoriesViewer(false)}
+            onClose={() => {
+              setShowStoriesViewer(false);
+              setStoriesRefreshTrigger(prev => prev + 1);
+            }}
           />
         </Modal>
       )}

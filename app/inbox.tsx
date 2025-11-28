@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndicator } from "react-native";
-import Swipeable from 'react-native-gesture-handler/Swipeable';
-import { Feather, MaterialIcons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { getCurrentUser, subscribeToConversations } from '../lib/firebaseHelpers';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Swipeable from 'react-native-gesture-handler/Swipeable';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { getCurrentUser, getUserConversations, subscribeToConversations } from '../lib/firebaseHelpers';
 import { archiveConversation } from '../lib/firebaseHelpers/archive';
+import InboxRow from './components/InboxRow';
 
 export default function Inbox() {
     // Default avatar from Firebase Storage
@@ -47,12 +48,12 @@ export default function Inbox() {
 
   function formatTime(timestamp: any) {
     if (!timestamp) return '';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
+    if (!date) return '';
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    
     if (hours < 1) return 'now';
     if (hours < 24) return `${hours}h`;
     if (days < 7) return `${days}d`;
@@ -69,10 +70,14 @@ export default function Inbox() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => {
-          router.dismissAll();
-          router.replace('/(tabs)/profile' as any);
-        }} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => {
+            router.replace('/(tabs)/home');
+          }}
+          style={[styles.backBtn, { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }]}
+          activeOpacity={0.7}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
           <Feather name="x" size={28} color="#000" />
         </TouchableOpacity>
         <Text style={[styles.title, { textAlign: 'center', flex: 1 }]}>Messages</Text>
@@ -98,7 +103,7 @@ export default function Inbox() {
         </View>
       ) : (
         <FlatList
-          data={conversations}
+          data={conversations.filter(c => !c[`archived_${getCurrentUser()?.uid}`])}
           keyExtractor={t => t.id}
           style={{ width: '100%' }}
           renderItem={({ item }) => (
@@ -107,7 +112,9 @@ export default function Inbox() {
                 <TouchableOpacity
                   style={styles.archiveBtn}
                   onPress={async () => {
-                    await archiveConversation(item.id, getCurrentUser().uid);
+                    const user = getCurrentUser();
+                    if (!user) return;
+                    await archiveConversation(item.id, user.uid);
                     setConversations(conversations.filter(c => c.id !== item.id));
                   }}
                 >
@@ -115,43 +122,12 @@ export default function Inbox() {
                 </TouchableOpacity>
               )}
             >
-              <TouchableOpacity
-                style={styles.row}
-                onPress={() => router.push({ 
-                  pathname: '/dm', 
-                  params: { 
-                    conversationId: item.id,
-                    otherUserId: item.otherUser.id,
-                    user: item.otherUser.name, 
-                    avatar: item.otherUser.avatar 
-                  } 
-                })}
-              >
-                <View style={[styles.avatarRing, item.unread > 0 && styles.avatarRingUnread]}>
-                  <Image source={{ uri: item.otherUser.avatar && item.otherUser.avatar.trim() !== "" ? item.otherUser.avatar : DEFAULT_AVATAR_URL }} style={styles.avatar} />
-                </View>
-
-                <View style={styles.content}>
-                  <View style={styles.rowTop}>
-                    <Text style={[styles.user, item.unread > 0 && styles.userUnread]} numberOfLines={1}>{item.otherUser.name}</Text>
-                    <Text style={styles.at}>{formatTime(item.lastMessageAt)}</Text>
-                  </View>
-                  <View style={styles.rowBottom}>
-                    <Text style={[styles.last, item.unread > 0 && styles.lastUnread]} numberOfLines={1}>
-                      {item.lastMessage || 'No messages yet'}
-                    </Text>
-                    {item.unread > 0 ? (
-                      <View style={styles.unreadBadge}><Text style={styles.unreadText}>{item.unread > 9 ? '9+' : item.unread}</Text></View>
-                    ) : (
-                      <Feather name="chevron-right" size={18} color="#ccc" />
-                    )}
-                  </View>
-                </View>
-              </TouchableOpacity>
+              <InboxRow item={item} router={router} unread={item.unread} formatTime={formatTime} DEFAULT_AVATAR_URL={DEFAULT_AVATAR_URL} />
             </Swipeable>
           )}
           ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#f5f5f5' }} />}
           contentContainerStyle={{ paddingBottom: 16 }}
+          extraData={conversations}
         />
         // ...existing code...
       )}
@@ -203,19 +179,6 @@ const styles = StyleSheet.create({
   lastUnread: { color: '#111', fontWeight: '600' },
   unreadBadge: { backgroundColor: '#e0245e', minWidth: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
   unreadText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-  archiveBtn: {
-    backgroundColor: '#007aff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 100,
-    height: '100%',
-    borderRadius: 12,
-  },
-  archiveText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
   archiveBtn: {
     backgroundColor: '#007aff',
     justifyContent: 'center',

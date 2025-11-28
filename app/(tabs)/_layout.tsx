@@ -1,17 +1,37 @@
-import React from 'react';
+import { Feather, MaterialIcons } from "@expo/vector-icons";
 import { Tabs, useRouter, useSegments } from "expo-router";
-import { MaterialIcons, Feather } from "@expo/vector-icons";
+import React, { createContext, useContext, useRef } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from "react-native-safe-area-context";
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { getUserNotifications, getCurrentUser, getUserConversations } from '../../lib/firebaseHelpers';
+import { getCurrentUser, getUserConversations, getUserNotifications } from '../../lib/firebaseHelpers';
+
+
+// Create a context for tab events
+const TabEventContext = createContext<{ emitHomeTabPress: () => void; subscribeHomeTabPress: (cb: () => void) => () => void } | undefined>(undefined);
+
+export function useTabEvent() {
+  return useContext(TabEventContext);
+}
 
 export default function TabsLayout() {
+  // Simple subscription system for home tab press
+  const homeTabPressListeners = useRef<(() => void)[]>([]);
+  const emitHomeTabPress = () => {
+    homeTabPressListeners.current.forEach(cb => cb());
+  };
+  const subscribeHomeTabPress = (cb: () => void) => {
+    homeTabPressListeners.current.push(cb);
+    return () => {
+      homeTabPressListeners.current = homeTabPressListeners.current.filter(fn => fn !== cb);
+    };
+  };
   const router = useRouter();
-  const segments = useSegments();
-  const isProfileScreen = segments[segments.length - 1] === 'profile';
+  // const segments = useSegments();
+  // const isProfileScreen = segments[segments.length - 1] === 'profile';
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
-      {!isProfileScreen && <TopMenu />}
+      <TopMenu />
+      <TabEventContext.Provider value={{ emitHomeTabPress, subscribeHomeTabPress }}>
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -35,11 +55,19 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, size }) => (
               <Feather name="home" size={size} color={color} />
             ),
-          }}
-          listeners={{
-            tabPress: (e) => {
-              e.preventDefault();
-              router.push('/(tabs)/home');
+            tabBarButton: (props) => {
+              const router = useRouter();
+              const tabEvent = useTabEvent();
+              return (
+                <TouchableOpacity
+                  {...props}
+                  onPress={() => {
+                    tabEvent?.emitHomeTabPress();
+                    router.push('/(tabs)/home');
+                  }}
+                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                />
+              );
             },
           }}
         />
@@ -50,6 +78,25 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, size }) => (
               <Feather name="search" size={size} color={color} />
             ),
+            tabBarButton: (props) => {
+              const router = useRouter();
+              return (
+                <TouchableOpacity
+                  // Do not spread props to TouchableOpacity to avoid type errors
+                  onPress={() => router.push('/search-modal')}
+                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                  delayLongPress={typeof props.delayLongPress === 'number' ? props.delayLongPress : undefined}
+                  disabled={typeof props.disabled === 'boolean' ? props.disabled : undefined}
+                  onBlur={typeof props.onBlur === 'function' ? props.onBlur : undefined}
+                  onFocus={typeof props.onFocus === 'function' ? props.onFocus : undefined}
+                  onLongPress={typeof props.onLongPress === 'function' ? props.onLongPress : undefined}
+                  onPressIn={typeof props.onPressIn === 'function' ? props.onPressIn : undefined}
+                  onPressOut={typeof props.onPressOut === 'function' ? props.onPressOut : undefined}
+                >
+                  <Feather name="search" size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
+                </TouchableOpacity>
+              );
+            },
           }}
         />
         <Tabs.Screen
@@ -59,6 +106,7 @@ export default function TabsLayout() {
             tabBarLabel: '',
             tabBarIcon: ({ color, size }) => (
               <View style={{
+            // Fix: Ensure delayLongPress is only number or undefined, not null
                 width: 40,
                 height: 30,
                 borderRadius: 6,
@@ -76,12 +124,30 @@ export default function TabsLayout() {
               </View>
             ),
             tabBarButton: (props) => {
-              const { onPress, ...rest } = props;
+              // Only pass valid TouchableOpacityProps
               return (
                 <TouchableOpacity
-                  {...rest}
                   onPress={() => router.push('/create-post')}
-                />
+                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+                  activeOpacity={0.7}
+                >
+                  <View style={{
+                    width: 40,
+                    height: 30,
+                    borderRadius: 6,
+                    backgroundColor: '#f39c12',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginTop: 6,
+                    shadowColor: '#000',
+                    shadowOpacity: 0.12,
+                    shadowRadius: 4,
+                    shadowOffset: { width: 0, height: 2 },
+                    elevation: 4,
+                  }}>
+                    <Feather name="plus" size={18} color="#fff" />
+                  </View>
+                </TouchableOpacity>
               );
             },
           }}
@@ -106,6 +172,7 @@ export default function TabsLayout() {
           }}
         />
       </Tabs>
+      </TabEventContext.Provider>
     </SafeAreaView>
   );
 }
@@ -132,6 +199,9 @@ function TopMenu() {
   const router = useRouter();
   const [unreadNotif, setUnreadNotif] = React.useState(0);
   const [unreadMsg, setUnreadMsg] = React.useState(0);
+  const [menuVisible, setMenuVisible] = React.useState(false);
+  const segments = useSegments();
+  const isProfileScreen = segments[segments.length - 1] === 'profile';
 
   React.useEffect(() => {
     async function fetchCounts() {
@@ -140,7 +210,7 @@ function TopMenu() {
       // Notifications
       const notifRes = await getUserNotifications(user.uid);
       if (notifRes.success && Array.isArray(notifRes.data)) {
-        const unread = notifRes.data.filter(n => n.read === false || n.read === undefined);
+        const unread = notifRes.data.filter((n: any) => n && typeof n.read === 'boolean' ? n.read === false : false);
         setUnreadNotif(unread.length);
       }
       // Messages
@@ -155,50 +225,136 @@ function TopMenu() {
 
   return (
     <View style={styles.topMenu}>
-      <Text style={styles.logo}>Logo</Text>
-      <View style={{ flexDirection: 'row' }}>
-        <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/inbox' as any)}>
-          <Feather name="message-square" size={18} color="#333" />
-          {unreadMsg > 0 && (
-            <View style={{
-              position: 'absolute',
-              top: -4,
-              right: -4,
-              backgroundColor: '#f39c12',
-              borderRadius: 10,
-              minWidth: 16,
-              paddingHorizontal: 4,
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 10 }}>{unreadMsg}</Text>
+      {isProfileScreen ? (
+        <>
+          <Text style={styles.logo}>Logo</Text>
+          <View style={{ flexDirection: 'row' }}>
+            <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/notifications' as any)}>
+              <Feather name="bell" size={20} color="#333" />
+              {unreadNotif > 0 && (
+                <View style={{
+                  position: 'absolute',
+                  top: -4,
+                  right: -4,
+                  backgroundColor: '#ff3b30',
+                  borderRadius: 10,
+                  minWidth: 16,
+                  paddingHorizontal: 4,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 10 }}>{unreadNotif}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.topBtn, { zIndex: 101 }]} onPress={() => setMenuVisible(true)}>
+              <Feather name="more-vertical" size={20} color="#333" />
+            </TouchableOpacity>
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={styles.logo}>Logo</Text>
+          <View style={{ flexDirection: 'row' }}>
+            <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/inbox' as any)}>
+              <Feather name="message-square" size={18} color="#333" />
+              {unreadMsg > 0 && (
+                <View style={{
+                  position: 'absolute',
+                  top: -4,
+                  right: -4,
+                  backgroundColor: '#f39c12',
+                  borderRadius: 10,
+                  minWidth: 16,
+                  paddingHorizontal: 4,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 10 }}>{unreadMsg}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/notifications' as any)}>
+              <Feather name="bell" size={18} color="#333" />
+              {unreadNotif > 0 && (
+                <View style={{
+                  position: 'absolute',
+                  top: -4,
+                  right: -4,
+                  backgroundColor: '#ff3b30',
+                  borderRadius: 10,
+                  minWidth: 16,
+                  paddingHorizontal: 4,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 10 }}>{unreadNotif}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+      {/* Instagram-style bottom sheet for settings/activity */}
+      {menuVisible && (
+        <View style={styles.menuOverlay}>
+          <TouchableOpacity style={{ flex: 1, width: '100%' }} activeOpacity={1} onPress={() => setMenuVisible(false)} />
+          <SafeAreaView style={{ width: '100%' }} edges={["bottom"]}>
+            <View style={[styles.igSheet, { paddingHorizontal: 0, paddingBottom: 56 }]}> 
+              <View style={{ alignItems: 'center', marginBottom: 10 }}>
+                <View style={styles.igHandle} />
+              </View>
+              <View style={{ width: '100%', paddingHorizontal: 18 }}>
+                <TouchableOpacity style={[styles.igItem, styles.igRow]} activeOpacity={0.85} onPress={() => { setMenuVisible(false); router.push('/privacy'); }}>
+                  <Feather name="lock" size={22} color="#333" style={styles.igIcon} />
+                  <Text style={styles.igText}>Privacy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.igItem, styles.igRow]} activeOpacity={0.85} onPress={() => { setMenuVisible(false); router.push('/friends'); }}>
+                  <Feather name="users" size={22} color="#333" style={styles.igIcon} />
+                  <Text style={styles.igText}>Friends</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.igItem, styles.igRow]} activeOpacity={0.85} onPress={() => { setMenuVisible(false); router.push('/archive'); }}>
+                  <Feather name="archive" size={22} color="#333" style={styles.igIcon} />
+                  <Text style={styles.igText}>Archive Chats</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.igItem, styles.igRow]} activeOpacity={0.85} onPress={() => { setMenuVisible(false); router.push('/highlight/1'); }}>
+                  <Feather name="star" size={22} color="#333" style={styles.igIcon} />
+                  <Text style={styles.igText}>Highlights</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.igItem, styles.igRow]} activeOpacity={0.85} onPress={() => { setMenuVisible(false); router.push('/saved'); }}>
+                  <Feather name="bookmark" size={22} color="#333" style={styles.igIcon} />
+                  <Text style={styles.igText}>Saved</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.igItemLogout, styles.igRow]} activeOpacity={0.85} onPress={() => { setMenuVisible(false); router.replace('/auth/welcome'); }}>
+                  <Feather name="log-out" size={22} color="#e0245e" style={styles.igIcon} />
+                  <Text style={styles.igTextLogout}>Logout</Text>
+                </TouchableOpacity>
+                <View style={styles.igDivider} />
+                <TouchableOpacity style={[styles.igItem, { alignItems: 'center', marginBottom: 0 }]} activeOpacity={0.85} onPress={() => setMenuVisible(false)}>
+                  <Text style={[styles.igText, { fontSize: 17 }]}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/notifications' as any)}>
-          <Feather name="bell" size={18} color="#333" />
-          {unreadNotif > 0 && (
-            <View style={{
-              position: 'absolute',
-              top: -4,
-              right: -4,
-              backgroundColor: '#ff3b30',
-              borderRadius: 10,
-              minWidth: 16,
-              paddingHorizontal: 4,
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 10 }}>{unreadNotif}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </View>
+          </SafeAreaView>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+    igRow: {
+      // merged into igItem for consistency
+    },
+    igIcon: {
+      marginRight: 16,
+    },
+    igDivider: {
+      width: '100%',
+      height: 1,
+      backgroundColor: '#eee',
+      marginVertical: 8,
+    },
   topMenu: {
     height: 56,
     backgroundColor: '#fff',
@@ -211,5 +367,77 @@ const styles = StyleSheet.create({
   },
   logo: { fontSize: 16, fontWeight: '700' },
   topBtn: { marginLeft: 12, padding: 6 },
+  menuOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    zIndex: 999,
+  },
+  igSheet: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingBottom: 56,
+    paddingTop: 18,
+    paddingHorizontal: 0,
+    marginTop: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 16,
+    alignItems: 'center',
+    zIndex: 1001,
+  },
+  igHandle: {
+    width: 38,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#e5e5e5',
+    marginBottom: 20,
+    marginTop: 2,
+  },
+  igItem: {
+    width: '100%',
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    marginBottom: 2,
+    backgroundColor: '#fff',
+    justifyContent: 'flex-start',
+  },
+  igItemLogout: {
+    width: '100%',
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    marginBottom: 2,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0245e',
+    justifyContent: 'flex-start',
+  },
+  igText: {
+    color: '#222',
+    fontSize: 16,
+    fontWeight: '500',
+    letterSpacing: 0.1,
+  },
+  igTextLogout: {
+    color: '#e0245e',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
 });
 

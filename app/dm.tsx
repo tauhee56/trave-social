@@ -1,26 +1,34 @@
-import React, { useEffect, useState, useRef } from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams } from 'expo-router';
-import { useRouter } from 'expo-router';
-import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
-import { 
-  getCurrentUser, 
-  getOrCreateConversation, 
-  sendMessage, 
-  subscribeToMessages,
-  markConversationAsRead,
-  createNotification
+import { useNavigation } from '@react-navigation/native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+    createNotification,
+    getCurrentUser,
+    getOrCreateConversation,
+    getUserProfile, isApprovedFollower,
+    markConversationAsRead,
+    sendMessage,
+    subscribeToMessages
 } from '../lib/firebaseHelpers';
+import { useUserProfile } from './hooks/useUserProfile';
+
+const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
 
 export default function DM() {
-    // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
-  const { user, avatar, conversationId: paramConversationId, otherUserId } = useLocalSearchParams();
+  const { user: paramUser, conversationId: paramConversationId, otherUserId } = useLocalSearchParams();
   const router = useRouter();
   const navigation = useNavigation();
+  
+  // Use the hook to fetch and subscribe to the other user's profile
+  const { profile: otherUserProfile, loading: profileLoading, username, avatar } = useUserProfile(
+    typeof otherUserId === 'string' ? otherUserId : null
+  );
+  
   const [input, setInput] = useState("");
+  const [canMessage, setCanMessage] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(
     typeof paramConversationId === 'string' ? paramConversationId : null
@@ -32,7 +40,27 @@ export default function DM() {
 
   useEffect(() => {
     initializeConversation();
+    checkMessagingPermission();
   }, []);
+
+  async function checkMessagingPermission() {
+    if (!otherUserId || !currentUser) {
+      setCanMessage(false);
+      return;
+    }
+    const res = await getUserProfile(otherUserId);
+    if (res.success && res.data) {
+      const isPrivate = !!res.data.isPrivate;
+      if (!isPrivate) {
+        setCanMessage(true);
+      } else {
+        const approved = await isApprovedFollower(otherUserId, currentUser.uid);
+        setCanMessage(approved);
+      }
+    } else {
+      setCanMessage(false);
+    }
+  }
 
   useEffect(() => {
     if (!conversationId) return;
@@ -75,7 +103,7 @@ export default function DM() {
   }
 
   async function handleSend() {
-    if (!input.trim() || !conversationId || !currentUser || sending) return;
+    if (!input.trim() || !conversationId || !currentUser || sending || !canMessage) return;
 
     const messageText = input.trim();
     setInput("");
@@ -118,7 +146,7 @@ export default function DM() {
       <View style={isSelf ? styles.msgRowSelf : styles.msgRow}>
         {!isSelf && (
           <Image 
-            source={{ uri: avatar && typeof avatar === 'string' && avatar.trim() !== "" ? avatar : DEFAULT_AVATAR_URL }} 
+            source={{ uri: avatar }} 
             style={styles.msgAvatar} 
           />
         )}
@@ -133,7 +161,7 @@ export default function DM() {
     );
   }
 
-  if (loading) {
+  if (loading || profileLoading) {
     return (
       <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]} edges={["top", "bottom"]}>
         <ActivityIndicator size="large" color="#007aff" />
@@ -160,9 +188,9 @@ export default function DM() {
           <TouchableOpacity style={styles.headerUser} onPress={() => {
             if (otherUserId) router.push(`/user-profile?userId=${otherUserId}` as any);
           }}>
-            <Image source={{ uri: avatar && typeof avatar === 'string' && avatar.trim() !== "" ? avatar : DEFAULT_AVATAR_URL }} style={styles.avatar} />
+            <Image source={{ uri: avatar }} style={styles.avatar} />
             <View>
-              <Text style={styles.title}>{user || 'User'}</Text>
+              <Text style={styles.title}>{username}</Text>
               <Text style={styles.activeText}>Active now</Text>
             </View>
           </TouchableOpacity>
@@ -195,16 +223,17 @@ export default function DM() {
                 style={styles.input}
                 value={input}
                 onChangeText={setInput}
-                placeholder="Message..."
+                placeholder={canMessage ? "Message..." : "You can't message this user"}
                 placeholderTextColor="#8e8e8e"
                 multiline
                 maxLength={500}
+                editable={canMessage}
               />
             </View>
             <TouchableOpacity 
-              style={[styles.sendBtnText, (!input.trim() || sending) && { opacity: 0.4 }]} 
+              style={[styles.sendBtnText, (!input.trim() || sending || !canMessage) && { opacity: 0.4 }]} 
               onPress={handleSend}
-              disabled={!input.trim() || sending}
+              disabled={!input.trim() || sending || !canMessage}
             >
               <Text style={styles.sendTextBlue}>{sending ? 'Sending...' : 'Send'}</Text>
             </TouchableOpacity>

@@ -7,9 +7,10 @@
     "icon": "./assets/images/icon.png",
     "scheme": "travesocial",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
+    "extra": {
+      "eas": {
+        "projectId": "4d97a183-7794-47bd-b83a-ada113f325ea"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -33,6 +34,10 @@
           "apiKey": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c"
         }
       }
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tauhee56.travesocial"
     },
     "web": {
       "output": "static",
@@ -78,7 +83,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -87,9 +93,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "513a1158-d790-4560-869c-77d75b5ffd6e"
+        "projectId": "edc36fa0-5de0-465f-98c4-2f87cb8278d3"
       }
     },
-    "owner": "tauheedahmad"
+    "owner": "tauheeddev"
   }
 }

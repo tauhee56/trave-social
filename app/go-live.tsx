@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, TextInput, FlatList, Alert, ActivityIndicator, Platform, PermissionsAndroid } from "react-native";
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { getCurrentUser } from '../lib/firebaseHelpers';
+import { Camera, CameraView } from 'expo-camera';
+import { useRouter } from 'expo-router';
+import { addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
+import React, { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Alert, FlatList, Image, PermissionsAndroid, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import MapView from 'react-native-maps';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AGORA_CONFIG, generateChannelName, getAgoraToken } from '../config/agora';
 import { db } from '../config/firebase';
-import { collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp, increment, getDoc, setDoc } from 'firebase/firestore';
-import { Camera, CameraView } from 'expo-camera';
-import * as Location from 'expo-location';
+import { getCurrentUser } from '../lib/firebaseHelpers';
+import { useUserProfile } from './hooks/useUserProfile';
 
 // Default avatar from Firebase Storage
 const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
@@ -35,6 +36,7 @@ try {
 export default function GoLive() {
   const router = useRouter();
   const currentUser = getCurrentUser();
+  const { profile: userProfile } = useUserProfile(currentUser?.uid);
   
   const [input, setInput] = useState("");
   const [comments, setComments] = useState<any[]>([]);
@@ -44,6 +46,7 @@ export default function GoLive() {
   const [isInitializing, setIsInitializing] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [liveStreamId, setLiveStreamId] = useState<string | null>(null);
+  const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
   
   const engineRef = useRef<any>(null);
   const uidRef = useRef(Math.floor(Math.random() * 100000));
@@ -287,9 +290,16 @@ export default function GoLive() {
             <ActivityIndicator size="large" color="#fff" />
           </View>
         ) : isLive ? (
-          <CameraView style={styles.videoBackground} facing="back">
-            <View style={{ flex: 1, backgroundColor: 'transparent' }} />
-          </CameraView>
+          permissionsGranted ? (
+            <CameraView style={styles.videoBackground} facing="back">
+              <View style={{ flex: 1, backgroundColor: 'transparent' }} />
+            </CameraView>
+          ) : (
+            <View style={styles.videoBackground}>
+              <Text style={{ color: '#fff', textAlign: 'center', marginTop: 40, fontSize: 18 }}>Camera/Mic permission denied</Text>
+              <Image source={{ uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=60' }} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, opacity: 0.3 }} />
+            </View>
+          )
         ) : (
           <Image 
             source={{ uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=60' }} 
@@ -309,9 +319,9 @@ export default function GoLive() {
           </TouchableOpacity>
           
           <View style={styles.userInfo}>
-            <Image source={{ uri: currentUser?.photoURL || DEFAULT_AVATAR_URL }} style={styles.avatar} />
+            <Image source={{ uri: userProfile?.avatar || DEFAULT_AVATAR_URL }} style={styles.avatar} />
             <View style={styles.userDetails}>
-              <Text style={styles.username}>{currentUser?.displayName || 'User'}</Text>
+              <Text style={styles.username}>{userProfile?.name || 'User'}</Text>
               {isLive && (
                 <View style={styles.liveIndicator}>
                   <View style={styles.liveBadge}>
@@ -361,16 +371,28 @@ export default function GoLive() {
             <View style={styles.mapHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Ionicons name="location" size={20} color="#ff0000" style={{ marginRight: 6 }} />
-                <Text style={styles.mapTitle}>Enable location to show map</Text>
+                <Text style={styles.mapTitle}>Your Live Location</Text>
               </View>
+              <TouchableOpacity onPress={() => setMapType(mapType === 'standard' ? 'satellite' : 'standard')}>
+                <Ionicons name={mapType === 'standard' ? 'cube-outline' : 'cube'} size={24} color="#666" />
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => setShowMap(false)}>
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
-            <View style={styles.mapPlaceholder}>
-              <Ionicons name="map" size={48} color="#ccc" />
-              <Text style={styles.mapText}>Location services required</Text>
-            </View>
+            <MapView
+              style={{ width: '100%', height: 220 }}
+              mapType={mapType}
+              showsUserLocation={true}
+              initialRegion={{
+                latitude: 37.78825,
+                longitude: -122.4324,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              }}
+              provider="google"
+              // Add your Google Maps API key here if needed
+            />
           </View>
         )}
 

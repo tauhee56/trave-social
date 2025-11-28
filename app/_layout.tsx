@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack } from "expo-router";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../config/firebase";
-import { View, ActivityIndicator, Text } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { auth } from "../config/firebase";
+import { UserProvider } from "./components/UserContext";
 
 export default function RootLayout() {
   const [user, setUser] = useState<any>(null);
@@ -30,25 +31,28 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="login" />
-        <Stack.Screen name="signup" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="create-post" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="search-modal" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="highlight/[id]" />
-        <Stack.Screen name="create" />
-        <Stack.Screen name="filters/edit" />
-        <Stack.Screen name="inbox" />
-        <Stack.Screen name="dm" />
-        <Stack.Screen name="notifications" />
-        <Stack.Screen name="passport" />
-        <Stack.Screen name="edit-profile" />
-        <Stack.Screen name="go-live" />
-        <Stack.Screen name="user-profile" />
-      </Stack>
-    </GestureHandlerRootView>
+    <UserProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="auth/welcome" />
+          <Stack.Screen name="auth/login-options" />
+          <Stack.Screen name="auth/phone-login" />
+          <Stack.Screen name="auth/email-login" />
+          <Stack.Screen name="auth/username-login" />
+          <Stack.Screen name="auth/signup-options" />
+          <Stack.Screen name="auth/phone-signup" />
+          <Stack.Screen name="auth/email-signup" />
+          <Stack.Screen name="auth/username-signup" />
+          <Stack.Screen name="auth/phone-otp" />
+          <Stack.Screen name="auth/forgot-password" />
+          <Stack.Screen name="auth/reset-otp" />
+          <Stack.Screen name="auth/reset-password" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="create-post" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="search-modal" options={{ presentation: 'modal' }} />
+        </Stack>
+      </GestureHandlerRootView>
+    </UserProvider>
   );
 }
