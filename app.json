@@ -4,20 +4,15 @@
     "slug": "trave-social",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "travesocial",
+    "icon": "https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2Ficon.png?alt=media&token=0b576d71-e1d3-47fd-8527-79293b4c3db1",
+    "scheme": "trave-social",
     "userInterfaceStyle": "automatic",
-    "extra": {
-      "eas": {
-        "projectId": "4d97a183-7794-47bd-b83a-ada113f325ea"
-      }
-    },
     "android": {
+      "scheme": "trave-social",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2Ficon.png?alt=media&token=0b576d71-e1d3-47fd-8527-79293b4c3db1",
+        "monochromeImage": "https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2Ficon.png?alt=media&token=0b576d71-e1d3-47fd-8527-79293b4c3db1"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -27,6 +22,10 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
         "android.permission.INTERNET"
       ],
       "config": {
@@ -37,7 +36,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tauhee56.travesocial"
+      "bundleIdentifier": "com.tauhee56.travesocial",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "web": {
       "output": "static",
@@ -65,37 +67,71 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location for map features and location tagging.",
-          "locationAlwaysPermission": "Allow $(PRODUCT_NAME) to use your location for map features.",
-          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location while using the app.",
-          "isAndroidBackgroundLocationEnabled": false,
-          "isAndroidForegroundServiceEnabled": false
+          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to track your travel adventures and create passport stamps automatically.",
+          "locationAlwaysPermission": "Allow $(PRODUCT_NAME) to track your travels even when the app is closed to create passport stamps.",
+          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location for map features and location tagging.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-task-manager",
+      [
+        "expo-notifications",
+        {
+          "color": "#f39c12"
         }
       ],
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
+          "image": "./assets/splash.png",
+          "imageWidth": 250,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#667eea",
           "dark": {
-            "backgroundColor": "#000000"
+            "image": "./assets/splash.png",
+            "backgroundColor": "#1a1a1a"
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      ]
+    ],
+    "plugins": [
+      ...existing code...
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "manifestPlaceholders": {
+              "appAuthRedirectScheme": "trave-social"
+            }
+          }
+        }
+      ]
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": false
     },
     "extra": {
-      "router": {},
+      "router": {
+        "origin": false
+      },
+      "GOOGLE_MAP_API_KEY": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c",
+      "FIREBASE_API_KEY": "AIzaSyC_0pHFGAK5YySB--8hL3Ctz-u1cx4vaCk",
+      "FIREBASE_AUTH_DOMAIN": "travel-app-3da72.firebaseapp.com",
+      "FIREBASE_PROJECT_ID": "travel-app-3da72",
+      "FIREBASE_STORAGE_BUCKET": "travel-app-3da72.firebasestorage.app",
+      "FIREBASE_MESSAGING_SENDER_ID": "709095117662",
+      "FIREBASE_APP_ID": "1:709095117662:web:5f00f45bb4e392ee17f5cf",
+      "FIREBASE_MEASUREMENT_ID": "G-PFZRL4FDFD",
+      "AGORA_APP_ID": "29320482381a43498eb8ca3e222b6e34",
+      "AGORA_APP_CERTIFICATE": "e8372567e0334d75add0ec3f597fb67b",
       "eas": {
-        "projectId": "edc36fa0-5de0-465f-98c4-2f87cb8278d3"
-      }
+        "projectId": "8cec99b9-2035-4d00-a1e1-9708dbf1dfc5"
+      },
+      
     },
-    "owner": "tauheeddev"
+    "owner": "tauhee5"
   }
 }
