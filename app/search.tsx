@@ -1,8 +1,13 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { debounce } from 'lodash';
+import React, { useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { getAllPosts, searchUsers } from '../lib/firebaseHelpers';
+import { getAllPosts, searchUsers } from '../lib/firebaseHelpers/index';
+
+// Cache for search results
+const searchCache = new Map<string, { users: any[], posts: any[], timestamp: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -11,46 +16,96 @@ export default function SearchScreen() {
   const [userResults, setUserResults] = useState<any[]>([]);
   const [postResults, setPostResults] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'posts' | 'users'>('posts');
+  const [allPosts, setAllPosts] = useState<any[]>([]);
 
-  const handleSearch = async (text: string) => {
-    setQuery(text);
-    setLoading(true);
-    if (activeTab === 'users') {
-      const result = await searchUsers(text, 20);
-      setUserResults(result.success ? result.data : []);
-    } else {
-      const result = await getAllPosts();
-      if (result.success) {
-        const posts = result.posts || [];
-        const filtered = posts.filter((post: any) =>
-          post.caption?.toLowerCase().includes(text.toLowerCase()) ||
-          post.userName?.toLowerCase().includes(text.toLowerCase())
-        );
-        setPostResults(filtered);
-      } else {
-        setPostResults([]);
+  // Load all posts once on mount (with limit)
+  React.useEffect(() => {
+    let mounted = true;
+    const loadPosts = async () => {
+      const cacheKey = 'all_posts';
+      const cached = searchCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+        if (mounted) setAllPosts(cached.posts);
+        return;
       }
+      
+      const result = await getAllPosts();
+      if (result.success && mounted) {
+        const posts = (result.data || []).slice(0, 100); // Limit to 100 posts
+        setAllPosts(posts);
+        searchCache.set(cacheKey, { posts, users: [], timestamp: Date.now() });
+      }
+    };
+    loadPosts();
+    return () => { mounted = false; };
+  }, []);
+
+  // Debounced search handler with cache
+  const debouncedSearch = useRef(
+    debounce(async (text: string, tab: 'posts' | 'users') => {
+      if (!text.trim()) {
+        setUserResults([]);
+        setPostResults([]);
+        setLoading(false);
+        return;
+      }
+
+      const cacheKey = `${tab}_${text.toLowerCase()}`;
+      const cached = searchCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+        if (tab === 'users') setUserResults(cached.users);
+        else setPostResults(cached.posts);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        if (tab === 'users') {
+          const result = await searchUsers(text, 15); // Reduced limit
+          const users = result.success ? result.data : [];
+          setUserResults(users);
+          searchCache.set(cacheKey, { users, posts: [], timestamp: Date.now() });
+        } else {
+          // Search in cached posts (client-side filtering)
+          const filtered = allPosts.filter((post: any) =>
+            post.caption?.toLowerCase().includes(text.toLowerCase()) ||
+            post.userName?.toLowerCase().includes(text.toLowerCase()) ||
+            post.location?.name?.toLowerCase().includes(text.toLowerCase())
+          ).slice(0, 20); // Limit results
+          setPostResults(filtered);
+          searchCache.set(cacheKey, { posts: filtered, users: [], timestamp: Date.now() });
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+      } finally {
+        setLoading(false);
+      }
+    }, 500) // Increased debounce time
+  ).current;
+
+  const handleSearch = (text: string) => {
+    setQuery(text);
+    if (text.trim()) {
+      setLoading(true);
+      debouncedSearch(text, activeTab);
+    } else {
+      setUserResults([]);
+      setPostResults([]);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   React.useEffect(() => {
-    if (activeTab === 'users') {
+    if (query.trim()) {
       setLoading(true);
-      searchUsers(query, 20).then(result => {
-        setUserResults(result.success ? result.data : []);
-        setLoading(false);
-      });
-    } else if (activeTab === 'posts') {
-      (async () => {
-        setLoading(true);
-        const result = await getAllPosts();
-        const posts = result.success ? result.posts || [] : [];
-        setPostResults(posts);
-        setLoading(false);
-      })();
+      debouncedSearch(query, activeTab);
+    } else {
+      setUserResults([]);
+      setPostResults([]);
+      setLoading(false);
     }
-  }, [activeTab, query]);
+  }, [activeTab]);
 
   const handleTabSwitch = (tab: 'posts' | 'users') => {
     setActiveTab(tab);
@@ -94,6 +149,8 @@ export default function SearchScreen() {
             </TouchableOpacity>
           )}
           ListEmptyComponent={<Text style={{ color: '#888', marginTop: 32, textAlign: 'center' }}>No users found</Text>}
+          refreshing={loading}
+          onRefresh={() => handleSearch(query)}
         />
       ) : (
         <FlatList
@@ -110,6 +167,8 @@ export default function SearchScreen() {
             </TouchableOpacity>
           )}
           ListEmptyComponent={<Text style={{ color: '#888', marginTop: 32, textAlign: 'center' }}>No posts found</Text>}
+          refreshing={loading}
+          onRefresh={() => handleSearch(query)}
         />
       )}
     </View>

@@ -1,14 +1,28 @@
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { handleSocialAuthResult, signInWithApple, signInWithGoogle, signInWithSnapchat, signInWithTikTok } from '../../services/socialAuthService';
 import CustomButton from '../components/auth/CustomButton';
 import SocialButton from '../components/auth/SocialButton';
+import { fetchLogoUrl } from '../services/brandingService';
 
 export default function WelcomeScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoLoading, setLogoLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchLogoUrl().then(url => {
+      if (isMounted) {
+        setLogoUrl(url);
+        setLogoLoading(false);
+      }
+    }).catch(() => setLogoLoading(false));
+    return () => { isMounted = false; };
+  }, []);
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
@@ -42,7 +56,15 @@ export default function WelcomeScreen() {
         <View style={styles.content}>
         {/* Logo/Header */}
         <View style={styles.header}>
-          <Text style={styles.logo}>Travel app logo</Text>
+          {logoLoading ? (
+            <ActivityIndicator size="large" color="#f39c12" style={{ marginBottom: 32 }} />
+          ) : (
+            <Image
+              source={{ uri: logoUrl || 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2Flogo.png?alt=media&token=e1db7a0b-4fb0-464a-82bc-44255729d46e' }}
+              style={styles.logo}
+              accessibilityLabel="App Logo"
+            />
+          )}
           <Text style={styles.subtitle}>Please login to your account</Text>
         </View>
 
@@ -113,10 +135,11 @@ const styles = StyleSheet.create({
     marginBottom: 60,
   },
   logo: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#000',
-    marginBottom: 12,
+    width: 170,
+    height: 170,
+    marginBottom: 32,
+    alignSelf: 'center',
+    resizeMode: 'contain',
   },
   subtitle: {
     fontSize: 14,

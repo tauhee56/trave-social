@@ -1,14 +1,63 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import CustomButton from '../components/auth/CustomButton';
-import CustomInput from '../components/auth/CustomInput';
+
+// Popular countries list
+const COUNTRIES = [
+  { code: '+1', name: 'United States', flag: '🇺🇸' },
+  { code: '+44', name: 'United Kingdom', flag: '🇬🇧' },
+  { code: '+91', name: 'India', flag: '🇮🇳' },
+  { code: '+92', name: 'Pakistan', flag: '🇵🇰' },
+  { code: '+86', name: 'China', flag: '🇨🇳' },
+  { code: '+81', name: 'Japan', flag: '🇯🇵' },
+  { code: '+82', name: 'South Korea', flag: '🇰🇷' },
+  { code: '+33', name: 'France', flag: '🇫🇷' },
+  { code: '+49', name: 'Germany', flag: '🇩🇪' },
+  { code: '+39', name: 'Italy', flag: '🇮🇹' },
+  { code: '+34', name: 'Spain', flag: '🇪🇸' },
+  { code: '+7', name: 'Russia', flag: '🇷🇺' },
+  { code: '+55', name: 'Brazil', flag: '🇧🇷' },
+  { code: '+52', name: 'Mexico', flag: '🇲🇽' },
+  { code: '+61', name: 'Australia', flag: '🇦🇺' },
+  { code: '+64', name: 'New Zealand', flag: '🇳🇿' },
+  { code: '+27', name: 'South Africa', flag: '🇿🇦' },
+  { code: '+966', name: 'Saudi Arabia', flag: '🇸🇦' },
+  { code: '+971', name: 'UAE', flag: '🇦🇪' },
+  { code: '+90', name: 'Turkey', flag: '🇹🇷' },
+  { code: '+880', name: 'Bangladesh', flag: '🇧🇩' },
+  { code: '+62', name: 'Indonesia', flag: '🇮🇩' },
+  { code: '+60', name: 'Malaysia', flag: '🇲🇾' },
+  { code: '+63', name: 'Philippines', flag: '🇵🇭' },
+  { code: '+84', name: 'Vietnam', flag: '🇻🇳' },
+  { code: '+66', name: 'Thailand', flag: '🇹🇭' },
+  { code: '+20', name: 'Egypt', flag: '🇪🇬' },
+  { code: '+234', name: 'Nigeria', flag: '🇳🇬' },
+  { code: '+254', name: 'Kenya', flag: '🇰🇪' },
+  { code: '+31', name: 'Netherlands', flag: '🇳🇱' },
+  { code: '+46', name: 'Sweden', flag: '🇸🇪' },
+  { code: '+47', name: 'Norway', flag: '🇳🇴' },
+  { code: '+48', name: 'Poland', flag: '🇵🇱' },
+  { code: '+41', name: 'Switzerland', flag: '🇨🇭' },
+  { code: '+32', name: 'Belgium', flag: '🇧🇪' },
+  { code: '+43', name: 'Austria', flag: '🇦🇹' },
+  { code: '+351', name: 'Portugal', flag: '🇵🇹' },
+  { code: '+30', name: 'Greece', flag: '🇬🇷' },
+  { code: '+353', name: 'Ireland', flag: '🇮🇪' },
+  { code: '+98', name: 'Iran', flag: '🇮🇷' },
+  { code: '+964', name: 'Iraq', flag: '🇮🇶' },
+  { code: '+972', name: 'Israel', flag: '🇮🇱' },
+  { code: '+65', name: 'Singapore', flag: '🇸🇬' },
+  { code: '+852', name: 'Hong Kong', flag: '🇭🇰' },
+  { code: '+886', name: 'Taiwan', flag: '🇹🇼' },
+];
 
 export default function PhoneSignUpScreen() {
   const router = useRouter();
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [countryCode, setCountryCode] = useState('+33');
+  const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[3]); // Default to Pakistan
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -24,14 +73,11 @@ export default function PhoneSignUpScreen() {
     setLoading(true);
     
     try {
-      const fullPhone = `${countryCode}${phoneNumber}`;
-      // For React Native, you'd use @react-native-firebase/auth
-      // This is simplified - implement proper phone auth for mobile
-      
-      // Navigate to OTP screen
+      const fullPhone = `${selectedCountry.code}${phoneNumber}`;
+      // Navigate directly to phone OTP screen - SMS will be sent via Firebase
       router.push({
         pathname: '/auth/phone-otp',
-        params: { phoneNumber: fullPhone }
+        params: { phone: fullPhone, flow: 'signup' }
       });
     } catch (err: any) {
       setError(err.message || 'Failed to send OTP');
@@ -63,20 +109,62 @@ export default function PhoneSignUpScreen() {
         <View style={styles.form}>
           <Text style={styles.label}>By phone number</Text>
           
-          {/* Country Code Picker */}
-          <TouchableOpacity style={styles.countryPicker}>
-            <Text style={styles.countryCode}>France</Text>
-            <Ionicons name="chevron-down" size={20} color="#000" />
-          </TouchableOpacity>
+          {/* Phone Input with Country Picker */}
+          <View style={styles.phoneInputWrapper}>
+            <TouchableOpacity 
+              style={styles.countrySelector}
+              onPress={() => setShowCountryPicker(true)}
+            >
+              <Text style={styles.countryFlag}>{selectedCountry.flag}</Text>
+              <Text style={styles.countryCodeText}>{selectedCountry.code}</Text>
+              <Ionicons name="chevron-down" size={16} color="#666" />
+            </TouchableOpacity>
+            <TextInput
+              style={styles.phoneInput}
+              placeholder="Enter phone number"
+              placeholderTextColor="#999"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              keyboardType="phone-pad"
+            />
+          </View>
+          
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-          {/* Phone Input */}
-          <CustomInput
-            value={phoneNumber}
-            onChangeText={setPhoneNumber}
-            placeholder="+33"
-            keyboardType="phone-pad"
-            error={error}
-          />
+          {/* Country Picker Modal */}
+          <Modal
+            visible={showCountryPicker}
+            animationType="slide"
+            transparent={true}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Select Country</Text>
+                  <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
+                    <Ionicons name="close" size={24} color="#000" />
+                  </TouchableOpacity>
+                </View>
+                <FlatList
+                  data={COUNTRIES}
+                  keyExtractor={(item) => item.code + item.name}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.countryItem}
+                      onPress={() => {
+                        setSelectedCountry(item);
+                        setShowCountryPicker(false);
+                      }}
+                    >
+                      <Text style={styles.countryItemFlag}>{item.flag}</Text>
+                      <Text style={styles.countryItemName}>{item.name}</Text>
+                      <Text style={styles.countryItemCode}>{item.code}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            </View>
+          </Modal>
 
           {/* Next Button */}
           <CustomButton
@@ -188,6 +276,41 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#000',
   },
+  phoneInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f7f7f7',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    height: 50,
+    marginBottom: 8,
+  },
+  countrySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    borderRightWidth: 1,
+    borderRightColor: '#e0e0e0',
+    height: '100%',
+  },
+  countryCodeText: {
+    fontSize: 15,
+    color: '#000',
+    marginRight: 4,
+  },
+  phoneInput: {
+    flex: 1,
+    height: '100%',
+    paddingHorizontal: 12,
+    fontSize: 15,
+    color: '#000',
+  },
+  errorText: {
+    color: '#e74c3c',
+    fontSize: 12,
+    marginBottom: 8,
+  },
   nextButton: {
     marginTop: 8,
   },
@@ -214,5 +337,86 @@ const styles = StyleSheet.create({
   footerLink: {
     color: '#f39c12',
     fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+  },
+  modalCloseText: {
+    fontSize: 16,
+    color: '#f39c12',
+    fontWeight: '600',
+  },
+  countryList: {
+    padding: 8,
+  },
+  countryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+  },
+  countryItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  countryFlag: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  countryItemFlag: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  countryName: {
+    fontSize: 16,
+    color: '#000',
+    flex: 1,
+  },
+  countryItemName: {
+    fontSize: 16,
+    color: '#000',
+    flex: 1,
+  },
+  countryDialCode: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  countryItemCode: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  selectedCountryCheck: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#f39c12',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
   },
 });

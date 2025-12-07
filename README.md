@@ -46,5 +46,20 @@ To learn more about developing your project with Expo, look at the following res
 
 Join our community of developers creating universal apps.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+# App Logo & Branding
+
+**App Logo:**
+![App Logo](https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2FWhatsApp_Image_2025-12-07_at_4.28.01_PM-removebg-preview.png?alt=media&token=75a3dc49-a927-45f8-8e0e-1f02f65bdeb1)
+
+**Logo Download:**
+[`assets/images/app-logo.png`](assets/images/app-logo.png) (placeholder for local reference)
+
+**Color Scheme:**
+- Primary: #667eea (Indigo)
+- Accent: #f39c12 (Orange)
+- Background: #E6F4FE (Light Blue)
+- Dark: #1a1a1a
+
+**App Store/Play Store Assets:**
+- Logo: [Direct Link](https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2FWhatsApp_Image_2025-12-07_at_4.28.01_PM-removebg-preview.png?alt=media&token=75a3dc49-a927-45f8-8e0e-1f02f65bdeb1)

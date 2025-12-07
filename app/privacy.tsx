@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserProfile, updateUserProfile } from '../lib/firebaseHelpers';
+import { getUserProfile, updateUserProfile } from '../lib/firebaseHelpers/index';
 import { useUser } from './components/UserContext';
 
 
@@ -14,8 +14,8 @@ export default function PrivacyScreen() {
       if (!authUser?.uid) return;
       setLoading(true);
       const res = await getUserProfile(authUser.uid);
-      if (res.success && res.data) {
-        setIsPrivate(!!res.data.isPrivate);
+      if (res.success && 'data' in res && res.data) {
+        setIsPrivate(!!(res.data as any).isPrivate);
       }
       setLoading(false);
     }

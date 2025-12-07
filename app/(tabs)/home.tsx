@@ -1,21 +1,27 @@
 import { Feather } from "@expo/vector-icons";
-import { useFocusEffect } from '@react-navigation/native';
 import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import React, { useCallback, useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Dimensions,
     FlatList,
+    LayoutAnimation,
     Modal,
     RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
-    View,
+    UIManager,
+    View
 } from "react-native";
-import { addLikedStatusToPosts, DEFAULT_CATEGORIES, getCategories, getCurrentUser, getFeedPosts, getUserNotifications } from "../../lib/firebaseHelpers";
+import { db } from '../../config/firebase';
+import { DEFAULT_CATEGORIES, getCategories, getCurrentUser, getUserNotifications } from "../../lib/firebaseHelpers/index";
+import { fetchBlockedUserIds, filterOutBlocked } from '../../services/moderation';
+import { getResponsivePadding, scaleFontSize } from '../../utils/responsive';
+import LiveStreamsRow from "../components/LiveStreamsRow";
 import PostCard from "../components/PostCard";
 import StoriesRow from "../components/StoriesRow";
 import StoriesViewer from "../components/StoriesViewer";
@@ -24,12 +30,21 @@ import { useTabEvent } from './_layout';
 const { width } = Dimensions.get("window");
 
 export default function Home() {
-    const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+    // Map DEFAULT_CATEGORIES to objects for UI
+    const defaultCategoryObjects = Array.isArray(DEFAULT_CATEGORIES)
+      ? DEFAULT_CATEGORIES.map((cat: any) =>
+          typeof cat === 'string'
+            ? { name: cat, image: 'https://via.placeholder.com/40x40.png?text=' + encodeURIComponent(cat) }
+            : cat
+        )
+      : [];
+    const [categories, setCategories] = useState(defaultCategoryObjects);
   const params = useLocalSearchParams();
   const filter = (params.filter as string) || '';
   const router = useRouter();
   
   const [posts, setPosts] = useState<any[]>([]);
+  const padding = getResponsivePadding();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [feedReloadKey, setFeedReloadKey] = useState(0); // For FlatList force update
@@ -37,101 +52,359 @@ export default function Home() {
   const [showStoriesViewer, setShowStoriesViewer] = useState(false);
   const [selectedStories, setSelectedStories] = useState<any[]>([]);
   const [storiesRefreshTrigger, setStoriesRefreshTrigger] = useState(0);
+  const [lastVisible, setLastVisible] = useState<any>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [allLoadedPosts, setAllLoadedPosts] = useState<any[]>([]);
+  const [loopCount, setLoopCount] = useState(0); // Track how many times looped
+  const flatListRef = React.useRef<FlatList>(null);
 
-  // Refresh logic: reload posts when Home tab is focused (only clear filter if no filter in URL)
-  useFocusEffect(
-    React.useCallback(() => {
-      loadPosts();
-      loadCategories();
-    }, [])
-  );
+  // Memoized shuffle - only recreate if postsArray reference changes
+  const shufflePosts = useCallback((postsArray: any[]) => {
+    const shuffled = [...postsArray];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }, []);
 
-  // Listen for home tab press event from context
+  // Memoized feed mixer
+  const createMixedFeed = useCallback((postsArray: any[]) => {
+    if (postsArray.length === 0) return [];
+    
+    const now = Date.now();
+    const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1000;
+    
+    const recentPosts = postsArray.filter((p: any) => {
+      const postTime = p.createdAt?.toMillis ? p.createdAt.toMillis() : p.createdAt;
+      return postTime > oneDayAgo;
+    });
+    
+    const mediumPosts = postsArray.filter((p: any) => {
+      const postTime = p.createdAt?.toMillis ? p.createdAt.toMillis() : p.createdAt;
+      return postTime <= oneDayAgo && postTime > threeDaysAgo;
+    });
+    
+    const olderPosts = postsArray.filter((p: any) => {
+      const postTime = p.createdAt?.toMillis ? p.createdAt.toMillis() : p.createdAt;
+      return postTime <= threeDaysAgo;
+    });
+    
+    const shuffledRecent = shufflePosts(recentPosts);
+    const shuffledMedium = shufflePosts(mediumPosts);
+    const shuffledOlder = shufflePosts(olderPosts);
+    
+    const mixed: any[] = [];
+    const recentCount = Math.min(5, shuffledRecent.length);
+    mixed.push(...shuffledRecent.slice(0, recentCount));
+    
+    const remaining = [
+      ...shuffledRecent.slice(recentCount),
+      ...shuffledMedium,
+      ...shuffledOlder
+    ];
+    
+    mixed.push(...shufflePosts(remaining));
+    return mixed;
+  }, [shufflePosts]);
+
+  // Memoized render for FlatList items
+  const renderPostItem = useCallback(({ item }: { item: any }) => {
+    const currentUser = getCurrentUser() as { uid?: string } | null;
+    
+    // Fallback for missing media
+    if (!item || (!item.imageUrl && (!item.imageUrls || item.imageUrls.length === 0)) && (!item.videoUrl && (!item.videoUrls || item.videoUrls.length === 0))) {
+      return (
+        <View style={{ height: 320, backgroundColor: '#222', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+          <Feather name="image" size={80} color="#dbdbdb" />
+          <Text style={{ color: '#fff', marginTop: 12 }}>No media found for this post</Text>
+        </View>
+      );
+    }
+    
+    return <PostCard post={item} currentUser={currentUser} showMenu={false} />;
+  }, []);
+
+  // Load categories on mount
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  // Listen for home tab press event from context - scroll to top and refresh
   const tabEvent = useTabEvent();
   useEffect(() => {
     if (!tabEvent) return;
     const unsubscribe = tabEvent.subscribeHomeTabPress(() => {
-      if (typeof resetFeed === 'function') {
-        resetFeed();
+      // Scroll to top
+      if (flatListRef.current) {
+        flatListRef.current.scrollToOffset({ offset: 0, animated: true });
       }
+      
+      // After scrolling, create fresh mixed feed with complete re-shuffle
+      setTimeout(() => {
+        if (allLoadedPosts.length > 0) {
+          // Clear first, then set new shuffled feed
+          setPosts([]);
+          setFeedReloadKey(prev => prev + 1);
+          
+          setTimeout(() => {
+            const newMixedFeed = createMixedFeed(allLoadedPosts);
+            setPosts(newMixedFeed);
+            setFeedReloadKey(prev => prev + 1);
+          }, 10);
+        }
+      }, 300);
     });
     return unsubscribe;
-  }, [tabEvent]);
+  }, [tabEvent, allLoadedPosts]);
 
   useEffect(() => {
     async function fetchNotifications() {
-      const user = getCurrentUser();
-      if (!user) return;
+      const user = getCurrentUser() as { uid: string } | null;
+      if (!user || !user.uid) return;
       const result = await getUserNotifications(user.uid);
-      if (result.success && Array.isArray(result.data)) {
-        const unread = result.data.filter((n: any) => n.read === false || n.read === undefined);
+      if (Array.isArray(result)) {
+        const unread = result.filter((n: any) => n.read === false || n.read === undefined);
         setUnreadCount(unread.length);
       }
     }
     fetchNotifications();
   }, []);
 
-  async function loadPosts() {
-    const user = getCurrentUser();
-    if (!user) {
+  // Real-time feed listener with smart shuffling - optimized
+  useEffect(() => {
+    setLoading(true);
+    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(15)); // Reduced from 30 for faster load
+    const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+      const newPosts = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        locationName: doc.data().locationData?.name || doc.data().location || '',
+      }));
+      
+      const currentUser = getCurrentUser() as { uid?: string } | null;
+      const blocked = currentUser?.uid ? await fetchBlockedUserIds(currentUser.uid) : new Set<string>();
+      const privacyFilteredPosts = await filterPostsByPrivacyWithUserCheck(newPosts, currentUser?.uid);
+      const moderationFilteredPosts = filterOutBlocked(privacyFilteredPosts, blocked);
+      
+      setAllLoadedPosts(moderationFilteredPosts);
+      const mixedFeed = createMixedFeed(moderationFilteredPosts);
+      setPosts(mixedFeed);
+      
+      setLastVisible(querySnapshot.docs[querySnapshot.docs.length - 1]);
       setLoading(false);
-      console.log('Feed: No user found');
-      return;
+    }, (error) => {
+      console.error('Feed listener error:', error);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [createMixedFeed]);
+
+  // Infinite loop - no end, keep showing posts in loop
+  async function loadMorePosts() {
+    if (loadingMore || allLoadedPosts.length === 0) return;
+    setLoadingMore(true);
+    
+    try {
+      // Create new shuffled version of existing posts with unique keys for loop
+      const reshuffled = shufflePosts(allLoadedPosts).map((post, idx) => ({
+        ...post,
+        _loopKey: `loop-${loopCount + 1}-${post.id}-${idx}`, // Unique key for each loop iteration
+      }));
+      
+      // Append to existing feed to create seamless loop
+      setPosts(prev => [...prev, ...reshuffled]);
+      setLoopCount(prev => prev + 1);
+    } catch (error) {
+      console.error('Loop posts error:', error);
     }
-    const result = await getFeedPosts();
-    console.log('Feed: getFeedPosts result:', result);
-    if (result.success && Array.isArray(result.posts)) {
-      const postsWithLikes = await addLikedStatusToPosts(result.posts, user.uid);
-      console.log('Feed: postsWithLikes:', postsWithLikes);
-      setPosts(postsWithLikes);
-    } else {
-      console.log('Feed: getFeedPosts failed or returned no posts');
-    }
-    setLoading(false);
-    }
+    
+    setLoadingMore(false);
+  }
 
     async function loadCategories() {
       const cats = await getCategories();
       // Map each category to correct shape
       const mappedCats = Array.isArray(cats)
-        ? cats
-            .map((c: any) => ({
-                name: typeof c.name === 'string' ? c.name : '',
-                image: typeof c.image === 'string' ? c.image : ''
-            }))
-            .filter((c: any) => c.name && c.image)
+        ? cats.map((c: any) => {
+            if (typeof c === 'string') {
+              return { name: c, image: 'https://via.placeholder.com/40x40.png?text=' + encodeURIComponent(c) };
+            }
+            return {
+              name: typeof c.name === 'string' ? c.name : '',
+              image: typeof c.image === 'string' ? c.image : 'https://via.placeholder.com/40x40.png?text=' + encodeURIComponent(c.name || 'Category')
+            };
+          }).filter((c: any) => c.name && c.image)
         : [];
-      setCategories(mappedCats.length > 0 ? mappedCats : DEFAULT_CATEGORIES);
-  }
+      setCategories(mappedCats.length > 0 ? mappedCats : defaultCategoryObjects);
+    }
 
   async function onRefresh() {
     setRefreshing(true);
-    await loadPosts();
+    
+    // Fetch fresh posts from Firestore
+    try {
+      const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(30));
+      const snapshot = await getDocs(q);
+      const freshPosts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        locationName: doc.data().locationData?.name || doc.data().location || '',
+      }));
+      
+      // Apply privacy filter to fresh posts
+      const currentUser = getCurrentUser() as { uid?: string } | null;
+      const privacyFilteredPosts = await filterPostsByPrivacyWithUserCheck(freshPosts, currentUser?.uid);
+      const blocked = currentUser?.uid ? await fetchBlockedUserIds(currentUser.uid) : new Set<string>();
+      const moderationFilteredPosts = filterOutBlocked(privacyFilteredPosts, blocked);
+      
+      // Store all posts
+      setAllLoadedPosts(moderationFilteredPosts);
+      
+      // Create completely new mixed feed with fresh shuffle
+      const mixedFeed = createMixedFeed(moderationFilteredPosts);
+      
+      // Clear posts first, then set new shuffled feed to force complete re-render
+      setPosts([]);
+      setFeedReloadKey(prev => prev + 1);
+      
+      // Use setTimeout to ensure state clears before setting new posts
+      setTimeout(() => {
+        setPosts(mixedFeed);
+        setFeedReloadKey(prev => prev + 1);
+      }, 10);
+      
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+    } catch (error) {
+      console.error('Refresh error:', error);
+    }
+    
     setRefreshing(false);
   }
 
   const selectedPostId = (params.postId as string) || '';
 const locationFilter = (params.location as string) || '';
 
-let filtered = posts;
-if (locationFilter) {
-  // Show selected post first, then all other posts from same location
-  const locationPosts = posts.filter((p: any) => {
-    if (typeof p.location === 'string') {
-      return p.location.toLowerCase() === locationFilter.toLowerCase();
+
+
+
+
+
+// Fast privacy filtering
+function filterPostsByPrivacy(posts: any[], currentUserId: string | undefined) {
+  const filtered = posts.filter(post => {
+    if (!post.userId) return false;
+    if (post.isPrivate) {
+      return Array.isArray(post.allowedFollowers) && currentUserId && post.allowedFollowers.includes(currentUserId);
     }
-    if (typeof p.location === 'object' && p.location?.name) {
-      return p.location.name.toLowerCase() === locationFilter.toLowerCase();
-    }
-    return false;
+    return true;
   });
-  // Move selected post to top
-  const selectedPost = locationPosts.find(p => p.id === selectedPostId);
-  const otherPosts = locationPosts.filter(p => p.id !== selectedPostId);
-  filtered = selectedPost ? [selectedPost, ...otherPosts] : otherPosts;
-} else if (filter) {
-  filtered = posts.filter((p: any) => p.category && p.category.toLowerCase() === filter.toLowerCase());
+  return filtered;
 }
+
+// Enhanced privacy filter that checks user's current privacy status - OPTIMIZED
+async function filterPostsByPrivacyWithUserCheck(posts: any[], currentUserId: string | undefined) {
+  if (!currentUserId) {
+    return posts.filter(post => !post.isPrivate);
+  }
+  
+  // Get unique user IDs from posts
+  const uniqueUserIds = [...new Set(posts.map(p => p.userId).filter(Boolean))] as string[];
+  
+  // Batch fetch all users at once instead of one by one
+  const userPrivacyMap = new Map<string, { isPrivate: boolean; followers: string[] }>();
+  
+  // Fetch in batches of 10 for better performance
+  const batchSize = 10;
+  for (let i = 0; i < uniqueUserIds.length; i += batchSize) {
+    const batch = uniqueUserIds.slice(i, i + batchSize);
+    const promises = batch.map(async (userId) => {
+      try {
+        const userDoc = await getDoc(doc(db, 'users', userId));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          return { userId, data: { isPrivate: userData.isPrivate || false, followers: userData.followers || [] } };
+        }
+        return { userId, data: null };
+      } catch {
+        return { userId, data: null };
+      }
+    });
+    
+    const results = await Promise.all(promises);
+    results.forEach(({ userId, data }) => {
+      if (data) userPrivacyMap.set(userId, data);
+    });
+  }
+  
+  // Filter posts based on both post privacy and user privacy
+  return posts.filter(post => {
+    if (!post.userId) return false;
+    
+    const userPrivacy = userPrivacyMap.get(post.userId);
+    
+    if (post.isPrivate) {
+      return Array.isArray(post.allowedFollowers) && post.allowedFollowers.includes(currentUserId);
+    }
+    
+    if (userPrivacy?.isPrivate) {
+      return post.userId === currentUserId || userPrivacy.followers.includes(currentUserId);
+    }
+    
+    return true;
+  });
+}
+
+const currentUser = getCurrentUser() as { uid?: string } | null;
+const currentUserId = currentUser?.uid;
+
+
+// Memoize filteredRaw to avoid unnecessary recalculation and update loops
+const filteredRaw = React.useMemo(() => {
+  if (locationFilter) {
+    const locationPosts = posts.filter((p: any) => {
+      if (typeof p.location === 'string') {
+        return p.location.toLowerCase() === locationFilter.toLowerCase();
+      }
+      if (typeof p.location === 'object' && p.location?.name) {
+        return p.location.name.toLowerCase() === locationFilter.toLowerCase();
+      }
+      return false;
+    });
+    // Remove duplicate: only show selected post once
+    const uniquePosts = locationPosts.filter((p, idx, arr) => arr.findIndex(q => q.id === p.id) === idx);
+    if (selectedPostId) {
+      const selectedPost = uniquePosts.find(p => p.id === selectedPostId);
+      const otherPosts = uniquePosts.filter(p => p.id !== selectedPostId);
+      return selectedPost ? [selectedPost, ...otherPosts] : otherPosts;
+    }
+    return uniquePosts;
+  } else if (filter) {
+    return posts.filter((p: any) => p.category && p.category.toLowerCase() === filter.toLowerCase());
+  }
+  return posts;
+}, [posts, locationFilter, filter, selectedPostId]);
+
+
+const [privacyFiltered, setPrivacyFiltered] = useState<any[]>([]);
+
+
+
+useEffect(() => {
+  let isMounted = true;
+  async function applyPrivacyFilter() {
+    const filtered = await filterPostsByPrivacyWithUserCheck(filteredRaw, currentUserId);
+    // Only update state if result is different and component is mounted
+    if (isMounted && JSON.stringify(filtered) !== JSON.stringify(privacyFiltered)) {
+      setPrivacyFiltered(filtered);
+    }
+  }
+  applyPrivacyFilter();
+  return () => { isMounted = false; };
+}, [filteredRaw, currentUserId]);
+
+let filteredPosts = privacyFiltered;
 
   if (loading) {
     return (
@@ -141,48 +414,95 @@ if (locationFilter) {
     );
   }
 
-  const resetFeed = () => {
+  const resetFeed = async () => {
     setLoading(true);
     setPosts([]);
     router.replace('/(tabs)/home');
     router.setParams({ filter: undefined, location: undefined, postId: undefined });
-    setTimeout(() => {
-      loadPosts(); // Reload all posts from backend
-      setFeedReloadKey(prev => prev + 1); // Force FlatList rerender
-    }, 100);
+    
+    // Fetch fresh posts and create new mixed feed
+    try {
+      const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(30));
+      const snapshot = await getDocs(q);
+      const freshPosts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        locationName: doc.data().locationData?.name || doc.data().location || '',
+      }));
+      
+      // Apply privacy filter immediately
+      const currentUser = getCurrentUser() as { uid?: string } | null;
+      const privacyFilteredPosts = filterPostsByPrivacy(freshPosts, currentUser?.uid);
+      
+      setAllLoadedPosts(privacyFilteredPosts);
+      const mixedFeed = createMixedFeed(privacyFilteredPosts);
+      setPosts(mixedFeed);
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+      setFeedReloadKey(prev => prev + 1);
+      setLoading(false);
+    } catch (error) {
+      console.error('Reset feed error:', error);
+      setLoading(false);
+    }
   };
 
   const searchText = (!filter && !locationFilter) ? 'Search' : (locationFilter ? locationFilter : filter);
 
   return (
-    <View style={styles.container}>
-      <View style={{ alignItems: 'center', marginVertical: 8 }}>
-        <TouchableOpacity
-          style={{ backgroundColor: '#e0245e', paddingVertical: 6, paddingHorizontal: 18, borderRadius: 18, flexDirection: 'row', alignItems: 'center' }}
-          onPress={() => router.push('/go-live')}
-        >
-          <Feather name="video" size={16} color="#fff" style={{ marginRight: 6 }} />
-          <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>Go Live</Text>
-        </TouchableOpacity>
-      </View>
+    <View style={styles.container}> 
+      {/* Go Live floating button */}
+      <TouchableOpacity 
+        style={{
+          position: 'absolute',
+          bottom: 20,
+          right: 20,
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          backgroundColor: '#e0245e',
+          alignItems: 'center',
+          justifyContent: 'center',
+          shadowColor: '#e0245e',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.4,
+          shadowRadius: 8,
+          elevation: 8,
+          zIndex: 100,
+        }}
+        onPress={() => router.push('/go-live')}
+        activeOpacity={0.85}
+      >
+        <Feather name="video" size={24} color="#fff" />
+      </TouchableOpacity>
+
       <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
+        ref={flatListRef}
+        data={filteredPosts}
+        keyExtractor={(item, index) => item._loopKey || `${item.id}-${index}`}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#f39c12" />}
-        key={feedReloadKey} // Force rerender on feed reload
+        key={feedReloadKey}
+        onContentSizeChange={() => LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)}
         ListHeaderComponent={() => (
           <View>
             <StoriesRow
-              onStoryPress={(stories, index) => {
+              onStoryPress={(stories, _index) => {
                 setSelectedStories(stories);
                 setShowStoriesViewer(true);
               }}
               refreshTrigger={storiesRefreshTrigger}
             />
+            <LiveStreamsRow />
             <View style={styles.headerSection}>
-              <TouchableOpacity style={styles.searchBar} onPress={() => router.push('/search-modal' as any)} activeOpacity={0.7}>
-                <Feather name="search" size={18} color="#777" />
-                <Text style={styles.searchText}>{loading ? 'Loading...' : searchText}</Text>
+              <TouchableOpacity
+                style={styles.searchBar}
+                onPress={() => router.push('/search-modal' as any)}
+                activeOpacity={0.7}
+                accessible={true}
+                accessibilityRole="search"
+                accessibilityLabel="Search posts"
+              >
+                <Feather name="search" size={18} color="#222" accessibilityElementsHidden={true} importantForAccessibility="no" />
+                <Text style={[styles.searchText, { fontSize: scaleFontSize(15, 13, 18) }]}>{loading ? 'Loading...' : searchText}</Text>
               </TouchableOpacity>
               <View style={styles.chipsRow}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
@@ -192,21 +512,29 @@ if (locationFilter) {
                         key={cat.name}
                         style={[styles.chip, filter === cat.name && styles.chipActive]}
                         onPress={() => {
+                          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                           const next = cat.name === filter ? '' : cat.name;
                           if (next) router.push(`/(tabs)/home?filter=${encodeURIComponent(next)}`);
                           else router.push(`/(tabs)/home`);
                         }}
                         activeOpacity={0.8}
+                        accessible={true}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Filter by category: ${cat.name}`}
+                        accessibilityState={{ selected: filter === cat.name }}
                       >
                         <View style={[styles.chipIconWrap, filter === cat.name && styles.chipIconWrapActive]}>
                           <ExpoImage
                             source={{ uri: cat.image }}
-                            style={{ width: 40, height: 40, borderRadius: 10 }}
+                            style={styles.categoryImage}
                             contentFit="cover"
                             transition={300}
+                            accessibilityIgnoresInvertColors
+                            accessibilityLabel={`${cat.name} icon`}
+                            cachePolicy="memory-disk"
                           />
                         </View>
-                        <Text style={[styles.chipText, filter === cat.name && styles.chipTextActive]}>{cat.name}</Text>
+                        <Text style={[styles.chipText, filter === cat.name && styles.chipTextActive, { fontSize: scaleFontSize(11, 10, 14) }]}>{cat.name}</Text>
                         {filter === cat.name && <View style={styles.chipUnderline} />}
                       </TouchableOpacity>
                     ))}
@@ -217,25 +545,42 @@ if (locationFilter) {
           </View>
         )}
         renderItem={({ item }) => {
-          const currentUser = getCurrentUser();
-          return item ? <PostCard post={item} currentUser={currentUser} showMenu={false} /> : null;
+          const currentUser = getCurrentUser() as { uid?: string } | null;
+          // Fallback for missing media
+          if (!item || (!item.thumbnailUrl && (!item.imageUrls || item.imageUrls.length === 0)) && (!item.videoUrl && (!item.videoUrls || item.videoUrls.length === 0))) {
+            return (
+              <View style={{ height: 320, backgroundColor: '#222', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                <Feather name="image" size={80} color="#dbdbdb" />
+                <Text style={{ color: '#fff', marginTop: 12 }}>No media found for this post</Text>
+              </View>
+            );
+          }
+          return <PostCard post={{ ...item, imageUrl: item.thumbnailUrl || item.imageUrl }} currentUser={currentUser} showMenu={false} />;
         }}
-        ListEmptyComponent={() => (
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 }}>
-            <Feather name="image" size={80} color="#dbdbdb" style={{ marginBottom: 16 }} />
-            <Text style={{ fontSize: 22, fontWeight: '700', color: '#000', marginBottom: 8 }}>No posts found</Text>
-            <Text style={{ fontSize: 14, color: '#8e8e8e' }}>
-              Try refreshing or check your connection.
+        ListEmptyComponent={
+          <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 64 }}>
+            <Feather name="image" size={64} color="#ccc" style={{ marginBottom: 16 }} />
+            <Text style={{ color: '#888', fontSize: 18, fontWeight: '500', marginBottom: 4 }}>No posts found</Text>
+            <Text style={{ color: '#bbb', fontSize: 14, textAlign: 'center', maxWidth: 220 }}>
+              Try another category or create a new post in this category.
             </Text>
           </View>
-        )}
+        }
         showsVerticalScrollIndicator={false}
-        initialNumToRender={5}
+        initialNumToRender={10}
         windowSize={10}
         removeClippedSubviews={true}
-        maxToRenderPerBatch={5}
+        maxToRenderPerBatch={10}
         updateCellsBatchingPeriod={50}
         contentContainerStyle={{ flexGrow: 1 }}
+        getItemLayout={(data, index) => ({ length: 400, offset: 400 * index, index })}
+        onEndReached={!filter && !locationFilter ? loadMorePosts : undefined}
+        onEndReachedThreshold={!filter && !locationFilter ? 0.8 : undefined}
+        ListFooterComponent={!filter && !locationFilter && loadingMore ? (
+          <View style={{ padding: 16, alignItems: 'center' }}>
+            <ActivityIndicator size="small" color="#f39c12" />
+          </View>
+        ) : null}
       />
       {showStoriesViewer && selectedStories.length > 0 && (
         <Modal
@@ -260,23 +605,48 @@ if (locationFilter) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   searchBar: {
-    margin: 12,
-    backgroundColor: "#f2f2f2",
+    marginHorizontal: 16,
+    marginVertical: 12,
+    backgroundColor: "#fafafa",
     height: 44,
     borderRadius: 22,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
-  searchText: { marginLeft: 8, color: "#777", textAlign: "center" },
+  searchText: { marginLeft: 8, color: "#222", textAlign: "center" },
   headerSection: { paddingBottom: 8 },
-  chipsRow: { paddingTop: 4 },
-  chip: { backgroundColor: 'transparent', borderWidth: 0, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 18, marginRight: 8, elevation: 0, alignItems: 'center' },
-  chipText: { color: '#444', fontSize: 12, marginTop: 6, textAlign: 'center' },
+  chipsRow: { paddingTop: 4, marginBottom: 8 },
+  chip: { 
+    backgroundColor: 'transparent', 
+    borderWidth: 0, 
+    paddingVertical: 6, 
+    paddingHorizontal: 6, 
+    borderRadius: 18, 
+    marginRight: 12, 
+    elevation: 0, 
+    alignItems: 'center',
+    width: 70,
+  },
+  chipText: { color: '#666', marginTop: 6, textAlign: 'center' },
   chipActive: { backgroundColor: 'transparent' },
-  chipIconWrap: { width: 52, height: 52, borderRadius: 12, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center', borderWidth: 0 },
-  chipIconWrapActive: { borderColor: 'transparent', backgroundColor: 'transparent' },
+  chipIconWrap: { 
+    width: 56, 
+    height: 56, 
+    borderRadius: 12, 
+    backgroundColor: '#f5f5f5', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    borderWidth: 0,
+    overflow: 'hidden',
+  },
+  chipIconWrapActive: { borderColor: '#f39c12', backgroundColor: 'transparent', borderWidth: 2 },
   chipTextActive: { color: '#111', fontWeight: '700' },
-  chipUnderline: { height: 2, backgroundColor: '#111', width: 32, marginTop: 4, borderRadius: 1, alignSelf: 'center' },
+  chipUnderline: { height: 2, backgroundColor: '#f39c12', width: 32, marginTop: 4, borderRadius: 1, alignSelf: 'center' },
+  categoryImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+  },
 });

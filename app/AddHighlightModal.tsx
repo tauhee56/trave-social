@@ -2,7 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-export default function AddHighlightModal({ visible, onClose, onAdd }) {
+interface AddHighlightModalProps {
+  visible: boolean;
+  onClose: () => void;
+  onAdd: (highlight: any) => void;
+}
+export default function AddHighlightModal({ visible, onClose, onAdd }: AddHighlightModalProps) {
   const [title, setTitle] = useState('');
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>

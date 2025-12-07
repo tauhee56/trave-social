@@ -1,20 +1,30 @@
-import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
+import { Feather } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { addPassportTicket, deletePassportTicket, getPassportTickets } from '../../lib/firebaseHelpers';
+import { ActivityIndicator, Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { getPassportTickets } from '../../lib/firebaseHelpers/index';
 
-interface CountryTicket {
-  id?: string;
+// Conditionally import location service to avoid native module errors
+let getCurrentLocation: any = null;
+try {
+  const locationService = require('../../services/locationService');
+  getCurrentLocation = locationService.getCurrentLocation;
+} catch (error) {
+  console.log('Location service not available:', error);
+}
+
+const { width } = Dimensions.get('window');
+
+interface PassportTicket {
+  id: string;
+  city: string;
+  country: string;
   countryCode: string;
-  countryName: string;
-  flag: string;
-  visitDate: string;
-  city?: string;
-  coordinates?: {
-    latitude: number;
-    longitude: number;
-  };
+  latitude: number;
+  longitude: number;
+  visitDate: number;
+  imageUrl?: string;
+  notes?: string;
 }
 
 interface PassportSectionProps {
@@ -22,157 +32,44 @@ interface PassportSectionProps {
   isOwner?: boolean;
 }
 
-// Configure notifications
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: false,
-  }),
-});
-
-
 const PassportSection: React.FC<PassportSectionProps> = ({ userId, isOwner }) => {
-  const [visitedCountries, setVisitedCountries] = useState<CountryTicket[]>([]);
-  const [currentCountry, setCurrentCountry] = useState<string | null>(null);
-  const [isTracking, setIsTracking] = useState(false);
+  const [tickets, setTickets] = useState<PassportTicket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentLocation, setCurrentLocation] = useState<{ city?: string; country?: string } | null>(null);
 
   useEffect(() => {
-    if (isOwner) {
-      initializePassport();
-    } else {
-      loadVisitedCountries();
-    }
-  }, [userId, isOwner]);
+    loadPassportData();
+  }, [userId]);
 
-  const initializePassport = async () => {
-    await requestPermissions();
-    await loadVisitedCountries();
-    await startLocationTracking();
-  };
-
-  const requestPermissions = async () => {
+  const loadPassportData = async () => {
     try {
-      const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
-      const { status: notificationStatus } = await Notifications.requestPermissionsAsync();
-      if (locationStatus !== 'granted') {
-        Alert.alert('Location Permission', 'Please enable location for passport tracking.');
+      setLoading(true);
+      
+      // Load passport tickets
+      const result = await getPassportTickets(userId);
+      if (Array.isArray(result)) {
+        setTickets(result as PassportTicket[]);
       }
-      if (notificationStatus !== 'granted') {
-        Alert.alert('Notification Permission', 'Please enable notifications to get country alerts.');
-      }
-    } catch (error) {
-      console.error('Permission error:', error);
-    }
-  };
-
-  const startLocationTracking = async () => {
-    if (!isOwner) return;
-    try {
-      setIsTracking(true);
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      await checkLocation(location.coords.latitude, location.coords.longitude);
-      Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 300000,
-          distanceInterval: 5000,
-        },
-        async (location) => {
-          await checkLocation(location.coords.latitude, location.coords.longitude);
-        }
-      );
-    } catch (error) {
-      console.error('Location tracking error:', error);
-      setIsTracking(false);
-    }
-  };
-
-  const checkLocation = async (lat: number, lon: number) => {
-    try {
-      const geocode = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
-      if (geocode && geocode[0]) {
-        const countryCode = geocode[0].isoCountryCode || '';
-        const countryName = geocode[0].country || '';
-        const city = geocode[0].city || '';
-        if (countryCode && countryCode !== currentCountry) {
-          const isVisited = visitedCountries.some((c) => c.countryCode === countryCode);
-          if (!isVisited) {
-            setCurrentCountry(countryCode);
-            await notifyNewCountry(countryName, countryCode, city, { latitude: lat, longitude: lon });
-          } else {
-            setCurrentCountry(countryCode);
+      
+      // Get current location if owner
+      if (isOwner && getCurrentLocation) {
+        try {
+          const location = await getCurrentLocation();
+          if (location) {
+            setCurrentLocation({
+              city: location.city,
+              country: location.country
+            });
           }
+        } catch (error) {
+          console.log('Error getting current location:', error);
+          setCurrentLocation(null);
         }
       }
     } catch (error) {
-      console.error('Geocoding error:', error);
-    }
-  };
-
-  const notifyNewCountry = async (
-    countryName: string,
-    countryCode: string,
-    city: string,
-    coords: { latitude: number; longitude: number }
-  ) => {
-    if (!isOwner) return;
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '🎉 New Country Detected!',
-        body: `Welcome to ${countryName}! Get your travel ticket now!`,
-        data: { countryCode, countryName, city },
-      },
-      trigger: null,
-    });
-    Alert.alert(
-      '🎫 New Country Detected!',
-      `You've entered ${countryName}! Would you like to collect your ticket?`,
-      [
-        { text: 'Later', style: 'cancel' },
-        {
-          text: 'Get Ticket',
-          onPress: () => collectTicket(countryName, countryCode, city, coords),
-        },
-      ]
-    );
-  };
-
-  const collectTicket = async (
-    countryName: string,
-    countryCode: string,
-    city: string,
-    coords: { latitude: number; longitude: number }
-  ) => {
-    try {
-      const ticket: CountryTicket = {
-        countryCode,
-        countryName,
-        flag: getFlagEmoji(countryCode),
-        visitDate: new Date().toISOString(),
-        city,
-        coordinates: coords,
-      };
-      const alreadyVisited = visitedCountries.some((c) => c.countryCode === countryCode);
-      if (alreadyVisited) {
-        Alert.alert('Already Collected', `${getFlagEmoji(countryCode)} ${countryName} ticket is already in your passport!`);
-        return;
-      }
-      const result = await addPassportTicket(userId, ticket);
-      if (result.success) {
-        setVisitedCountries([...visitedCountries, ticket]);
-        Alert.alert('✅ Ticket Collected!', `${ticket.flag} ${countryName} ticket added to your passport!`);
-      } else {
-        Alert.alert('Already Collected', `${getFlagEmoji(countryCode)} ${countryName} ticket is already in your passport!`);
-      }
-    } catch (error) {
-      console.error('Error collecting ticket:', error);
-      Alert.alert('Error', 'Failed to collect ticket. Please try again.');
+      console.error('❌ Error loading passport data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -182,238 +79,298 @@ const PassportSection: React.FC<PassportSectionProps> = ({ userId, isOwner }) =>
     return String.fromCodePoint(...codePoints);
   };
 
-  const loadVisitedCountries = async () => {
-    try {
-      setLoading(true);
-      const tickets = await getPassportTickets(userId);
-      setVisitedCountries(tickets as CountryTicket[]);
-    } catch (error) {
-      console.error('Error loading tickets:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#f39c12" />
+        <Text style={styles.loadingText}>Loading your passport...</Text>
+      </View>
+    );
+  }
 
-  // --- UI ---
   return (
-    <View style={{ flex: 1 }}>
-      {loading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text>Loading passport...</Text>
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {/* Current Location Card */}
+      {isOwner && currentLocation && (
+        <View style={styles.currentLocationCard}>
+          <LinearGradient
+            colors={['#667eea', '#764ba2']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.locationGradient}
+          >
+            <Feather name="map-pin" size={24} color="#fff" />
+            <View style={styles.locationInfo}>
+              <Text style={styles.locationLabel}>Current Location</Text>
+              <Text style={styles.locationText}>
+                {currentLocation.city}, {currentLocation.country}
+              </Text>
+            </View>
+          </LinearGradient>
+        </View>
+      )}
+
+      {/* Stats Card */}
+      <View style={styles.statsCard}>
+        <View style={styles.statItem}>
+          <Text style={styles.statNumber}>{tickets.length}</Text>
+          <Text style={styles.statLabel}>Places Visited</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={styles.statNumber}>{new Set(tickets.map(t => t.country)).size}</Text>
+          <Text style={styles.statLabel}>Countries</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={styles.statNumber}>{new Set(tickets.map(t => t.city)).size}</Text>
+          <Text style={styles.statLabel}>Cities</Text>
+        </View>
+      </View>
+
+      {/* Passport Stamps Grid */}
+      <View style={styles.stampsHeader}>
+        <Text style={styles.stampsTitle}>Travel Stamps</Text>
+        <Feather name="award" size={20} color="#f39c12" />
+      </View>
+
+      {tickets.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Feather name="globe" size={64} color="#ddd" />
+          <Text style={styles.emptyTitle}>No Stamps Yet</Text>
+          <Text style={styles.emptyText}>
+            Start traveling to collect passport stamps!
+          </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16 }}>
-          {visitedCountries.length === 0 ? (
-            <View style={{ alignItems: 'center', marginTop: 40 }}>
-              <Text style={{ color: '#999' }}>No passport tickets yet.</Text>
-            </View>
-          ) : (
-            visitedCountries.map((ticket) => (
-              <View key={ticket.id || ticket.countryCode} style={{ marginBottom: 16, backgroundColor: '#fff', borderRadius: 8, padding: 12, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4 }}>
-                <Text style={{ fontSize: 24 }}>{ticket.flag}</Text>
-                <Text style={{ fontWeight: 'bold', fontSize: 16 }}>{ticket.countryName}</Text>
-                <Text style={{ color: '#666', fontSize: 13 }}>{ticket.city || 'Unknown City'}</Text>
-                <Text style={{ color: '#aaa', fontSize: 12 }}>{new Date(ticket.visitDate).toLocaleDateString()}</Text>
-                {isOwner && (
-                  <TouchableOpacity style={{ marginTop: 8 }} onPress={() => {
-                    Alert.alert(
-                      'Delete Ticket',
-                      `Are you sure you want to delete ${ticket.countryName} ticket?`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Delete',
-                          style: 'destructive',
-                          onPress: async () => {
-                            try {
-                              await deletePassportTicket(userId, ticket.countryCode);
-                              setVisitedCountries(visitedCountries.filter((c) => c.countryCode !== ticket.countryCode));
-                              Alert.alert('Deleted', `${ticket.countryName} ticket removed from your passport.`);
-                            } catch (error) {
-                              Alert.alert('Error', 'Failed to delete ticket.');
-                            }
-                          },
-                        },
-                      ]
-                    );
-                  }}>
-                    <Text style={{ color: '#d00' }}>Delete Ticket</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))
-          )}
-        </ScrollView>
-      )}
-    </View>
+        <View style={styles.stampsGrid}>
+          {tickets.map((ticket) => (
+            <TouchableOpacity
+              key={ticket.id}
+              style={styles.stampCard}
+              activeOpacity={0.8}
+            >
+              {/* Stamp Image Background */}
+              {ticket.imageUrl ? (
+                <Image
+                  source={{ uri: ticket.imageUrl }}
+                  style={styles.stampImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <LinearGradient
+                  colors={['#f39c12', '#e74c3c']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.stampImage}
+                />
+              )}
 
+              {/* Stamp Overlay */}
+              <View style={styles.stampOverlay}>
+                {/* Flag */}
+                <Text style={styles.stampFlag}>{getFlagEmoji(ticket.countryCode)}</Text>
+
+                {/* Country & City */}
+                <View style={styles.stampInfo}>
+                  <Text style={styles.stampCountry} numberOfLines={1}>
+                    {ticket.country}
+                  </Text>
+                  <Text style={styles.stampCity} numberOfLines={1}>
+                    {ticket.city}
+                  </Text>
+                </View>
+
+                {/* Date Badge */}
+                <View style={styles.dateBadge}>
+                  <Text style={styles.dateText}>
+                    {new Date(ticket.visitDate).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    })}
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </ScrollView>
   );
 };
 
 export default PassportSection;
 
-
-
-// Stamp style variations for tickets
-const stampStyles = [
-  {
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: '#FF6B00',
-    borderStyle: 'dashed' as 'dashed',
-    backgroundColor: '#FFF5E6',
-    transform: [{ rotate: '-6deg' }],
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  {
-    borderRadius: 40,
-    borderWidth: 2,
-    borderColor: '#222',
-    borderStyle: 'solid' as 'solid',
-    backgroundColor: '#F0F0F0',
-    transform: [{ rotate: '4deg' }],
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  {
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#FF6B00',
-    borderStyle: 'dotted' as 'dotted',
-    backgroundColor: '#FFF',
-    transform: [{ rotate: '-2deg' }],
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  {
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: '#222',
-    borderStyle: 'dashed' as 'dashed',
-    backgroundColor: '#FFF5E6',
-    transform: [{ rotate: '8deg' }],
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-];
-
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 8,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginLeft: 8,
     flex: 1,
-    color: '#000',
+    backgroundColor: '#f5f5f5',
   },
-  badge: {
-    backgroundColor: '#FF6B00',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+  contentContainer: {
+    padding: 16,
+    paddingBottom: 40,
   },
-  count: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  scrollContent: {
-    padding: 8,
-  },
-  ticketsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  ticket: {
-    width: '48%',
-    height: 130,
-    padding: 12,
-    alignItems: 'center',
+  loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
-    marginBottom: 12,
-  },
-  flag: {
-    fontSize: 32,
-    marginBottom: 4,
-  },
-  stampCountry: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 2,
-    color: '#222',
-    letterSpacing: 1,
-  },
-  stampDate: {
-    fontSize: 11,
-    color: '#444',
-    marginBottom: 2,
-  },
-  stampCity: {
-    fontSize: 10,
-    color: '#888',
-    fontStyle: 'italic',
-    textAlign: 'center',
-  },
-  emptyState: {
-    width: 200,
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  emptyText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  trackingText: {
-    fontSize: 12,
-    color: '#666',
-    marginLeft: 4,
+    backgroundColor: '#f5f5f5',
   },
   loadingText: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '600',
+  },
+  currentLocationCard: {
+    marginBottom: 20,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  locationGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 20,
   },
+  locationInfo: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  locationLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  locationText: {
+    fontSize: 18,
+    color: '#fff',
+    fontWeight: '700',
+  },
+  statsCard: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#f39c12',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '600',
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: '#eee',
+    marginHorizontal: 16,
+  },
+  stampsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  stampsTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#222',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#999',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#bbb',
+    textAlign: 'center',
+  },
+  stampsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -6,
+  },
+  stampCard: {
+    width: (width - 48) / 2,
+    height: 200,
+    margin: 6,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  stampImage: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+  },
+  stampOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  stampFlag: {
+    fontSize: 32,
+    textAlign: 'center',
+  },
+  stampInfo: {
+    alignItems: 'center',
+  },
+  stampCountry: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  stampCity: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.9)',
+    textAlign: 'center',
+  },
+  dateBadge: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    alignSelf: 'center',
+  },
+  dateText: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '600',
+  },
 });
+

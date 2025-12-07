@@ -2,29 +2,33 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-    createNotification,
+    addNotification,
+    deleteMessage,
+    editMessage,
     getCurrentUser,
     getOrCreateConversation,
     getUserProfile, isApprovedFollower,
     markConversationAsRead,
+    reactToMessage,
     sendMessage,
     subscribeToMessages
-} from '../lib/firebaseHelpers';
+} from '../lib/firebaseHelpers/index';
 import { useUserProfile } from './hooks/useUserProfile';
 
 const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
 
 export default function DM() {
-  const { user: paramUser, conversationId: paramConversationId, otherUserId } = useLocalSearchParams();
+  const { user: paramUser, conversationId: paramConversationId, otherUserId, id } = useLocalSearchParams();
+  const realOtherUserId = typeof id === 'string' ? id : otherUserId;
   const router = useRouter();
   const navigation = useNavigation();
   
   // Use the hook to fetch and subscribe to the other user's profile
   const { profile: otherUserProfile, loading: profileLoading, username, avatar } = useUserProfile(
-    typeof otherUserId === 'string' ? otherUserId : null
+    typeof realOtherUserId === 'string' ? realOtherUserId : null
   );
   
   const [input, setInput] = useState("");
@@ -33,10 +37,37 @@ export default function DM() {
   const [conversationId, setConversationId] = useState<string | null>(
     typeof paramConversationId === 'string' ? paramConversationId : null
   );
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [lastMessageDoc, setLastMessageDoc] = useState<any>(null);
+  const MESSAGES_PAGE_SIZE = 20;
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const currentUser = getCurrentUser();
+  const currentUserTyped = getCurrentUser() as { uid?: string } | null;
+
+  // Message edit/delete states
+  const [selectedMessage, setSelectedMessage] = useState<any>(null);
+  const [showMessageMenu, setShowMessageMenu] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<{ id: string; text: string } | null>(null);
+  const [editText, setEditText] = useState('');
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<{ id: string; text: string; senderId: string } | null>(null);
+
+  // Emoji reactions list (Instagram style)
+  const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+
+  // Check if selected message is sent by current user
+  const isOwnMessage = selectedMessage && currentUserTyped?.uid && selectedMessage.senderId === currentUserTyped.uid;
+
+  async function handleReaction(emoji: string) {
+    if (!selectedMessage || !conversationId || !currentUserTyped?.uid) return;
+    
+    await reactToMessage(conversationId, selectedMessage.id, currentUserTyped.uid, emoji);
+    setShowReactionPicker(false);
+    setShowMessageMenu(false);
+    setSelectedMessage(null);
+  }
 
   useEffect(() => {
     initializeConversation();
@@ -44,17 +75,21 @@ export default function DM() {
   }, []);
 
   async function checkMessagingPermission() {
-    if (!otherUserId || !currentUser) {
+    if (!realOtherUserId || !currentUserTyped || !currentUserTyped.uid) {
+      console.log('[DM DEBUG] Missing user IDs:', { realOtherUserId, currentUserTyped });
       setCanMessage(false);
       return;
     }
-    const res = await getUserProfile(otherUserId);
-    if (res.success && res.data) {
-      const isPrivate = !!res.data.isPrivate;
+    const res = await getUserProfile(String(realOtherUserId));
+    console.log('[DM DEBUG] getUserProfile result:', res);
+    if (res && res.success && typeof res.data === 'object') {
+      const isPrivate = !!(res.data as any).isPrivate;
+      console.log('[DM DEBUG] isPrivate:', isPrivate);
       if (!isPrivate) {
         setCanMessage(true);
       } else {
-        const approved = await isApprovedFollower(otherUserId, currentUser.uid);
+        const approved = await isApprovedFollower(String(otherUserId), String(currentUserTyped.uid));
+        console.log('[DM DEBUG] isApprovedFollower:', { otherUserId, currentUserId: currentUserTyped.uid, approved });
         setCanMessage(approved);
       }
     } else {
@@ -64,23 +99,53 @@ export default function DM() {
 
   useEffect(() => {
     if (!conversationId) return;
-
-    // Mark as read when opening conversation
-    if (currentUser) {
-      markConversationAsRead(conversationId, currentUser.uid);
-    }
-
+    setMessages([]);
+    setLastMessageDoc(null);
+    setHasMoreMessages(true);
+    
     // Subscribe to real-time messages
-    const unsubscribe = subscribeToMessages(conversationId, (newMessages) => {
-      setMessages(newMessages);
+    const unsub = subscribeToMessages(conversationId, (msgs) => {
+      setMessages(msgs);
       setLoading(false);
     });
-
-    return () => unsubscribe();
+    
+    // Mark as read when opening conversation
+    if (currentUserTyped && currentUserTyped.uid) {
+      markConversationAsRead(conversationId, currentUserTyped.uid);
+    }
+    
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+    // eslint-disable-next-line
   }, [conversationId]);
 
+  const loadMessagesPage = async () => {
+    const { db } = await import('../config/firebase');
+    const { collection, query, orderBy, limit, startAfter, getDocs } = await import('firebase/firestore');
+    let messagesQuery = query(
+      collection(db, 'conversations', String(conversationId || ''), 'messages'),
+      orderBy('createdAt', 'desc'),
+      limit(MESSAGES_PAGE_SIZE)
+    );
+    if (lastMessageDoc) {
+      messagesQuery = query(
+        collection(db, 'conversations', String(conversationId || ''), 'messages'),
+        orderBy('createdAt', 'desc'),
+        startAfter(lastMessageDoc),
+        limit(MESSAGES_PAGE_SIZE)
+      );
+    }
+    const snap = await getDocs(messagesQuery);
+    const newMessages = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+    setMessages(prev => [...prev, ...newMessages]);
+    setLastMessageDoc(snap.docs[snap.docs.length - 1] || lastMessageDoc);
+    setHasMoreMessages(newMessages.length === MESSAGES_PAGE_SIZE);
+    setLoading(false);
+  };
+
   async function initializeConversation() {
-    if (!currentUser || !otherUserId) {
+    if (!currentUserTyped || !currentUserTyped.uid || !realOtherUserId) {
       setLoading(false);
       return;
     }
@@ -92,33 +157,45 @@ export default function DM() {
 
     // Create or get conversation
     const result = await getOrCreateConversation(
-      currentUser.uid, 
-      typeof otherUserId === 'string' ? otherUserId : ''
+      String(currentUserTyped.uid),
+      typeof realOtherUserId === 'string' ? realOtherUserId : ''
     );
-    
-    if (result.success) {
-      setConversationId(result.data.conversationId);
+    if (result && result.success && result.conversationId) {
+      setConversationId(result.conversationId);
     }
     setLoading(false);
   }
 
   async function handleSend() {
-    if (!input.trim() || !conversationId || !currentUser || sending || !canMessage) return;
+    if (!input.trim() || !conversationId || !currentUserTyped || !currentUserTyped.uid || sending || !canMessage) return;
 
     const messageText = input.trim();
+    const replyData = replyingTo;
     setInput("");
+    setReplyingTo(null);
     setSending(true);
 
     try {
-      await sendMessage(conversationId, currentUser.uid, messageText);
+      await sendMessage(conversationId, currentUserTyped.uid, messageText, undefined, replyData);
       // Send notification to recipient
-      if (otherUserId && otherUserId !== currentUser.uid) {
-        await createNotification({
+      if (otherUserId && otherUserId !== currentUserTyped.uid) {
+        // Fetch sender profile for name and avatar
+        let senderName = '';
+        let senderAvatar = '';
+        try {
+          const senderDoc = await import('../config/firebase').then(({ db }) => import('firebase/firestore').then(({ doc, getDoc }) => getDoc(doc(db, 'users', String(currentUserTyped.uid)))));
+          if (senderDoc && senderDoc.exists()) {
+            const senderData = senderDoc.data();
+            senderName = senderData.displayName || senderData.name || 'User';
+            senderAvatar = senderData.avatar || senderData.photoURL || DEFAULT_AVATAR_URL;
+          }
+        } catch {}
+        await addNotification({
           recipientId: String(otherUserId),
-          senderId: currentUser.uid,
-          senderName: currentUser.displayName || '',
-          senderAvatar: currentUser.photoURL || '',
-          type: 'mention',
+          senderId: currentUserTyped.uid,
+          senderName,
+          senderAvatar,
+          type: 'dm',
           message: messageText
         });
       }
@@ -133,6 +210,57 @@ export default function DM() {
     }
   }
 
+  async function handleEditMessage() {
+    if (!editingMessage || !conversationId || !currentUserTyped?.uid) return;
+
+    const result = await editMessage(
+      conversationId,
+      editingMessage.id,
+      currentUserTyped.uid,
+      editText.trim()
+    );
+
+    if (result.success) {
+      setEditingMessage(null);
+      setEditText('');
+      // Messages will auto-update via real-time listener
+    } else {
+      Alert.alert('Error', result.error || 'Failed to edit message');
+    }
+  }
+
+  async function handleDeleteMessage() {
+    if (!selectedMessage || !conversationId || !currentUserTyped?.uid) return;
+
+    Alert.alert(
+      'Delete Message',
+      'Are you sure you want to delete this message?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (!conversationId || !currentUserTyped?.uid) return;
+            const result = await deleteMessage(
+              conversationId,
+              selectedMessage.id,
+              currentUserTyped.uid
+            );
+
+            if (result.success) {
+              setShowMessageMenu(false);
+              setSelectedMessage(null);
+              // Messages will auto-update via real-time listener
+            } else {
+              Alert.alert('Error', result.error || 'Failed to delete message');
+            }
+          }
+        }
+      ]
+    );
+  }
+
   function formatTime(timestamp: any) {
     if (!timestamp) return '';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -140,24 +268,64 @@ export default function DM() {
   }
 
   function renderMessage({ item }: { item: any }) {
-    const isSelf = item.senderId === currentUser?.uid;
+    const isSelf = item.senderId === currentUserTyped?.uid;
+    const reactions = item.reactions || {};
+    const reactionsList = Object.entries(reactions);
+    const hasReply = item.replyTo && item.replyTo.text;
+    const isReplyFromSelf = item.replyTo?.senderId === currentUserTyped?.uid;
 
     return (
-      <View style={isSelf ? styles.msgRowSelf : styles.msgRow}>
+      <TouchableOpacity
+        style={isSelf ? styles.msgRowSelf : styles.msgRow}
+        onLongPress={() => {
+          setSelectedMessage(item);
+          setShowMessageMenu(true);
+        }}
+        activeOpacity={0.9}
+      >
         {!isSelf && (
-          <Image 
-            source={{ uri: avatar }} 
-            style={styles.msgAvatar} 
+          <Image
+            source={{ uri: avatar }}
+            style={styles.msgAvatar}
           />
         )}
-        <View style={isSelf ? styles.msgBubbleRight : styles.msgBubbleLeft}>
-          {item.imageUrl && (
-            <Image source={{ uri: item.imageUrl }} style={styles.msgImage} />
+        <View style={{ maxWidth: '75%' }}>
+          {/* Reply preview bubble */}
+          {hasReply && (
+            <View style={[styles.replyPreview, isSelf ? styles.replyPreviewSelf : styles.replyPreviewOther]}>
+              <View style={styles.replyLine} />
+              <View style={styles.replyContent}>
+                <Text style={styles.replyName}>
+                  {isReplyFromSelf ? 'You' : username}
+                </Text>
+                <Text style={styles.replyText} numberOfLines={1}>
+                  {item.replyTo.text}
+                </Text>
+              </View>
+            </View>
           )}
-          <Text style={isSelf ? styles.msgTextSelf : styles.msgText}>{item.text}</Text>
-          <Text style={isSelf ? styles.msgTimeSelf : styles.msgTime}>{formatTime(item.createdAt)}</Text>
+          <View style={isSelf ? styles.msgBubbleRight : styles.msgBubbleLeft}>
+            {item.imageUrl && (
+              <Image source={{ uri: item.imageUrl }} style={styles.msgImage} />
+            )}
+            <Text style={isSelf ? styles.msgTextSelf : styles.msgText}>{item.text}</Text>
+            <View style={styles.msgFooter}>
+              <Text style={isSelf ? styles.msgTimeSelf : styles.msgTime}>{formatTime(item.createdAt)}</Text>
+              {item.editedAt && (
+                <Text style={[isSelf ? styles.msgTimeSelf : styles.msgTime, styles.editedLabel]}> · edited</Text>
+              )}
+            </View>
+          </View>
+          {/* Reactions display */}
+          {reactionsList.length > 0 && (
+            <View style={[styles.reactionsContainer, isSelf ? styles.reactionsSelf : styles.reactionsOther]}>
+              {reactionsList.map(([oderId, emoji]) => (
+                <Text key={oderId} style={styles.reactionEmoji}>{emoji as string}</Text>
+              ))}
+            </View>
+          )}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   }
 
@@ -186,7 +354,7 @@ export default function DM() {
             <Feather name="x" size={28} color="#000" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.headerUser} onPress={() => {
-            if (otherUserId) router.push(`/user-profile?userId=${otherUserId}` as any);
+            if (otherUserId) router.push(`/user-profile?id=${otherUserId}` as any);
           }}>
             <Image source={{ uri: avatar }} style={styles.avatar} />
             <View>
@@ -207,22 +375,58 @@ export default function DM() {
             <FlatList
               ref={flatListRef}
               data={messages}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item, index) => `${item.id}_${index}`}
               renderItem={renderMessage}
               contentContainerStyle={{ paddingVertical: 10 }}
               onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
               onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+              inverted
+              onEndReached={() => {
+                if (hasMoreMessages && !loading) loadMessagesPage();
+              }}
+              onEndReachedThreshold={0.2}
+              ListFooterComponent={hasMoreMessages ? (
+                <TouchableOpacity style={{ alignSelf: 'center', marginVertical: 10 }} onPress={loadMessagesPage}>
+                  <Text style={{ color: '#007aff', fontSize: 15 }}>Load more messages</Text>
+                </TouchableOpacity>
+              ) : null}
+                initialNumToRender={12}
+                windowSize={7}
+                maxToRenderPerBatch={12}
+                removeClippedSubviews={true}
             />
           )}
         </View>
+
+        {/* Reply preview bar above input */}
+        {replyingTo && (
+          <View style={styles.replyBar}>
+            <View style={styles.replyBarContent}>
+              <View style={styles.replyBarLine} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.replyBarName}>
+                  Replying to {replyingTo.senderId === currentUserTyped?.uid ? 'yourself' : username}
+                </Text>
+                <Text style={styles.replyBarText} numberOfLines={1}>
+                  {replyingTo.text}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={() => setReplyingTo(null)} style={styles.replyBarClose}>
+              <Feather name="x" size={20} color="#666" />
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.inputBar}>
           <View style={styles.inputWrap}>
             <View style={styles.inputBox}>
               <TextInput
                 style={styles.input}
-                value={input}
-                onChangeText={setInput}
+                value={canMessage ? input : ''}
+                onChangeText={text => {
+                  if (canMessage) setInput(text);
+                }}
                 placeholder={canMessage ? "Message..." : "You can't message this user"}
                 placeholderTextColor="#8e8e8e"
                 multiline
@@ -232,14 +436,177 @@ export default function DM() {
             </View>
             <TouchableOpacity 
               style={[styles.sendBtnText, (!input.trim() || sending || !canMessage) && { opacity: 0.4 }]} 
-              onPress={handleSend}
-              disabled={!input.trim() || sending || !canMessage}
+              onPress={canMessage ? handleSend : undefined}
+              disabled={!canMessage || !input.trim() || sending}
             >
               <Text style={styles.sendTextBlue}>{sending ? 'Sending...' : 'Send'}</Text>
             </TouchableOpacity>
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Message Menu Modal with Reactions */}
+      <Modal visible={showMessageMenu} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => {
+            setShowMessageMenu(false);
+            setSelectedMessage(null);
+          }}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.menuModal}>
+              {/* Reaction picker row */}
+              <View style={styles.reactionPickerRow}>
+                {REACTIONS.map((emoji) => (
+                  <TouchableOpacity
+                    key={emoji}
+                    style={styles.reactionPickerBtn}
+                    onPress={() => handleReaction(emoji)}
+                  >
+                    <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.menuDivider} />
+
+              {/* Reply option */}
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setShowMessageMenu(false);
+                  if (selectedMessage) {
+                    setReplyingTo({
+                      id: selectedMessage.id,
+                      text: selectedMessage.text,
+                      senderId: selectedMessage.senderId
+                    });
+                  }
+                  setSelectedMessage(null);
+                }}
+              >
+                <Feather name="corner-up-left" size={20} color="#007aff" />
+                <Text style={styles.menuText}>Reply</Text>
+              </TouchableOpacity>
+
+              {/* Copy option */}
+              <View style={styles.menuDivider} />
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  import('expo-clipboard').then(({ setStringAsync }) => {
+                    if (selectedMessage?.text) {
+                      setStringAsync(selectedMessage.text);
+                    }
+                  });
+                  setShowMessageMenu(false);
+                  setSelectedMessage(null);
+                }}
+              >
+                <Feather name="copy" size={20} color="#007aff" />
+                <Text style={styles.menuText}>Copy</Text>
+              </TouchableOpacity>
+
+              {/* Edit option - only for own messages */}
+              {isOwnMessage && (
+                <>
+                  <View style={styles.menuDivider} />
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setShowMessageMenu(false);
+                      setEditingMessage({ id: selectedMessage.id, text: selectedMessage.text });
+                      setEditText(selectedMessage.text);
+                    }}
+                  >
+                    <Feather name="edit-2" size={20} color="#007aff" />
+                    <Text style={styles.menuText}>Edit Message</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {/* Delete option - only for own messages */}
+              {isOwnMessage && (
+                <>
+                  <View style={styles.menuDivider} />
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setShowMessageMenu(false);
+                      handleDeleteMessage();
+                    }}
+                  >
+                    <Feather name="trash-2" size={20} color="#e74c3c" />
+                    <Text style={[styles.menuText, { color: '#e74c3c' }]}>Delete Message</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Edit Message Modal */}
+      {editingMessage && (
+        <Modal visible transparent animationType="fade">
+          <KeyboardAvoidingView
+            style={styles.editOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              activeOpacity={1}
+              onPress={() => {
+                setEditingMessage(null);
+                setEditText('');
+              }}
+            />
+            <View style={styles.editModal}>
+              <View style={styles.editHeader}>
+                <Text style={styles.editTitle}>Edit Message</Text>
+                <TouchableOpacity onPress={() => {
+                  setEditingMessage(null);
+                  setEditText('');
+                }}>
+                  <Feather name="x" size={24} color="#222" />
+                </TouchableOpacity>
+              </View>
+
+              <TextInput
+                style={styles.editInput}
+                value={editText}
+                onChangeText={setEditText}
+                multiline
+                autoFocus
+                maxLength={500}
+                placeholder="Edit your message..."
+                placeholderTextColor="#999"
+              />
+
+              <View style={styles.editActions}>
+                <TouchableOpacity
+                  style={[styles.editBtn, styles.cancelBtn]}
+                  onPress={() => {
+                    setEditingMessage(null);
+                    setEditText('');
+                  }}
+                >
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.editBtn, styles.saveBtn, !editText.trim() && { opacity: 0.5 }]}
+                  onPress={handleEditMessage}
+                  disabled={!editText.trim()}
+                >
+                  <Text style={styles.saveBtnText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -403,5 +770,209 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlign: 'center',
     marginTop: 20,
+  },
+  msgFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  editedLabel: {
+    fontStyle: 'italic',
+    fontSize: 10,
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuModal: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '80%',
+    maxWidth: 300,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  menuText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#222',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#eee',
+  },
+  reactionPickerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+  },
+  reactionPickerBtn: {
+    padding: 8,
+  },
+  reactionPickerEmoji: {
+    fontSize: 28,
+  },
+  reactionsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: -8,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+    alignSelf: 'flex-start',
+  },
+  reactionsSelf: {
+    alignSelf: 'flex-end',
+    marginRight: 8,
+  },
+  reactionsOther: {
+    alignSelf: 'flex-start',
+    marginLeft: 36,
+  },
+  reactionEmoji: {
+    fontSize: 14,
+    marginHorizontal: 1,
+  },
+  editOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  editModal: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  editHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  editTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#222',
+  },
+  editInput: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 15,
+    minHeight: 100,
+    maxHeight: 200,
+    textAlignVertical: 'top',
+  },
+  editActions: {
+    flexDirection: 'row',
+    marginTop: 16,
+    gap: 12,
+  },
+  editBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  cancelBtn: {
+    backgroundColor: '#f5f5f5',
+  },
+  cancelBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#666',
+  },
+  saveBtn: {
+    backgroundColor: '#007aff',
+  },
+  saveBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  // Reply styles
+  replyPreview: {
+    flexDirection: 'row',
+    marginBottom: 4,
+    paddingLeft: 8,
+  },
+  replyPreviewSelf: {
+    alignSelf: 'flex-end',
+  },
+  replyPreviewOther: {
+    alignSelf: 'flex-start',
+    marginLeft: 0,
+  },
+  replyLine: {
+    width: 3,
+    backgroundColor: '#3797f0',
+    borderRadius: 2,
+    marginRight: 8,
+  },
+  replyContent: {
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: 200,
+  },
+  replyName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#3797f0',
+    marginBottom: 2,
+  },
+  replyText: {
+    fontSize: 13,
+    color: '#666',
+  },
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  replyBarContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  replyBarLine: {
+    width: 3,
+    height: 36,
+    backgroundColor: '#3797f0',
+    borderRadius: 2,
+    marginRight: 10,
+  },
+  replyBarName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#3797f0',
+  },
+  replyBarText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
+  replyBarClose: {
+    padding: 4,
   },
 });

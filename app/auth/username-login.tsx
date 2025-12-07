@@ -1,18 +1,47 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { handleSocialAuthResult, signInWithApple, signInWithGoogle, signInWithSnapchat, signInWithTikTok } from '../../services/socialAuthService';
+import { loginWithUsername } from '../../services/usernameAuthService';
 import CustomButton from '../components/auth/CustomButton';
 import SocialButton from '../components/auth/SocialButton';
 
 export default function UsernameLoginScreen() {
   const router = useRouter();
   const [username, setUsername] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
-    // Handle username login
-    router.replace('/(tabs)/home');
+  const handleLogin = async () => {
+    if (!username.trim()) {
+      Alert.alert('Error', 'Please enter your username');
+      return;
+    }
+
+    setLoading(true);
+    const result = await loginWithUsername(username);
+    setLoading(false);
+
+    if (result.success) {
+      router.replace('/(tabs)/home');
+    } else {
+      Alert.alert('Login Failed', result.error || 'Could not login with username');
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    const result = await signInWithGoogle();
+    await handleSocialAuthResult(result, router);
+    setLoading(false);
+  };
+
+  const handleAppleSignIn = async () => {
+    setLoading(true);
+    const result = await signInWithApple();
+    await handleSocialAuthResult(result, router);
+    setLoading(false);
   };
 
   return (
@@ -58,32 +87,39 @@ export default function UsernameLoginScreen() {
 
         {/* Login Button */}
         <CustomButton
-          title="Login"
+          title={loading ? 'Logging in...' : 'Login'}
           onPress={handleLogin}
           variant="primary"
           style={styles.loginButton}
+          disabled={loading}
         />
+
+        {loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#f39c12" />
+          </View>
+        )}
 
         {/* Social Login Options */}
         <View style={styles.socialSection}>
           <SocialButton
             provider="google"
-            onPress={() => {/* Handle Google login */}}
+            onPress={handleGoogleSignIn}
             style={styles.socialButton}
           />
           <SocialButton
             provider="apple"
-            onPress={() => {/* Handle Apple login */}}
+            onPress={handleAppleSignIn}
             style={styles.socialButton}
           />
           <SocialButton
             provider="tiktok"
-            onPress={() => {/* Handle TikTok login */}}
+            onPress={signInWithTikTok}
             style={styles.socialButton}
           />
           <SocialButton
             provider="snapchat"
-            onPress={() => {/* Handle Snap login */}}
+            onPress={signInWithSnapchat}
             style={styles.socialButton}
           />
         </View>
@@ -159,6 +195,10 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     marginBottom: 30,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
   },
   socialSection: {
     marginBottom: 30,

@@ -1,13 +1,14 @@
-import { Feather } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, Image, Modal, PermissionsAndroid, Platform, Pressable, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Image, PermissionsAndroid, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 // import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
+import { collection, query as firestoreQuery, onSnapshot, where } from 'firebase/firestore';
 import MapView, { Marker, Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { PostLocationModal } from '../components/PostLocationModal';
+import { db } from '../config/firebase';
 import { getAllPosts } from '../lib/firebaseHelpers';
-import CommentSection from './components/CommentSection';
 
 // Standard Google Maps style (clean, default look)
 const standardMapStyle = [
@@ -25,9 +26,6 @@ const standardMapStyle = [
 ];
 
 const { width } = Dimensions.get('window');
-const GOOGLE_MAP_API_KEY = 'AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c';
-// If Nominatim is blocked for your IP you can provide a Mapbox token or Google Maps API key here.
-const MAPBOX_TOKEN = ""; // <-- put your Mapbox token here (or leave empty)
 
 interface PostType {
   id: string;
@@ -35,6 +33,7 @@ interface PostType {
   userName: string;
   userAvatar: string;
   imageUrl: string;
+  imageUrls?: string[];
   caption?: string;
   location?: {
     lat: number;
@@ -51,11 +50,53 @@ interface PostType {
   isLive?: boolean;
 }
 
+interface LiveStream {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  imageUrl: string;
+  imageUrls?: string[];
+  channelName?: string;
+  viewerCount: number;
+  isLive: boolean;
+  startedAt: any;
+  location?: {
+    latitude: number;
+    longitude: number;
+  };
+}
+
+const DEFAULT_REGION = {
+  latitude: 33.6844,
+  longitude: 73.0479,
+  latitudeDelta: 0.09,
+  longitudeDelta: 0.09,
+};
+
 export default function MapScreen() {
+  // Placeholder search function for modal
+  function doSearch() {
+    // TODO: Implement search logic to update map region based on query
+    // Example: setMapRegion(...) or call geocoding API
+    console.log('Search triggered for query:', query);
+  }
       const [modalComment, setModalComment] = useState<{[id:string]:string}>({});
       const [modalLikes, setModalLikes] = useState<{[id:string]:number}>({});
       const [modalLiked, setModalLiked] = useState<{[id:string]:boolean}>({});
       const [modalCommentsCount, setModalCommentsCount] = useState<{[id:string]:number}>({});
+
+      // Load posts from Firestore on mount
+      useEffect(() => {
+        setLoading(true);
+        getAllPosts(150).then(res => { // Limit to 150 posts for better performance
+          if (res.success) {
+            setPosts(Array.isArray(res.posts) ? res.posts : []);
+          } else {
+            setError(res.error || 'Failed to load posts');
+          }
+        }).finally(() => setLoading(false));
+      }, []);
       async function handleModalLike(post: PostType) {
         const alreadyLiked = modalLiked[post.id] || false;
         if (alreadyLiked) return; // Only allow one like per user
@@ -90,19 +131,70 @@ export default function MapScreen() {
 
   const [query, setQuery] = useState(initialQuery);
   const [loading, setLoading] = useState(false);
-  const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  // Viewer location state
+  const [viewerCoords, setViewerCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [posts, setPosts] = useState<PostType[]>([]);
-  const [mapRegion, setMapRegion] = useState<Region | null>(null);
+  // Defensive: always use array
+  const safePosts = Array.isArray(posts) ? posts : [];
+  const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
+  // Defensive: always use array
+  const safeLiveStreams = Array.isArray(liveStreams) ? liveStreams : [];
+  const [mapRegion, setMapRegion] = useState<Region | null>(DEFAULT_REGION);
+    // Ensure mapRegion is always valid after mount
+    useEffect(() => {
+      if (!mapRegion || !isValidLatLon(mapRegion.latitude, mapRegion.longitude)) {
+        setMapRegion(DEFAULT_REGION);
+      }
+    }, []);
   const [selectedPosts, setSelectedPosts] = useState<PostType[] | null>(null);
+  // Defensive: always use array
+  const safeSelectedPosts = Array.isArray(selectedPosts) ? selectedPosts : [];
   const mapRef = useRef<MapView | null>(null);
   const [error, setError] = useState<string | null>(null);
     const [locationPermission, setLocationPermission] = useState<'granted'|'denied'|'unknown'>('unknown');
   const [showSearch, setShowSearch] = useState(false);
   const [showCommentsModalId, setShowCommentsModal] = useState<string | null>(null);
 
-  // Request location permissions on mount
+  // Request location permissions and get viewer location on mount
   useEffect(() => {
     requestLocationPermission();
+    (async () => {
+      try {
+        let location;
+        if (Platform.OS === 'android') {
+          location = await Location.getCurrentPositionAsync({});
+        } else {
+          location = await Location.getCurrentPositionAsync({});
+        }
+        if (location?.coords) {
+          setViewerCoords({ lat: location.coords.latitude, lon: location.coords.longitude });
+        }
+      } catch (err) {
+        setViewerCoords(null);
+      }
+    })();
+  }, []);
+
+  // Subscribe to live streams
+  useEffect(() => {
+    const liveStreamsRef = collection(db, 'liveStreams');
+    const liveQuery = firestoreQuery(liveStreamsRef, where('isLive', '==', true));
+
+    const unsubscribe = onSnapshot(liveQuery, (snapshot) => {
+      const streams: LiveStream[] = [];
+      snapshot.forEach((doc) => {
+        streams.push({
+          id: doc.id,
+          ...doc.data()
+        } as LiveStream);
+      });
+
+      // Sort by viewer count
+      streams.sort((a, b) => (b.viewerCount || 0) - (a.viewerCount || 0));
+      setLiveStreams(streams);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const requestLocationPermission = async () => {
@@ -133,143 +225,6 @@ export default function MapScreen() {
       }
     } catch (error) {
       setLocationPermission('denied');
-      console.warn('Location permission error:', error);
-    }
-  };
-
-  function handlePostPress(post: PostType) {
-    const locationName = typeof post.location === 'string' ? post.location : post.location?.name;
-    if (locationName) {
-      router.push(`/(tabs)/home?filter=${encodeURIComponent(locationName)}`);
-    } else {
-      router.push(`/(tabs)/home`);
-    }
-  }
-
-  // Load posts from Firebase
-  React.useEffect(() => {
-    loadPosts();
-    // Set initial region from URL params if provided
-    if (latParam && lonParam) {
-      const region: Region = {
-        latitude: latParam,
-        longitude: lonParam,
-        latitudeDelta: 0.1,
-        longitudeDelta: 0.1
-      };
-      setMapRegion(region);
-      setCoords({ lat: latParam, lon: lonParam });
-    } else if (initialQuery) {
-      // If only query provided (no lat/lon), geocode it
-      doSearch();
-    }
-  }, []);
-
-  async function loadPosts() {
-    setLoading(true);
-    try {
-      const result = await getAllPosts();
-      if (result.success && Array.isArray(result.posts)) {
-        // Get top 7 posts by visits or likes
-        const sorted = result.posts.sort((a: any, b: any) => {
-          const aScore = (a.visits ?? 0) + (a.likesCount ?? a.likes ?? 0);
-          const bScore = (b.visits ?? 0) + (b.likesCount ?? b.likes ?? 0);
-          return bScore - aScore;
-        });
-        const topPosts = sorted.slice(0, 7);
-        setPosts(topPosts as PostType[]);
-      } else {
-        setPosts([]);
-      }
-    } catch (e: any) {
-      setError(`Unable to load posts: ${e?.message || 'Network error'}`);
-      setPosts([]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function doSearch() {
-    if (!query.trim()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${GOOGLE_MAP_API_KEY}`,
-        { signal: controller.signal }
-      );
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        console.error('Map search API error:', response.status);
-        setError(`Search failed: ${response.status === 403 ? 'API key issue' : 'Network error'}`);
-        setLoading(false);
-        return;
-      }
-      
-      const data = await response.json();
-      
-      // Check Google Maps API response status
-      if (data.status === 'REQUEST_DENIED') {
-        console.error('Google Maps API denied:', data.error_message);
-        setError('Maps API key restricted. Please check Google Cloud Console.');
-        setLoading(false);
-        return;
-      }
-      
-      if (data.status !== 'OK') {
-        console.warn('Maps API status:', data.status);
-        setError(`Search failed: ${data.status}`);
-        setLoading(false);
-        return;
-      }
-      
-      if (data.results && data.results.length > 0) {
-        const result = data.results[0];
-        const lat = result.geometry.location.lat;
-        const lon = result.geometry.location.lng;
-        setCoords({ lat, lon });
-        const region: Region = { latitude: lat, longitude: lon, latitudeDelta: 0.1, longitudeDelta: 0.1 };
-        setMapRegion(region);
-        
-        // Clear selected posts when searching new location
-        setSelectedPosts(null);
-        
-        // Animate to searched location
-        if (mapRef.current) {
-          try {
-            mapRef.current.animateToRegion(region, 1000);
-          } catch (animError) {
-            console.warn('Map animation error:', animError);
-          }
-        }
-        
-        // Check if there are posts near this location
-        const nearby = findPostsNear(lat, lon, 5);
-        if (nearby.length > 0) {
-          // Show only the most popular post at this location
-          const sortedNearby = nearby.sort((a: any, b: any) => {
-            const aScore = (a.visits ?? 0) + (a.likesCount ?? a.likes ?? 0);
-            const bScore = (b.visits ?? 0) + (b.likesCount ?? b.likes ?? 0);
-            return bScore - aScore;
-          });
-          setSelectedPosts([sortedNearby[0]]);
-        }
-      } else {
-        setError('Location not found');
-      }
-    } catch (e: any) {
-      console.error('Map search error:', e);
-      if (e.name === 'AbortError') {
-        setError('Search timeout - please try again');
-      } else {
-        setError(`Search failed: ${e.message || 'Network error'}`);
-      }
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -292,297 +247,215 @@ export default function MapScreen() {
     return R * c;
   }
 
-  // Filter posts: only those with 100+ likes
-  const filteredPosts = posts.filter(p => (p.likesCount ?? p.likes ?? 0) >= 100);
+  // Helper to check valid lat/lon
+  function isValidLatLon(lat: any, lon: any) {
+    return (
+      typeof lat === 'number' && typeof lon === 'number' &&
+      !isNaN(lat) && !isNaN(lon) &&
+      lat >= -90 && lat <= 90 &&
+      lon >= -180 && lon <= 180
+    );
+  }
+
+  // Show all posts with valid location
+  const filteredPosts = safePosts.filter(p => {
+    const lat = p.lat ?? (typeof p.location !== 'string' ? p.location?.lat : undefined);
+    const lon = p.lon ?? (typeof p.location !== 'string' ? p.location?.lon : undefined);
+    return isValidLatLon(lat, lon);
+  });
 
   // Group filtered posts by location (lat/lon rounded to 5 decimals), max 5 per location sorted by likes
   const locationGroups: { [key: string]: PostType[] } = {};
-  filteredPosts.forEach(p => {
-    const lat = p.lat ?? (typeof p.location !== 'string' ? p.location?.lat : undefined);
-    const lon = p.lon ?? (typeof p.location !== 'string' ? p.location?.lon : undefined);
-    if (lat != null && lon != null) {
-      const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+  let markerCount = 0;
+  (Array.isArray(filteredPosts) ? filteredPosts : []).forEach(p => {
+    let lat = p.lat ?? (typeof p.location !== 'string' ? p.location?.lat : undefined);
+    let lon = p.lon ?? (typeof p.location !== 'string' ? p.location?.lon : undefined);
+    if ((lat == null || lon == null) && typeof p.location === 'object' && p.location) {
+      lat = p.location.lat;
+      lon = p.location.lon;
+    }
+    // Defensive: must have imageUrl
+    const imageUrl = p.imageUrl || (Array.isArray(p.imageUrls) && p.imageUrls.length > 0 ? p.imageUrls[0] : '') || '';
+    // Extra strict: only allow valid numbers
+    if (isValidLatLon(lat, lon) && typeof imageUrl === 'string' && imageUrl) {
+      const key = `${Number(lat).toFixed(5)},${Number(lon).toFixed(5)}`;
       if (!locationGroups[key]) locationGroups[key] = [];
-      locationGroups[key].push({ ...p, lat, lon });
+      locationGroups[key].push({ ...p, lat: Number(lat), lon: Number(lon), imageUrl });
       // Sort and keep only top 5 by likes
       locationGroups[key] = locationGroups[key]
         .sort((a, b) => ((b.likesCount ?? b.likes ?? 0) - (a.likesCount ?? a.likes ?? 0)))
         .slice(0, 5);
+      markerCount++;
     }
   });
-  console.log('Map: Location groups:', Object.keys(locationGroups).length, 'groups');
-  console.log('Map: Location groups detail:', locationGroups);
-  console.log('Google Maps API Key:', GOOGLE_MAP_API_KEY); // Debug print for API key
+  // Limit total markers to 50 to further prevent native crash
+  const limitedLocationGroups = Object.entries(locationGroups).slice(0, 50).reduce((acc, [key, val]) => {
+    acc[key] = val;
+    return acc;
+  }, {} as typeof locationGroups);
+  console.log('Map: Location groups:', Object.keys(limitedLocationGroups).length, 'groups');
+  console.log('Map: Location groups detail:', limitedLocationGroups);
+
+  // Extra logging for region and marker validity
+  function isValidRegion(region: Region | null): boolean {
+    return (
+      !!region &&
+      isValidLatLon(region.latitude, region.longitude) &&
+      typeof region.latitudeDelta === 'number' && typeof region.longitudeDelta === 'number' &&
+      isFinite(region.latitudeDelta) && isFinite(region.longitudeDelta) &&
+      region.latitudeDelta > 0 && region.longitudeDelta > 0
+    );
+  }
+  const validRegion = isValidRegion(mapRegion);
+  const hasValidMarkers = Object.values(limitedLocationGroups).some(group => {
+    const post = Array.isArray(group) ? group[0] : null;
+    return post && isValidLatLon(post.lat, post.lon) && isFinite(Number(post.lat)) && isFinite(Number(post.lon));
+  });
+  console.log('Map: validRegion:', validRegion, 'hasValidMarkers:', hasValidMarkers);
 
   // UI render
+  // Helper: get streamer location from liveStreams (first live stream)
+  const streamer = safeLiveStreams.length > 0 ? safeLiveStreams[0] : null;
+  const streamerCoords = streamer?.location ? {
+    lat: streamer.location.latitude,
+    lon: streamer.location.longitude
+  } : null;
+
+  // Helper: route coordinates (viewer to streamer)
+  const routeCoords = (viewerCoords && streamerCoords)
+    ? [
+        { latitude: viewerCoords.lat, longitude: viewerCoords.lon },
+        { latitude: streamerCoords.lat, longitude: streamerCoords.lon }
+      ]
+    : [];
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <View style={styles.mapContainer}>
-        {loading && <ActivityIndicator size="large" color="#f39c12" />}
-        {!loading && (
+      <View style={{ flex: 1 }}>
+        {/* Main map or error fallback */}
+        {!loading && validRegion ? (
           <MapView
             ref={mapRef}
             style={styles.mapView}
-            initialRegion={mapRegion || {
-              latitude: 0,
-              longitude: 0,
-              latitudeDelta: 180,
-              longitudeDelta: 360
-            }}
-            region={mapRegion || {
-              latitude: 0,
-              longitude: 0,
-              latitudeDelta: 180,
-              longitudeDelta: 360
-            }}
-            showsUserLocation={locationPermission === 'granted'}
-            showsMyLocationButton={locationPermission === 'granted'}
+            initialRegion={mapRegion && isValidLatLon(mapRegion.latitude, mapRegion.longitude)
+              ? mapRegion
+              : DEFAULT_REGION
+            }
+            region={mapRegion && isValidLatLon(mapRegion.latitude, mapRegion.longitude)
+              ? mapRegion
+              : DEFAULT_REGION
+            }
             customMapStyle={standardMapStyle}
-            onPress={e => {
-              // Example: select posts at pressed location
-              const { latitude, longitude } = e.nativeEvent.coordinate;
-              const nearby = findPostsNear(latitude, longitude, 5);
-              if (nearby.length > 0) setSelectedPosts(nearby);
-            }}
           >
-            {Object.entries(locationGroups).map(([key, postsAtLocation]) => {
-              const post = postsAtLocation[0];
-              if (typeof post.lat === 'number' && typeof post.lon === 'number') {
-                return (
-                  <Marker
-                    key={key}
-                    coordinate={{ latitude: post.lat, longitude: post.lon }}
-                    onPress={() => setSelectedPosts(postsAtLocation)}
-                  >
-                    <View style={styles.markerContainer}>
-                      <Image source={{ uri: post.imageUrl }} style={styles.markerAvatar} />
-                      {/* Small user avatar circle */}
-                      <View style={{ position: 'absolute', top: 2, left: 2, width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#fff', overflow: 'hidden', backgroundColor: '#eee', zIndex: 2 }}>
-                        <Image source={{ uri: post.userAvatar || DEFAULT_AVATAR_URL }} style={{ width: 18, height: 18, borderRadius: 9 }} />
-                      </View>
-                      {/* Live badge */}
-                      {post.isLive && (
-                        <View style={{ position: 'absolute', top: 2, right: 2, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, zIndex: 3, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#f39c12' }}>
-                          <Text style={{ color: '#e0245e', fontWeight: 'bold', fontSize: 10, marginRight: 2 }}>Live</Text>
-                          <Image source={{ uri: post.userAvatar || DEFAULT_AVATAR_URL }} style={{ width: 12, height: 12, borderRadius: 6 }} />
-                        </View>
-                      )}
-                    </View>
-                  </Marker>
-                );
+            {/* Viewer marker */}
+            {viewerCoords && (
+              <Marker
+                key="viewer"
+                coordinate={{ latitude: viewerCoords.lat, longitude: viewerCoords.lon }}
+                pinColor="#3498db"
+                title="You"
+              />
+            )}
+            {/* Streamer marker */}
+            {streamerCoords && (
+              <Marker
+                key="streamer"
+                coordinate={{ latitude: streamerCoords.lat, longitude: streamerCoords.lon }}
+                pinColor="#e0245e"
+                title={streamer?.userName || "Streamer"}
+              />
+            )}
+            {/* Route polyline */}
+            {routeCoords.length === 2 && (
+              <MapView.Polyline
+                coordinates={routeCoords}
+                strokeColor="#e0245e"
+                strokeWidth={4}
+              />
+            )}
+            {/* ...existing code for post markers... */}
+            {Object.entries(limitedLocationGroups).map(([key, postsAtLocation]) => {
+              // ...existing code...
+              // (keep post markers as before)
+              try {
+                const safePostsAtLocation = Array.isArray(postsAtLocation) ? postsAtLocation : [];
+                const post = safePostsAtLocation[0];
+                if (
+                  post &&
+                  isValidLatLon(post.lat, post.lon) &&
+                  typeof post.imageUrl === 'string' && post.imageUrl &&
+                  isFinite(Number(post.lat)) && isFinite(Number(post.lon))
+                ) {
+                  const handleMarkerPress = () => {
+                    if (isValidLatLon(post.lat, post.lon)) {
+                      setSelectedPosts(safePostsAtLocation);
+                    } else {
+                      console.warn('Invalid marker coordinates, cannot open modal');
+                    }
+                  };
+                  if (Platform.OS === 'android') {
+                    return (
+                      <Marker
+                        key={`post-${key}`}
+                        coordinate={{ latitude: Number(post.lat), longitude: Number(post.lon) }}
+                        pinColor="#ffa726"
+                        onPress={handleMarkerPress}
+                      />
+                    );
+                  } else {
+                    return (
+                      <Marker
+                        key={`post-${key}`}
+                        coordinate={{ latitude: Number(post.lat), longitude: Number(post.lon) }}
+                        onPress={handleMarkerPress}
+                      >
+                        <TouchableOpacity activeOpacity={0.9} style={styles.markerContainer} onPress={handleMarkerPress}>
+                          <View style={styles.postImageWrapper}>
+                            <Image source={{ uri: post.imageUrl }} style={styles.postImage} />
+                          </View>
+                          <View style={styles.postAvatarOutside}>
+                            <Image source={{ uri: post.userAvatar || DEFAULT_AVATAR_URL }} style={styles.postAvatarImgFixed} />
+                          </View>
+                        </TouchableOpacity>
+                      </Marker>
+                    );
+                  }
+                }
+              } catch (err) {
+                console.error('Error rendering marker:', err, key, postsAtLocation);
+                return null;
               }
               return null;
             })}
           </MapView>
-        )}
-        {error && <Text style={styles.errorText}>{error}</Text>}
-        
-        {/* Use My Location Button - bottom-left */}
-        {locationPermission === 'granted' && (
-          <TouchableOpacity 
-            style={styles.myLocationBtn} 
-            onPress={async () => {
-              try {
-                const location = await Location.getCurrentPositionAsync({
-                  accuracy: Location.Accuracy.High,
-                });
-                const region: Region = {
-                  latitude: location.coords.latitude,
-                  longitude: location.coords.longitude,
-                  latitudeDelta: 0.05,
-                  longitudeDelta: 0.05,
-                };
-                setMapRegion(region);
-                mapRef.current?.animateToRegion(region, 1000);
-                setCoords({ lat: location.coords.latitude, lon: location.coords.longitude });
-              } catch (error) {
-                console.error('Error getting current location:', error);
-              }
-            }}
-            activeOpacity={0.85}
-          >
-            <View style={styles.myLocationBtnInner}>
-              <Feather name="navigation" size={20} color="#fff" />
-            </View>
-          </TouchableOpacity>
-        )}
-
-        {/* Floating search button (bottom-right) - hide when search modal is open */}
-        {!showSearch && (
-          <TouchableOpacity style={styles.fab} onPress={() => setShowSearch(true)} activeOpacity={0.85}>
-            <View style={styles.fabInner}>
-              <Feather name="search" size={16} color="#fff" />
-            </View>
-          </TouchableOpacity>
-        )}
-        {/* Modal-style bottom rounded search bar shown when FAB pressed */}
-        <Modal visible={showSearch} transparent animationType="slide" onRequestClose={() => setShowSearch(false)}>
-          <View style={styles.modalOverlay}>
-            <Pressable style={styles.modalBackdrop} onPress={() => setShowSearch(false)} />
-            <View style={styles.modalContent} pointerEvents="box-none">
-              <View style={styles.searchModalWrapper}>
-                <Pressable onPress={() => {}} style={styles.searchBarTop}>
-                  <Feather name="search" size={18} color="#111" />
-                  <TextInput
-                    value={query}
-                    onChangeText={setQuery}
-                    placeholder="Where to?"
-                    placeholderTextColor="#666"
-                    style={styles.modalInput}
-                    returnKeyType="search"
-                    autoFocus
-                    onSubmitEditing={() => {
-                      // Only move the map to the searched location, do not navigate away
-                      doSearch();
-                      setShowSearch(false);
-                    }}
-                  />
-                  {query ? (
-                    <TouchableOpacity onPress={() => setQuery('')} style={styles.clearBtn}>
-                      <Feather name="x" size={16} color="#999" />
-                    </TouchableOpacity>
-                  ) : null}
-                </Pressable>
-              </View>
-            </View>
+        ) : (
+          <View style={styles.errorText}>
+            <Text style={{ color: '#c00', fontWeight: 'bold' }}>
+              No valid map data available. Please try again later.
+            </Text>
           </View>
-        </Modal>
-        {/* Modal for posts at selected location */}
-        <Modal visible={!!selectedPosts} transparent animationType="slide" onRequestClose={() => setSelectedPosts(null)}>
-          <View style={styles.postModalOverlay}> 
-            <Pressable style={styles.postModalBackdrop} onPress={() => setSelectedPosts(null)} />
-            <View style={styles.postModalContainer}> 
-              {selectedPosts && selectedPosts.length > 0 && (
-                <View style={styles.postModalContent}> 
-                  {/* Top pills with location info */}
-                  <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 12, gap: 8 }}>
-                    <View style={{ backgroundColor: '#fff', borderRadius: 20, paddingVertical: 6, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: '#eee' }}>
-                      <Feather name="map-pin" size={16} color="#f39c12" />
-                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#111' }}>
-                        {typeof selectedPosts[0]?.location === 'string' ? selectedPosts[0]?.location : selectedPosts[0]?.location?.name || 'Location'}
-                      </Text>
-                    </View>
-                  </View>
-                  
-                  {/* Post count */}
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#111', textAlign: 'center', paddingVertical: 8 }}>
-                    {selectedPosts.length} Post{selectedPosts.length > 1 ? 's' : ''}
-                  </Text>
-                  
-                  {/* Main post location info with icon */}
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' }}>
-                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#f5f5f5', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                      <Feather name="map-pin" size={20} color="#111" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 16, fontWeight: '700', color: '#111', marginBottom: 2 }}>
-                        {typeof selectedPosts[0]?.location === 'string' ? selectedPosts[0]?.location : selectedPosts[0]?.location?.name || 'Location'}
-                      </Text>
-                      {selectedPosts[0]?.location && typeof selectedPosts[0]?.location === 'object' && selectedPosts[0]?.location?.name && (
-                        <Text style={{ fontSize: 13, color: '#666', lineHeight: 18 }}>
-                          {selectedPosts[0]?.location?.name}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                  
-                  {/* Posts list */}
-                  <FlatList
-                    data={selectedPosts}
-                    key={`selectedPosts-${selectedPosts?.[0]?.id || ''}-${selectedPosts?.length}`}
-                    keyExtractor={item => item.id}
-                    style={{ maxHeight: 500 }}
-                    contentContainerStyle={{ paddingBottom: 24 }}
-                    renderItem={({ item }) => (
-                      <View style={{ backgroundColor: '#fff', borderRadius: 18, margin: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, elevation: 4, overflow: 'hidden' }}>
-                        {/* Post image at top */}
-                        <TouchableOpacity
-                          activeOpacity={0.95}
-                          onPress={() => {
-                            // Navigate to feed with postId and location
-                            const postId = item.id;
-                            let locationName = '';
-                            if (typeof item.location === 'string') locationName = item.location;
-                            else if (typeof item.location === 'object' && item.location?.name) locationName = item.location.name;
-                            if (locationName) {
-                              router.push(`/(tabs)/home?location=${encodeURIComponent(locationName)}&postId=${postId}`);
-                            } else {
-                              router.push(`/(tabs)/home?postId=${postId}`);
-                            }
-                          }}
-                        >
-                          <Image
-                            source={{ uri: item.imageUrl }}
-                            style={{ width: '100%', height: 340, backgroundColor: '#eee', borderRadius: 0, alignSelf: 'center' }}
-                            resizeMode="cover"
-                          />
-                        </TouchableOpacity>
-                        {/* Icons row */}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 14, gap: 18 }}>
-                          <TouchableOpacity
-                            onPress={() => {
-                              if (!modalLiked[item.id]) handleModalLike(item);
-                            }}
-                            disabled={modalLiked[item.id]}
-                            style={{ opacity: modalLiked[item.id] ? 0.5 : 1 }}
-                          >
-                            <Feather name="heart" size={24} color={modalLiked[item.id] ? "#e0245e" : "#222"} />
-                          </TouchableOpacity>
-                          <Feather name="message-circle" size={22} color="#222" />
-                          <TouchableOpacity onPress={() => handleModalShare(item)}>
-                            <Feather name="send" size={22} color="#222" />
-                          </TouchableOpacity>
-                          <Feather name="bookmark" size={22} color="#222" style={{ marginLeft: 'auto' }} />
-                        </View>
-                        {/* Likes count */}
-                        <Text style={{ fontWeight: '700', fontSize: 15, paddingHorizontal: 16, paddingTop: 4 }}>{(modalLikes[item.id] ?? item.likesCount ?? item.likes ?? 0).toLocaleString()} likes</Text>
-                        {/* Caption */}
-                        <View style={{ paddingHorizontal: 16, paddingTop: 6 }}>
-                          <Text style={{ color: '#333', fontSize: 15, marginTop: 2 }}>{item.caption}</Text>
-                        </View>
-                        {/* View all comments link */}
-                        <TouchableOpacity style={{ paddingHorizontal: 16, paddingTop: 8 }} onPress={() => setShowCommentsModal(item.id)}>
-                          <Text style={{ color: '#007aff', fontSize: 15, fontWeight: '500' }}>View all comments</Text>
-                        </TouchableOpacity>
-                        {/* Comment box at bottom */}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#eee', marginTop: 8 }}>
-                          <Image source={{ uri: item.userAvatar }} style={{ width: 32, height: 32, borderRadius: 16, marginRight: 8, backgroundColor: '#eee' }} />
-                          <TextInput
-                            style={{ flex: 1, backgroundColor: '#f5f5f5', borderRadius: 16, paddingHorizontal: 12, fontSize: 15, height: 36 }}
-                            placeholder="Add a comment..."
-                            placeholderTextColor="#999"
-                            value={modalComment[item.id] || ''}
-                            onChangeText={text => setModalComment(c => ({ ...c, [item.id]: text }))}
-                            returnKeyType="send"
-                            onSubmitEditing={() => handleModalComment(item)}
-                          />
-                          <TouchableOpacity
-                            onPress={() => handleModalComment(item)}
-                            style={{ marginLeft: 8, backgroundColor: '#007aff', borderRadius: 16, padding: 8 }}
-                            disabled={!modalComment[item.id] || !modalComment[item.id].trim()}
-                          >
-                            <Feather name="send" size={18} color="#fff" />
-                          </TouchableOpacity>
-                        </View>
-                        {/* Comments modal (Instagram style) */}
-                        {showCommentsModalId === item.id && (
-                          <Modal visible transparent animationType="slide" onRequestClose={() => setShowCommentsModal(null)}>
-                            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'flex-end' }}>
-                              <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 18, borderTopRightRadius: 18, maxHeight: '70%' }}>
-                                {/* @ts-ignore */}
-                                <CommentSection postId={item.id} currentAvatar={item.userAvatar} instagramStyle />
-                              </View>
-                            </View>
-                          </Modal>
-                        )}
-                      </View>
-                    )}
-                  />
-                </View>
-              )}
-            </View>
-          </View>
-        </Modal>
+        )}
+        {/* ...existing code for modals... */}
+        <PostLocationModal
+          visible={!!safeSelectedPosts.length}
+          posts={safeSelectedPosts}
+          onClose={() => setSelectedPosts(null)}
+          onImagePress={post => {
+            let locationName = '';
+            if (typeof post.location === 'string') {
+              locationName = post.location;
+            } else if (typeof post.location === 'object' && post.location?.name) {
+              locationName = post.location.name;
+            }
+            if (locationName) {
+              setSelectedPosts(null);
+              router.push({
+                pathname: '/(tabs)/home',
+                params: { location: locationName }
+              });
+            }
+          }}
+        />
       </View>
     </SafeAreaView>
   );
@@ -681,21 +554,98 @@ const styles = StyleSheet.create({
   
   /* Custom marker styles */
   markerContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  postImageWrapper: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
     borderWidth: 3,
-    borderColor: '#fff',
+    borderColor: '#ffa726',
     overflow: 'hidden',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
   },
-  markerAvatar: {
-    width: '100%',
-    height: '100%',
+  postImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+  },
+  postAvatarOutside: {
+    marginLeft: 4,
+    marginRight: 0,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 2,
+    borderColor: '#fff',
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  postAvatarImgFixed: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
+
+  /* Live stream marker styles */
+  liveMarkerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  liveBadgeNew: {
+    backgroundColor: '#e0245e',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+    marginRight: -8,
+    zIndex: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  liveText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  liveAvatarOutside: {
+    marginLeft: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#fff',
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  liveAvatarNew: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
 });

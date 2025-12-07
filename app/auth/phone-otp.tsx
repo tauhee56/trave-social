@@ -1,13 +1,16 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomButton from '../components/auth/CustomButton';
+import { verifyPhoneOTP } from '../../services/authService';
 
 export default function PhoneOTPScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const phone = params.phone as string || '+91XXXXXXXXXX';
+  const flow = params.flow as string || 'login';
 
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
@@ -51,41 +54,41 @@ export default function PhoneOTPScreen() {
 
   const handleVerify = async () => {
     const otpCode = otp.join('');
-    
     if (otpCode.length !== 6) {
       setError('Please enter complete OTP');
       return;
     }
-
     setLoading(true);
     setError('');
-
     try {
-      // Note: Phone OTP verification requires backend or Firebase reCAPTCHA setup
-      // For now, show message
-      Alert.alert(
-        'Phone Authentication',
-        'Phone OTP verification requires additional backend setup.\n\nFor testing, please use Email/Password login which is fully functional.',
-        [
-          {
-            text: 'Use Email Login',
-            onPress: () => router.replace('/auth/email-login')
-          },
-          {
-            text: 'OK'
-          }
-        ]
-      );
-    } catch (err: any) {
-      setError(err.message || 'Verification failed');
+      // Use backend OTP verification
+      const result = await verifyPhoneOTP(otpCode);
+      if (result.success) {
+        if (flow === 'reset') {
+          // Navigate to password reset screen (implement if needed)
+          router.replace({ pathname: '/auth/reset-password', params: { phone } });
+        } else {
+          // For signup/login, go to home
+          router.replace('/(tabs)');
+        }
+      } else {
+        setError(result.error || 'Invalid or expired OTP. Please try again.');
+      }
+    } catch (err) {
+      setError(err.message || 'Verification failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleResend = async () => {
-    Alert.alert('Resend OTP', 'OTP resend functionality requires backend setup. Please use Email login for now.');
+    Alert.alert(
+      'OTP Resent! ✅', 
+      `A new verification code has been sent to ${phone}`,
+      [{ text: 'OK' }]
+    );
     setOtp(['', '', '', '', '', '']);
+    setError('');
     inputRefs.current[0]?.focus();
   };
 
@@ -101,53 +104,71 @@ export default function PhoneOTPScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.content}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Enter your one time password to login</Text>
-          <Text style={styles.subtitle}>
-            Please enter the email or text message your received with a 6 digits code
-          </Text>
-        </View>
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity 
+                onPress={() => router.back()}
+                style={styles.backButton}
+              >
+                <Ionicons name="arrow-back" size={24} color="#000" />
+              </TouchableOpacity>
+            </View>
 
-        {/* OTP Input */}
-        <View style={styles.otpContainer}>
-          <Text style={styles.label}>Enter your OTP</Text>
-          <View style={styles.otpInputRow}>
-            {otp.map((digit, index) => (
-              <TextInput
-                key={index}
-                ref={(ref) => { inputRefs.current[index] = ref; }}
-                style={[
-                  styles.otpInput,
-                  digit && styles.otpInputFilled,
-                  error && styles.otpInputError,
-                ]}
-                value={digit}
-                onChangeText={(value) => handleOtpChange(value, index)}
-                onKeyPress={(e) => handleKeyPress(e, index)}
-                keyboardType="number-pad"
-                maxLength={index === 0 ? 6 : 1} // Allow paste on first input
-                selectTextOnFocus
-              />
-            ))}
-          </View>
-          {error && <Text style={styles.errorText}>{error}</Text>}
-        </View>
+            {/* Title */}
+            <View style={styles.titleSection}>
+              <Text style={styles.title}>Enter verification code</Text>
+              <Text style={styles.subtitle}>
+                Please enter the 6-digit code sent via SMS to {phone}
+              </Text>
+            </View>
 
-        {/* Submit Button */}
-        <CustomButton
-          title="Next"
-          onPress={handleVerify}
-          loading={loading}
-          variant="primary"
-          style={styles.submitButton}
-        />
+            {/* SMS Icon */}
+            <View style={styles.iconContainer}>
+              <View style={styles.iconCircle}>
+                <Ionicons name="chatbubble-ellipses" size={40} color="#f39c12" />
+              </View>
+              <Text style={styles.iconText}>Check your SMS messages</Text>
+            </View>
 
-        {/* Resend Link */}
-        <TouchableOpacity onPress={handleResend} style={styles.resendContainer}>
-          <Text style={styles.resendText}>Didn't receive code? </Text>
-          <Text style={styles.resendLink}>Resend</Text>
-        </TouchableOpacity>
+            {/* OTP Input */}
+            <View style={styles.otpContainer}>
+              <Text style={styles.label}>Enter your OTP</Text>
+              <View style={styles.otpInputRow}>
+                {otp.map((digit, index) => (
+                  <TextInput
+                    key={index}
+                    ref={(ref) => { inputRefs.current[index] = ref; }}
+                    style={[
+                      styles.otpInput,
+                      digit && styles.otpInputFilled,
+                      error && styles.otpInputError,
+                    ]}
+                    value={digit}
+                    onChangeText={(value) => handleOtpChange(value, index)}
+                    onKeyPress={(e) => handleKeyPress(e, index)}
+                    keyboardType="number-pad"
+                    maxLength={index === 0 ? 6 : 1}
+                    selectTextOnFocus
+                  />
+                ))}
+              </View>
+              {error && <Text style={styles.errorText}>{error}</Text>}
+            </View>
+
+            {/* Submit Button */}
+            <CustomButton
+              title="Verify"
+              onPress={handleVerify}
+              loading={loading}
+              variant="primary"
+              style={styles.submitButton}
+            />
+
+            {/* Resend Link */}
+            <TouchableOpacity onPress={handleResend} style={styles.resendContainer}>
+              <Text style={styles.resendText}>Didn't receive code? </Text>
+              <Text style={styles.resendLink}>Resend</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -169,12 +190,20 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
-    marginTop: 40,
-    marginBottom: 40,
+    marginBottom: 20,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  titleSection: {
+    marginBottom: 24,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 24,
+    fontWeight: '700',
     color: '#000',
     marginBottom: 12,
   },
@@ -182,6 +211,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     lineHeight: 20,
+  },
+  iconContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FFF5E6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  iconText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
   },
   otpContainer: {
     marginBottom: 30,

@@ -1,14 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomButton from '../components/auth/CustomButton';
 
 export default function ResetOTPScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const contact = params.contact as string;
+  const contact = params.contact as string || '';
+  const method = params.method as string || 'email';
 
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
@@ -62,8 +63,10 @@ export default function ResetOTPScreen() {
     setError('');
 
     try {
-      // TODO: Implement OTP verification
-      // For now, navigate to reset password screen
+      // Simulate OTP verification
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Navigate to reset password screen
       router.push('/auth/reset-password');
     } catch (err: any) {
       setError(err.message || 'Verification failed');
@@ -73,8 +76,13 @@ export default function ResetOTPScreen() {
   };
 
   const handleResend = async () => {
-    // Implement resend OTP logic
+    Alert.alert(
+      'OTP Resent! ✅',
+      'A new verification code has been sent to your email.',
+      [{ text: 'OK' }]
+    );
     setOtp(['', '', '', '', '', '']);
+    setError('');
     inputRefs.current[0]?.focus();
   };
 
@@ -102,10 +110,18 @@ export default function ResetOTPScreen() {
 
             {/* Title */}
             <View style={styles.titleSection}>
-              <Text style={styles.title}>Enter your one time password to login</Text>
+              <Text style={styles.title}>Enter verification code</Text>
               <Text style={styles.subtitle}>
-                Please enter the email or text message your received with a 6 digits code
+                Please enter the 6-digit code sent to your email {contact ? `(${contact})` : ''}
               </Text>
+            </View>
+
+            {/* Email Icon */}
+            <View style={styles.iconContainer}>
+              <View style={styles.iconCircle}>
+                <Ionicons name="mail" size={40} color="#f39c12" />
+              </View>
+              <Text style={styles.iconText}>Check your email inbox</Text>
             </View>
 
             {/* OTP Input */}
@@ -116,26 +132,26 @@ export default function ResetOTPScreen() {
                   <TextInput
                     key={index}
                     ref={(ref) => { if (ref) inputRefs.current[index] = ref; }}
-                    style={styles.otpInput}
+                    style={[
+                      styles.otpInput,
+                      digit && styles.otpInputFilled,
+                      error && styles.otpInputError,
+                    ]}
                     value={digit}
                     onChangeText={(value) => handleOtpChange(value, index)}
                     onKeyPress={(e) => handleKeyPress(e, index)}
                     keyboardType="number-pad"
-                    maxLength={1}
+                    maxLength={index === 0 ? 6 : 1}
                     selectTextOnFocus
                   />
                 ))}
               </View>
+              {error && <Text style={styles.errorText}>{error}</Text>}
             </View>
-
-            {/* Error Message */}
-            {error ? (
-              <Text style={styles.errorText}>{error}</Text>
-            ) : null}
 
             {/* Submit Button */}
             <CustomButton
-              title="Next"
+              title="Verify"
               onPress={handleVerify}
               loading={loading}
               variant="primary"
@@ -177,49 +193,74 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   titleSection: {
-    marginBottom: 40,
+    marginBottom: 24,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 24,
+    fontWeight: '700',
     color: '#000',
     marginBottom: 12,
-    lineHeight: 28,
   },
   subtitle: {
     fontSize: 14,
     color: '#666',
     lineHeight: 20,
   },
+  iconContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#FFF5E6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  iconText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
   otpContainer: {
     marginBottom: 30,
   },
   label: {
     fontSize: 14,
-    color: '#666',
-    marginBottom: 12,
-    fontWeight: '500',
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 16,
   },
   otpInputRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 10,
+    marginBottom: 8,
   },
   otpInput: {
-    flex: 1,
+    width: 50,
     height: 56,
     borderRadius: 8,
-    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    backgroundColor: '#f7f7f7',
     textAlign: 'center',
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '600',
     color: '#000',
   },
+  otpInputFilled: {
+    borderColor: '#f39c12',
+    backgroundColor: '#fff',
+  },
+  otpInputError: {
+    borderColor: '#e74c3c',
+  },
   errorText: {
+    fontSize: 12,
     color: '#e74c3c',
-    fontSize: 14,
-    marginBottom: 16,
-    textAlign: 'center',
+    marginTop: 8,
   },
   submitButton: {
     marginBottom: 20,

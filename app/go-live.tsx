@@ -1,453 +1,861 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Camera, CameraView } from 'expo-camera';
+import { Camera } from 'expo-camera';
+import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
-import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Image, PermissionsAndroid, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import MapView from 'react-native-maps';
+import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  BackHandler,
+  Dimensions,
+  FlatList,
+  Image,
+  PermissionsAndroid,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { AGORA_CONFIG, generateChannelName, getAgoraToken } from '../config/agora';
-import { db } from '../config/firebase';
-import { getCurrentUser } from '../lib/firebaseHelpers';
-import { useUserProfile } from './hooks/useUserProfile';
+import { AGORA_CONFIG } from '../config/agora';
+import { auth, db } from '../config/firebase';
 
-// Default avatar from Firebase Storage
+
+  // Utility: sanitize coordinates for MapView/Marker
+  function getSafeCoordinate(coord: { latitude?: number; longitude?: number } | null, fallback = { latitude: 51.5074, longitude: -0.1278 }) {
+    const lat = typeof coord?.latitude === 'number' && isFinite(coord.latitude) ? coord.latitude : fallback.latitude;
+    const lon = typeof coord?.longitude === 'number' && isFinite(coord.longitude) ? coord.longitude : fallback.longitude;
+    return { latitude: lat, longitude: lon };
+  }
+
+const { width, height } = Dimensions.get('window');
 const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
 
-// Use runtime requires for native modules so we can fallback gracefully
+// Import Agora SDK
 let RtcEngine: any = null;
+let RtcSurfaceView: any = null;
 let ChannelProfileType: any = null;
 let ClientRoleType: any = null;
-let VideoCanvas: any = null;
+let VideoSourceType: any = null;
+let RenderModeType: any = null;
 let AGORA_AVAILABLE = false;
 
 try {
   const AgoraSDK = require('react-native-agora');
-  RtcEngine = AgoraSDK.default?.createAgoraRtcEngine || AgoraSDK.createAgoraRtcEngine;
+  RtcEngine = AgoraSDK.createAgoraRtcEngine || AgoraSDK.default?.createAgoraRtcEngine;
+  RtcSurfaceView = AgoraSDK.RtcSurfaceView;
   ChannelProfileType = AgoraSDK.ChannelProfileType;
   ClientRoleType = AgoraSDK.ClientRoleType;
-  VideoCanvas = AgoraSDK.VideoCanvas;
+  VideoSourceType = AgoraSDK.VideoSourceType;
+  RenderModeType = AgoraSDK.RenderModeType;
   AGORA_AVAILABLE = true;
 } catch (e) {
-  // Silently handle - we'll show UI message to user
   AGORA_AVAILABLE = false;
 }
 
-export default function GoLive() {
+interface Comment {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  text: string;
+  timestamp: any;
+}
+
+interface Viewer {
+  id: string;
+  name: string;
+  avatar: string;
+}
+
+export default function GoLiveScreen() {
   const router = useRouter();
-  const currentUser = getCurrentUser();
-  const { profile: userProfile } = useUserProfile(currentUser?.uid);
-  
-  const [input, setInput] = useState("");
-  const [comments, setComments] = useState<any[]>([]);
-  const [isLive, setIsLive] = useState(false);
-  const [viewerCount, setViewerCount] = useState(0);
-  const [channelName, setChannelName] = useState('');
+  const agoraEngineRef = useRef<any>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
-  const [showMap, setShowMap] = useState(false);
-  const [liveStreamId, setLiveStreamId] = useState<string | null>(null);
-  const [mapType, setMapType] = useState<'standard' | 'satellite'>('standard');
-  
-  const engineRef = useRef<any>(null);
-  const uidRef = useRef(Math.floor(Math.random() * 100000));
+  const [channelName, setChannelName] = useState('');
+  const [streamTitle, setStreamTitle] = useState('');
+
+  // Refs to always have latest values for cleanup
+  const isStreamingRef = useRef(isStreaming);
+  const channelNameRef = useRef(channelName);
 
   useEffect(() => {
-    if (!currentUser) {
-      Alert.alert('Error', 'Please login to go live');
-      router.back();
-      return;
-    }
+    isStreamingRef.current = isStreaming;
+  }, [isStreaming]);
 
-    // Generate channel name for this stream
-    const channel = generateChannelName(currentUser.uid);
-    setChannelName(channel);
+  useEffect(() => {
+    channelNameRef.current = channelName;
+  }, [channelName]);
 
-    // Request camera and microphone permissions
-    requestPermissions();
-
+  // Cleanup: End stream if unmounting while streaming (always use latest refs)
+  useEffect(() => {
     return () => {
-      // Cleanup on unmount
-      stopLiveStream();
+      const channel = channelNameRef.current;
+      if (channel) {
+        // Always mark stream as ended in Firebase
+        const streamRef = doc(db, 'liveStreams', channel);
+        setDoc(streamRef, {
+          isLive: false,
+          endedAt: serverTimestamp()
+        }, { merge: true });
+        // Leave Agora channel if needed
+        if (agoraEngineRef.current) {
+          agoraEngineRef.current.leaveChannel();
+          agoraEngineRef.current.release();
+          agoraEngineRef.current = null;
+        }
+      }
     };
   }, []);
+  // ...existing code...
+  
+  // User state
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  
+  // Controls state
+  const [isMuted, setIsMuted] = useState(false);
+  const [isCameraOn, setIsCameraOn] = useState(true);
+  const [isUsingFrontCamera, setIsUsingFrontCamera] = useState(true);
+  
+  // Location state
+  const [location, setLocation] = useState<{latitude: number; longitude: number} | null>(null);
+  
+  // Comments state
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  // Defensive: always use array
+  const safeComments = Array.isArray(comments) ? comments : [];
 
-  const requestPermissions = async () => {
+  // Viewers state
+  const [viewers, setViewers] = useState<Viewer[]>([]);
+  const [viewerCount, setViewerCount] = useState(0);
+  // Defensive: always use array
+  const safeViewers = Array.isArray(viewers) ? viewers : [];
+
+  // UI State - buttons toggle visibility
+  const [showComments, setShowComments] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [isMapFullScreen, setIsMapFullScreen] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
+
+  // Get current user data
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (auth.currentUser) {
+        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        if (userDoc.exists()) {
+          setCurrentUser({ id: auth.currentUser.uid, ...userDoc.data() });
+        }
+      }
+    };
+    fetchUser();
+    // Initialize with empty arrays - real data comes from Firebase
+    setComments([]);
+    setViewers([]);
+    setViewerCount(0);
+  }, []);
+
+  // Get location
+  useEffect(() => {
+    const getLocation = async () => {
+      try {
+        const loc = await Location.getCurrentPositionAsync({});
+        setLocation({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        });
+      } catch (error) {
+        console.log('Error getting location:', error);
+      }
+    };
+    getLocation();
+  }, []);
+
+  // Handle back button
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isStreamingRef.current) {
+        Alert.alert(
+          'End Stream',
+          'Do you want to end the live stream?',
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => {} },
+            {
+              text: 'End',
+              style: 'destructive',
+              onPress: async () => {
+                const channel = channelNameRef.current;
+                if (channel) {
+                  const streamRef = doc(db, 'liveStreams', channel);
+                  await setDoc(streamRef, {
+                    isLive: false,
+                    endedAt: serverTimestamp()
+                  }, { merge: true });
+                  if (agoraEngineRef.current) {
+                    await agoraEngineRef.current.leaveChannel();
+                    agoraEngineRef.current.release();
+                    agoraEngineRef.current = null;
+                  }
+                }
+                setIsStreaming(false);
+                router.back();
+              }
+            }
+          ]
+        );
+        return true;
+      }
+      return false;
+    });
+    return () => backHandler.remove();
+  }, [channelName]);
+
+  // Initialize Agora engine
+  const initAgoraEngine = useCallback(async () => {
+    if (!AGORA_AVAILABLE || !RtcEngine) {
+      console.log('Agora SDK not available');
+      return null;
+    }
+    
     try {
+      console.log('Initializing Agora engine...');
+      
+      // Request permissions first (Android)
       if (Platform.OS === 'android') {
-        const cameraGranted = await PermissionsAndroid.request(
+        const granted = await PermissionsAndroid.requestMultiple([
           PermissionsAndroid.PERMISSIONS.CAMERA,
-          {
-            title: 'Camera Permission',
-            message: 'This app needs access to your camera for live streaming',
-            buttonPositive: 'OK',
-          }
-        );
-        const audioGranted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-          {
-            title: 'Microphone Permission',
-            message: 'This app needs access to your microphone for live streaming',
-            buttonPositive: 'OK',
-          }
-        );
+        ]);
         
-        if (cameraGranted !== PermissionsAndroid.RESULTS.GRANTED || 
-            audioGranted !== PermissionsAndroid.RESULTS.GRANTED) {
-          Alert.alert('Permissions Required', 'Camera and microphone permissions are required for live streaming');
+        if (
+          granted['android.permission.CAMERA'] !== PermissionsAndroid.RESULTS.GRANTED ||
+          granted['android.permission.RECORD_AUDIO'] !== PermissionsAndroid.RESULTS.GRANTED
+        ) {
+          console.log('Camera/Audio permissions denied');
+          Alert.alert('Permission Required', 'Camera and microphone permissions are required for live streaming.');
+          return null;
         }
       } else {
-        const { status: cameraStatus } = await Camera.requestCameraPermissionsAsync();
-        const { status: audioStatus } = await Camera.requestMicrophonePermissionsAsync();
-        
-        if (cameraStatus !== 'granted' || audioStatus !== 'granted') {
-          Alert.alert('Permissions Required', 'Camera and microphone permissions are required for live streaming');
+        // iOS - use expo-camera for permissions
+        const { status } = await Camera.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'Camera permission is required for live streaming.');
+          return null;
         }
       }
-    } catch (error) {
-      console.warn('Permission request error:', error);
-    }
-  };
-
-  // Subscribe to live stream comments and viewer count
-  useEffect(() => {
-    if (!liveStreamId) return;
-
-    // Subscribe to comments
-    const commentsRef = collection(db, 'liveStreams', liveStreamId, 'comments');
-    const commentsQuery = query(commentsRef, orderBy('createdAt', 'asc'));
-    
-    const unsubComments = onSnapshot(commentsQuery, (snapshot) => {
-      const newComments = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setComments(newComments);
-    });
-
-    // Subscribe to viewer count
-    const streamRef = doc(db, 'liveStreams', liveStreamId);
-    const unsubStream = onSnapshot(streamRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setViewerCount(snapshot.data()?.viewerCount || 0);
-      }
-    });
-
-    return () => {
-      unsubComments();
-      unsubStream();
-    };
-  }, [liveStreamId]);
-
-  const initializeAgora = async () => {
-    if (!currentUser) {
-      Alert.alert('Error', 'Please login to go live');
-      return false;
-    }
-    
-    if (!AGORA_AVAILABLE) {
-      Alert.alert(
-        'Live Streaming Unavailable', 
-        'This feature requires a development build. Run:\nnpx expo run:android\nor\nnpx expo run:ios',
-        [{ text: 'OK' }]
-      );
-      return false;
-    }
-
-    try {
-      setIsInitializing(true);
       
-      // Create live stream document in Firebase
-      const streamData = {
-        userId: currentUser.uid,
-        userName: currentUser.displayName || 'User',
-        userAvatar: currentUser.photoURL || DEFAULT_AVATAR_URL,
-        channelName: channelName,
-        startedAt: serverTimestamp(),
-        viewerCount: 0,
-        isLive: true,
-      };
-      
-      const streamRef = await addDoc(collection(db, 'liveStreams'), streamData);
-      setLiveStreamId(streamRef.id);
-      
-      // Create Agora engine instance
       const engine = RtcEngine();
-      engineRef.current = engine;
+      agoraEngineRef.current = engine;
 
-      // Initialize the engine
       await engine.initialize({
         appId: AGORA_CONFIG.appId,
-        channelProfile: ChannelProfileType.ChannelProfileLiveBroadcasting,
+        channelProfile: ChannelProfileType?.ChannelProfileLiveBroadcasting,
       });
 
+      // Set role to broadcaster for preview
+      await engine.setClientRole(ClientRoleType?.ClientRoleBroadcaster);
+      
       // Enable video
       await engine.enableVideo();
       
-      // Set client role as broadcaster
-      await engine.setClientRole(ClientRoleType.ClientRoleBroadcaster);
+      // Set video encoder configuration for higher quality and larger stream
+      await engine.setVideoEncoderConfiguration({
+        dimensions: { width: 1280, height: 720 }, // Landscape HD
+        frameRate: 30,
+        bitrate: 2200,
+        orientationMode: 1, // Adaptive
+      });
+      
+      // Enable local video
+      await engine.enableLocalVideo(true);
+      
+      // Start the camera preview
+      await engine.startPreview();
+      
+      console.log('Camera preview started successfully');
+      setIsCameraReady(true);
 
-      // Get token (null for development, or from your token server for production)
-      const token = await getAgoraToken(channelName, uidRef.current);
+      engine.addListener('onJoinChannelSuccess', (_connection: any, _elapsed: number) => {
+        console.log('Host joined channel');
+        setIsStreaming(true);
+        setIsInitializing(false);
+      });
+
+      engine.addListener('onError', (err: any, msg: string) => {
+        console.error('Agora error:', err, msg);
+      });
+
+      return engine;
+    } catch (error) {
+      console.error('Error initializing Agora:', error);
+      setIsCameraReady(false);
+      return null;
+    }
+  }, []);
+
+  // Initialize camera preview on mount
+  useEffect(() => {
+    if (AGORA_AVAILABLE && !agoraEngineRef.current) {
+      initAgoraEngine();
+    }
+    
+    return () => {
+      // Don't release engine on unmount if we're still streaming
+      if (agoraEngineRef.current && !isStreaming) {
+        agoraEngineRef.current.stopPreview();
+        agoraEngineRef.current.release();
+        agoraEngineRef.current = null;
+      }
+    };
+  }, []);
+
+  // Start streaming
+  const handleGoLive = async () => {
+    if (!streamTitle.trim()) {
+      Alert.alert('Error', 'Please enter a stream title');
+      return;
+    }
+
+    setIsInitializing(true);
+
+    try {
+      // Use existing engine or initialize new one
+      let engine = agoraEngineRef.current;
+      if (!engine && AGORA_AVAILABLE) {
+        engine = await initAgoraEngine();
+      }
+      
+      if (!engine) {
+        // Demo mode - no Agora available
+        console.log('Running in demo mode');
+        setIsStreaming(true);
+        setIsInitializing(false);
+        return;
+      }
+      
+      const channel = `live_${auth.currentUser?.uid}_${Date.now()}`;
+      setChannelName(channel);
+
+      // Create stream document in Firebase
+      const streamRef = doc(db, 'liveStreams', channel);
+      await setDoc(streamRef, {
+        hostId: auth.currentUser?.uid,
+        hostName: currentUser?.displayName || currentUser?.username || 'Anonymous',
+        hostAvatar: currentUser?.avatar || currentUser?.profileImage || '',
+        title: streamTitle,
+        channelName: channel,
+        viewerCount: 0,
+        isLive: true,
+        location: location,
+        startedAt: serverTimestamp(),
+      });
+
+      // Set as broadcaster
+      await engine.setClientRole(ClientRoleType?.ClientRoleBroadcaster);
 
       // Join channel
-      await engine.joinChannel(token, channelName, uidRef.current, {
-        clientRoleType: ClientRoleType.ClientRoleBroadcaster,
+      await engine.joinChannel('', channel, auth.currentUser?.uid || 0, {
+        clientRoleType: ClientRoleType?.ClientRoleBroadcaster,
+        publishMicrophoneTrack: true,
       });
 
-      // Start preview
-      await engine.startPreview();
-
-      setIsLive(true);
-      setIsInitializing(false);
-      
-      return true;
-    } catch (error: any) {
-      console.error('Error initializing Agora:', error);
-      Alert.alert('Error', 'Failed to start live stream: ' + (error?.message || 'Unknown error'));
-      setIsInitializing(false);
-      return false;
-    }
-  };
-
-  const stopLiveStream = async () => {
-    if (engineRef.current) {
-      try {
-        await engineRef.current.leaveChannel();
-        await engineRef.current.stopPreview();
-        engineRef.current.release();
-        engineRef.current = null;
-      } catch (error) {
-        console.error('Error stopping stream:', error);
-      }
-    }
-    
-    // Update Firebase document
-    if (liveStreamId) {
-      try {
-        const streamRef = doc(db, 'liveStreams', liveStreamId);
-        await updateDoc(streamRef, {
-          isLive: false,
-          endedAt: serverTimestamp()
-        });
-        
-        // Optionally delete after some time or keep for analytics
-        // await deleteDoc(streamRef);
-      } catch (error) {
-        console.error('Error updating stream:', error);
-      }
-    }
-    
-    setIsLive(false);
-    setLiveStreamId(null);
-  };
-
-  const handleGoLive = async () => {
-    if (isLive) {
-      // Stop streaming
-      await stopLiveStream();
-      Alert.alert('Stream Ended', 'Your live stream has ended', [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
-    } else {
-      // Start streaming
-      const success = await initializeAgora();
-      if (success) {
-        Alert.alert('Live', 'You are now live!');
-      }
-    }
-  };
-
-  const handleSend = async () => {
-    if (!input.trim() || !liveStreamId || !isLive || !currentUser) return;
-    
-    try {
-      const commentsRef = collection(db, 'liveStreams', liveStreamId, 'comments');
-      await addDoc(commentsRef, {
-        userId: currentUser.uid,
-        userName: currentUser.displayName || 'User',
-        userAvatar: currentUser.photoURL || DEFAULT_AVATAR_URL,
-        text: input.trim(),
-        createdAt: serverTimestamp()
+      // Listen to comments (limit to last 50 for performance)
+      const commentsRef = collection(db, 'liveStreams', channel, 'comments');
+      const commentsQuery = query(commentsRef, orderBy('timestamp', 'desc'));
+      const unsubComments = onSnapshot(commentsQuery, (snapshot) => {
+        const newComments = snapshot.docs.slice(0, 50).map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Comment[];
+        setComments(newComments.reverse());
       });
-      setInput("");
+
+      // Listen to viewers (limit to last 50 for performance)
+      const viewersRef = collection(db, 'liveStreams', channel, 'viewers');
+      const unsubViewers = onSnapshot(viewersRef, (snapshot) => {
+        const viewersList = snapshot.docs.slice(0, 50).map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Viewer[];
+        setViewers(viewersList);
+        setViewerCount(viewersList.length);
+      });
+
+      // Cleanup listeners on unmount
+      return () => {
+        unsubComments();
+        unsubViewers();
+      };
+
     } catch (error) {
-      console.error('Error sending comment:', error);
-      Alert.alert('Error', 'Failed to send comment');
+      console.error('Error starting stream:', error);
+      // Fallback to demo mode
+      setIsStreaming(true);
+      setIsInitializing(false);
     }
   };
 
-  return (
-    <View style={styles.container}>
-      {/* Full Screen Video Background */}
-      <View style={styles.videoContainer}>
-        {!AGORA_AVAILABLE ? (
-          <Image 
-            source={{ uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=60' }} 
-            style={styles.videoBackground}
-          />
-        ) : isInitializing ? (
-          <View style={styles.videoBackground}>
-            <ActivityIndicator size="large" color="#fff" />
-          </View>
-        ) : isLive ? (
-          permissionsGranted ? (
-            <CameraView style={styles.videoBackground} facing="back">
-              <View style={{ flex: 1, backgroundColor: 'transparent' }} />
-            </CameraView>
-          ) : (
-            <View style={styles.videoBackground}>
-              <Text style={{ color: '#fff', textAlign: 'center', marginTop: 40, fontSize: 18 }}>Camera/Mic permission denied</Text>
-              <Image source={{ uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=60' }} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, opacity: 0.3 }} />
-            </View>
-          )
-        ) : (
-          <Image 
-            source={{ uri: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=60' }} 
-            style={styles.videoBackground}
-          />
-        )}
-        
-        {/* Dark overlay */}
-        <View style={styles.overlay} />
-      </View>
+  // End streaming
+  const handleEndStream = async () => {
+    Alert.alert(
+      'End Stream',
+      'Are you sure you want to end the live stream?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'End',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (agoraEngineRef.current) {
+                await agoraEngineRef.current.leaveChannel();
+                agoraEngineRef.current.release();
+                agoraEngineRef.current = null;
+              }
 
-      {/* Top Header with User Info */}
-      <SafeAreaView style={styles.topOverlay} edges={["top"]}>
-        <View style={styles.topHeader}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
-          
-          <View style={styles.userInfo}>
-            <Image source={{ uri: userProfile?.avatar || DEFAULT_AVATAR_URL }} style={styles.avatar} />
-            <View style={styles.userDetails}>
-              <Text style={styles.username}>{userProfile?.name || 'User'}</Text>
-              {isLive && (
-                <View style={styles.liveIndicator}>
-                  <View style={styles.liveBadge}>
-                    <Text style={styles.liveText}>LIVE</Text>
-                  </View>
-                  <Text style={styles.viewerCount}>{viewerCount} viewers</Text>
-                </View>
-              )}
-            </View>
-          </View>
+              if (channelName) {
+                await deleteDoc(doc(db, 'liveStreams', channelName));
+              }
 
-          <TouchableOpacity onPress={() => {
-            if (isLive) {
-              Alert.alert('End Stream', 'Are you sure?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'End', style: 'destructive', onPress: () => { stopLiveStream(); router.back(); } }
-              ]);
-            } else {
+              setIsStreaming(false);
+              router.back();
+            } catch (error) {
+              console.error('Error ending stream:', error);
               router.back();
             }
-          }} style={styles.closeButton}>
-            <Text style={styles.closeIcon}>×</Text>
+          },
+        },
+      ]
+    );
+  };
+
+  // Toggle mute
+  const toggleMute = () => {
+    if (agoraEngineRef.current) {
+      agoraEngineRef.current.muteLocalAudioStream(!isMuted);
+    }
+    setIsMuted(!isMuted);
+  };
+
+  // Toggle camera
+  const toggleCamera = () => {
+    if (agoraEngineRef.current) {
+      agoraEngineRef.current.enableLocalVideo(!isCameraOn);
+    }
+    setIsCameraOn(!isCameraOn);
+  };
+
+  // Switch camera
+  const switchCamera = () => {
+    if (agoraEngineRef.current) {
+      agoraEngineRef.current.switchCamera();
+    }
+    setIsUsingFrontCamera(!isUsingFrontCamera);
+  };
+
+  // Send comment
+  const handleSendComment = async () => {
+    if (!newComment.trim()) return;
+
+    if (channelName) {
+      try {
+        const commentsRef = collection(db, 'liveStreams', channelName, 'comments');
+        await addDoc(commentsRef, {
+          userId: auth.currentUser?.uid,
+          userName: currentUser?.displayName || currentUser?.username || 'Anonymous',
+          userAvatar: currentUser?.avatar || currentUser?.profileImage || '',
+          text: newComment.trim(),
+          timestamp: serverTimestamp(),
+        });
+      } catch (error) {
+        console.error('Error sending comment:', error);
+      }
+    }
+    setNewComment('');
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (agoraEngineRef.current) {
+        agoraEngineRef.current.leaveChannel();
+        agoraEngineRef.current.release();
+      }
+    };
+  }, []);
+
+  // Pre-stream setup screen
+  if (!isStreaming && !isInitializing) {
+    return (
+      <View style={styles.container}>
+        {/* Camera Preview Background */}
+        <View style={styles.previewContainer}>
+          {AGORA_AVAILABLE && isCameraReady && RtcSurfaceView ? (
+            <RtcSurfaceView
+              style={styles.preview}
+              canvas={{
+                uid: 0,
+                sourceType: VideoSourceType?.VideoSourceCamera,
+                renderMode: RenderModeType?.RenderModeFit,
+              }}
+            />
+          ) : (
+            <View style={[styles.preview, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}> 
+              {!isCameraReady && AGORA_AVAILABLE ? (
+                <>
+                  <ActivityIndicator size="large" color="#fff" />
+                  <Text style={{ color: '#fff', marginTop: 10 }}>Starting camera...</Text>
+                </>
+              ) : (
+                <Image
+                  source={{ uri: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=800&q=60' }}
+                  style={styles.preview}
+                />
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Setup Overlay */}
+        <SafeAreaView style={styles.setupOverlay} edges={['top', 'bottom']}>
+          {/* Header */}
+          <View style={styles.setupHeader}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+              <Ionicons name="close" size={22} color="#000" />
+            </TouchableOpacity>
+            <Text style={styles.setupTitle}>Go Live</Text>
+            <View style={{ width: 36 }} />
+          </View>
+
+          {/* Bottom Setup */}
+          <View style={styles.setupBottom}>
+            <View style={styles.titleInputContainer}>
+              <TextInput
+                style={styles.titleInput}
+                placeholder="What's your stream about?"
+                placeholderTextColor="rgba(255,255,255,0.6)"
+                value={streamTitle}
+                onChangeText={setStreamTitle}
+                maxLength={100}
+              />
+            </View>
+
+            <TouchableOpacity style={styles.goLiveBtn} onPress={handleGoLive}>
+              <Text style={styles.goLiveBtnText}>GO LIVE</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  // Full screen map view
+  if (isMapFullScreen) {
+    return (
+      <View style={styles.container}>
+        <MapView
+          style={StyleSheet.absoluteFillObject}
+          initialRegion={{
+            ...getSafeCoordinate(location),
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          }}
+          showsUserLocation
+          loadingEnabled={true}
+          loadingIndicatorColor="#00c853"
+          liteMode={false}
+          cacheEnabled={true}
+        >
+          <Marker coordinate={getSafeCoordinate(location)}>
+            <View style={styles.mapMarker}>
+              <Image
+                source={{ uri: currentUser?.avatar || currentUser?.profileImage || DEFAULT_AVATAR_URL }}
+                style={styles.mapMarkerAvatar}
+              />
+            </View>
+          </Marker>
+        </MapView>
+
+        {/* Top Header on Map */}
+        <SafeAreaView style={styles.mapTopOverlay} edges={['top']}>
+          <View style={styles.mapTopHeader}>
+            <View style={styles.hostPill}>
+              <Image
+                source={{ uri: currentUser?.avatar || currentUser?.profileImage || DEFAULT_AVATAR_URL }}
+                style={styles.hostAvatarSmall}
+              />
+              <Text style={styles.hostNameText}>{currentUser?.displayName || currentUser?.username || 'You'}</Text>
+              <View style={styles.greenDot} />
+            </View>
+            
+            <TouchableOpacity style={styles.endBtn} onPress={isInitializing ? undefined : handleEndStream} disabled={isInitializing}>
+              {isInitializing ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.endBtnText}>End</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.sideCloseBtn} onPress={() => setIsMapFullScreen(false)}>
+            <Ionicons name="close" size={18} color="#000" />
           </TouchableOpacity>
+        </SafeAreaView>
+
+        {/* Live Video PiP on Map */}
+        <View style={styles.liveVideoPipMap}>
+          {AGORA_AVAILABLE && isCameraReady && RtcSurfaceView ? (
+            <RtcSurfaceView
+              style={styles.pipImage}
+              canvas={{
+                uid: 0,
+                sourceType: VideoSourceType?.VideoSourceCamera,
+                renderMode: RenderModeType?.RenderModeHidden,
+              }}
+              zOrderMediaOverlay={true}
+            />
+          ) : (
+            <View style={[styles.pipImage, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}>
+              <ActivityIndicator size="small" color="#fff" />
+            </View>
+          )}
+        </View>
+
+        {/* Comments on Map - Always show */}
+        <View style={styles.commentsContainerMap}>
+          <FlatList
+            data={safeComments}
+            keyExtractor={item => item.id}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <View style={styles.commentBubble}>
+                <Text style={styles.commentUsername}>{item.userName}</Text>
+                <Text style={styles.commentText}>{item.text}</Text>
+              </View>
+            )}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews={true}
+          />
+        </View>
+
+        {/* Bottom Controls on Map */}
+        <SafeAreaView style={styles.bottomOverlay} edges={['bottom']}>
+          {showComments && (
+            <View style={styles.inputRowMap}>
+              <TextInput
+                style={styles.inputFieldMap}
+                value={newComment}
+                onChangeText={setNewComment}
+                placeholder="Send a message"
+                placeholderTextColor="rgba(0,0,0,0.4)"
+              />
+              <TouchableOpacity onPress={handleSendComment}>
+                <Ionicons name="send" size={20} color="#333" />
+              </TouchableOpacity>
+            </View>
+          )}
+          
+          <View style={styles.bottomControlsRow}>
+            <TouchableOpacity 
+              style={[styles.controlBtn, isMuted && styles.controlBtnMuted]}
+              onPress={toggleMute}
+            >
+              <Ionicons name={isMuted ? "mic-off" : "mic"} size={22} color={isMuted ? "#ff4444" : "#333"} />
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.controlBtn} onPress={switchCamera}>
+              <Ionicons name="camera-reverse-outline" size={22} color="#333" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.controlBtn, styles.controlBtnGreen]}
+              onPress={() => setIsMapFullScreen(false)}
+            >
+              <Ionicons name="location" size={24} color="#fff" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.controlBtn, showComments ? styles.controlBtnActive : styles.controlBtnOff]}
+              onPress={() => setShowComments(!showComments)}
+            >
+              <Ionicons name={showComments ? "chatbubble" : "chatbubble-outline"} size={22} color={showComments ? "#fff" : "#ff6b6b"} />
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  // Main streaming UI
+  return (
+    <View style={styles.container}>
+      {/* Video Background */}
+      <View style={styles.videoContainer}>
+        {AGORA_AVAILABLE && isCameraReady && RtcSurfaceView ? (
+          <RtcSurfaceView
+            style={styles.videoBackground}
+            canvas={{
+              uid: 0,
+              sourceType: VideoSourceType?.VideoSourceCamera,
+              renderMode: RenderModeType?.RenderModeFit,
+            }}
+            zOrderMediaOverlay={true}
+          />
+        ) : (
+          <View style={[styles.videoBackground, { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }]}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={{ color: '#fff', marginTop: 10 }}>Starting camera...</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Top Header */}
+      <SafeAreaView style={styles.topOverlay} edges={['top']}>
+        <View style={styles.topHeader}>
+          {/* Viewer Avatars + Count */}
+          <View style={styles.viewerSection}>
+            {safeViewers.length > 0 && (
+              <View style={styles.viewerAvatars}>
+                {safeViewers.slice(0, 3).map((viewer, index) => (
+                  <Image
+                    key={viewer.id || index}
+                    source={{ uri: viewer.avatar || DEFAULT_AVATAR_URL }}
+                    style={[styles.viewerAvatar, { marginLeft: index > 0 ? -8 : 0, zIndex: 3 - index }]}
+                  />
+                ))}
+              </View>
+            )}
+            <Text style={styles.viewerCountText}>{viewerCount} {viewerCount === 1 ? 'Viewer' : 'Viewers'}</Text>
+            {viewerCount > 0 && <View style={styles.greenDot} />}
+          </View>
+
+          {/* End Button */}
+          <TouchableOpacity style={styles.endBtn} onPress={handleEndStream}>
+            <Text style={styles.endBtnText}>End</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Host Name Pill */}
+        <View style={styles.hostPill}>
+          <Image
+            source={{ uri: currentUser?.avatar || currentUser?.profileImage || DEFAULT_AVATAR_URL }}
+            style={styles.hostAvatarSmall}
+          />
+          <Text style={styles.hostNameText}>{currentUser?.displayName || currentUser?.username || 'You'}</Text>
+          <View style={styles.greenDot} />
         </View>
       </SafeAreaView>
 
-      {/* Comments Section - Scrollable */}
+      {/* Map Popup */}
+      {showMap && !isMapFullScreen && (
+        <View style={styles.mapPopup}>
+          <TouchableOpacity 
+            style={styles.mapPopupExpandBtn} 
+            onPress={() => setIsMapFullScreen(true)}
+          >
+            <Ionicons name="expand-outline" size={14} color="#666" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.mapPopupCloseBtn}
+            onPress={() => setShowMap(false)}
+          >
+            <Ionicons name="close" size={14} color="#666" />
+          </TouchableOpacity>
+          <MapView
+            style={styles.mapPopupView}
+            initialRegion={{
+              ...getSafeCoordinate(location),
+              latitudeDelta: 0.02,
+              longitudeDelta: 0.02,
+            }}
+            scrollEnabled={false}
+            zoomEnabled={false}
+            liteMode={true}
+            loadingEnabled={true}
+            loadingIndicatorColor="#00c853"
+            cacheEnabled={true}
+          >
+            <Marker coordinate={getSafeCoordinate(location)}>
+              <View style={styles.smallMarker} />
+            </Marker>
+          </MapView>
+        </View>
+      )}
+
+      {/* Comments Section - Always show comments */}
       <View style={styles.commentsContainer}>
         <FlatList
-          data={comments}
+          data={safeComments}
           keyExtractor={item => item.id}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
             <View style={styles.commentBubble}>
-              <Text style={styles.commentUsername}>{item.userName || 'User'}</Text>
+              <Text style={styles.commentUsername}>{item.userName}</Text>
               <Text style={styles.commentText}>{item.text}</Text>
             </View>
           )}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={true}
         />
       </View>
 
       {/* Bottom Controls */}
-      <SafeAreaView style={styles.bottomOverlay} edges={["bottom"]}>
-        {/* Map View (Expandable) */}
-        {showMap && (
-          <View style={styles.mapContainer}>
-            <View style={styles.mapHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="location" size={20} color="#ff0000" style={{ marginRight: 6 }} />
-                <Text style={styles.mapTitle}>Your Live Location</Text>
-              </View>
-              <TouchableOpacity onPress={() => setMapType(mapType === 'standard' ? 'satellite' : 'standard')}>
-                <Ionicons name={mapType === 'standard' ? 'cube-outline' : 'cube'} size={24} color="#666" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowMap(false)}>
-                <Ionicons name="close" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
-            <MapView
-              style={{ width: '100%', height: 220 }}
-              mapType={mapType}
-              showsUserLocation={true}
-              initialRegion={{
-                latitude: 37.78825,
-                longitude: -122.4324,
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-              }}
-              provider="google"
-              // Add your Google Maps API key here if needed
+      <SafeAreaView style={styles.bottomOverlay} edges={['bottom']}>
+        {/* Input Row - Only show when comment icon is ON */}
+        {showComments && (
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.inputField}
+              value={newComment}
+              onChangeText={setNewComment}
+              placeholder="Send a message"
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              onSubmitEditing={handleSendComment}
             />
+            <TouchableOpacity onPress={handleSendComment}>
+              <Ionicons name="send" size={20} color="#fff" />
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Bottom Action Buttons */}
-        <View style={styles.bottomActions}>
-          <TouchableOpacity style={styles.actionButton} onPress={() => setShowMap(!showMap)}>
-            <Ionicons name="map-outline" size={28} color="#fff" />
-            <Text style={styles.actionLabel}>Map</Text>
-          </TouchableOpacity>
-
-          {/* Center Go Live Button */}
-          {!isLive ? (
-            <TouchableOpacity style={styles.goLiveButton} onPress={handleGoLive}>
-              <View style={styles.goLiveInner}>
-                <Ionicons name="radio-outline" size={36} color="#fff" />
-              </View>
-              <Text style={styles.goLiveLabel}>Go Live</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.endLiveButton} onPress={() => {
-              Alert.alert('End Stream', 'Stop streaming?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'End', style: 'destructive', onPress: stopLiveStream }
-              ]);
-            }}>
-              <View style={styles.endLiveInner}>
-                <Ionicons name="stop" size={28} color="#fff" />
-              </View>
-              <Text style={styles.endLiveLabel}>End</Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="ellipsis-horizontal" size={28} color="#fff" />
-            <Text style={styles.actionLabel}>Options</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Comment Input */}
-        <View style={styles.commentInput}>
-          <TextInput
-            style={styles.input}
-            value={input}
-            onChangeText={setInput}
-            placeholder={isLive ? "Add a comment..." : "Go live to comment"}
-            placeholderTextColor="rgba(255,255,255,0.5)"
-            editable={isLive}
-            onSubmitEditing={handleSend}
-          />
+        {/* Bottom Control Buttons */}
+        <View style={styles.bottomControlsRow}>
+          {/* Mic Toggle */}
           <TouchableOpacity 
-            style={[styles.sendButton, !isLive && styles.sendButtonDisabled]} 
-            onPress={handleSend}
-            disabled={!isLive}
+            style={[styles.controlBtn, isMuted && styles.controlBtnMuted]}
+            onPress={toggleMute}
           >
-            <Ionicons name="send" size={18} color="#fff" />
+            <Ionicons name={isMuted ? "mic-off" : "mic"} size={22} color={isMuted ? "#ff4444" : "#333"} />
+          </TouchableOpacity>
+          
+          {/* Switch Camera */}
+          <TouchableOpacity style={styles.controlBtn} onPress={switchCamera}>
+            <Ionicons name="camera-reverse-outline" size={22} color="#333" />
+          </TouchableOpacity>
+          
+          {/* Location Button - Green only when map is open */}
+          <TouchableOpacity 
+            style={[styles.controlBtn, showMap && styles.controlBtnGreen]}
+            onPress={() => setShowMap(!showMap)}
+          >
+            <Ionicons name="location" size={24} color={showMap ? "#fff" : "#333"} />
+          </TouchableOpacity>
+          
+          {/* Chat Button - Reddish when off, white bg when on */}
+          <TouchableOpacity 
+            style={[styles.controlBtn, showComments ? styles.controlBtnActive : styles.controlBtnOff]}
+            onPress={() => setShowComments(!showComments)}
+          >
+            <Ionicons name={showComments ? "chatbubble" : "chatbubble-outline"} size={22} color={showComments ? "#fff" : "#ff6b6b"} />
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -460,12 +868,80 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#fff',
+    marginTop: 16,
+    fontSize: 16,
+  },
+  
+  // Preview/Setup Screen
+  previewContainer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  preview: {
+    width: '100%',
+    height: '100%',
+  },
+  setupOverlay: {
+    flex: 1,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  setupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+  },
+  setupTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  setupBottom: {
+    paddingBottom: 20,
+  },
+  titleInputContainer: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 16,
+  },
+  titleInput: {
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  goLiveBtn: {
+    backgroundColor: '#FF4757',
+    borderRadius: 30,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  goLiveBtnText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+  },
+
+  // Video Container
   videoContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+    width: '100%',
+    height: '100%',
+    zIndex: 1,
   },
   videoBackground: {
     width: '100%',
@@ -474,14 +950,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
+  
+  // Top Overlay
   topOverlay: {
     position: 'absolute',
     top: 0,
@@ -492,93 +962,154 @@ const styles = StyleSheet.create({
   topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingTop: 8,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backIcon: {
-    fontSize: 28,
-    color: '#fff',
-    fontWeight: '300',
-  },
-  userInfo: {
-    flex: 1,
+  viewerSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 8,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 25,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingRight: 14,
   },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#333',
-    marginRight: 10,
-  },
-  userDetails: {
-    flex: 1,
-  },
-  username: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  liveIndicator: {
+  viewerAvatars: {
     flexDirection: 'row',
-    alignItems: 'center',
-  },
-  liveBadge: {
-    backgroundColor: '#ff0000',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
     marginRight: 8,
   },
-  liveText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+  viewerAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
-  viewerCount: {
+  viewerCountText: {
     fontSize: 13,
-    color: '#fff',
-    fontWeight: '500',
+    fontWeight: '600',
+    color: '#000',
+    marginRight: 6,
   },
-  closeButton: {
-    width: 40,
-    height: 40,
+  greenDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#00D26A',
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.9)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  closeIcon: {
-    fontSize: 36,
-    color: '#fff',
-    fontWeight: '300',
-    lineHeight: 36,
+  endBtn: {
+    backgroundColor: '#FF4757',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
   },
-  commentsContainer: {
+  endBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  
+  // Host Pill
+  hostPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(50,50,50,0.9)',
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingRight: 14,
+    alignSelf: 'flex-start',
+    marginLeft: 16,
+    marginTop: 12,
+  },
+  hostAvatarSmall: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  hostNameText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
+    marginRight: 6,
+  },
+
+  // Map Popup
+  mapPopup: {
     position: 'absolute',
-    bottom: 200,
+    bottom: 180,
     left: 16,
     right: 16,
-    maxHeight: 250,
+    height: 140,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    overflow: 'hidden',
+    zIndex: 20,
+  },
+  mapPopupView: {
+    width: '100%',
+    height: '100%',
+  },
+  mapPopupExpandBtn: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  mapPopupCloseBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  smallMarker: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#E74C3C',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+
+  // Comments
+  commentsContainer: {
+    position: 'absolute',
+    bottom: 140,
+    left: 16,
+    right: 80,
+    maxHeight: 160,
     zIndex: 5,
   },
   commentBubble: {
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 18,
-    paddingHorizontal: 14,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    marginBottom: 8,
+    marginBottom: 6,
     alignSelf: 'flex-start',
-    maxWidth: '85%',
+    maxWidth: '95%',
   },
   commentUsername: {
     fontSize: 13,
@@ -591,130 +1122,155 @@ const styles = StyleSheet.create({
     color: '#fff',
     lineHeight: 18,
   },
+
+  // Bottom Controls
   bottomOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     zIndex: 10,
+    paddingBottom: 16,
   },
-  mapContainer: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    marginBottom: 8,
-    overflow: 'hidden',
-  },
-  mapHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  mapTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#222',
-  },
-  mapPlaceholder: {
-    height: 200,
-    backgroundColor: '#f5f5f5',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  mapText: {
-    fontSize: 16,
-    color: '#999',
-  },
-  bottomActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingVertical: 12,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-  },
-  actionButton: {
-    alignItems: 'center',
-    padding: 8,
-  },
-  actionLabel: {
-    fontSize: 12,
-    color: '#fff',
-    fontWeight: '600',
-  },
-  goLiveButton: {
-    alignItems: 'center',
-  },
-  goLiveInner: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#ff0000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 4,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  goLiveLabel: {
-    fontSize: 13,
-    color: '#fff',
-    fontWeight: '700',
-    marginTop: 6,
-  },
-  endLiveButton: {
-    alignItems: 'center',
-  },
-  endLiveInner: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#333',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 4,
-    borderColor: '#fff',
-  },
-  endLiveLabel: {
-    fontSize: 13,
-    color: '#fff',
-    fontWeight: '700',
-    marginTop: 6,
-  },
-  commentInput: {
+  inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-  },
-  input: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 20,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 25,
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  inputField: {
+    flex: 1,
     fontSize: 15,
     color: '#fff',
-    marginRight: 8,
+    marginRight: 10,
   },
-  sendButton: {
+  inputRowMap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 25,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  inputFieldMap: {
+    flex: 1,
+    fontSize: 15,
+    color: '#000',
+    marginRight: 10,
+  },
+  bottomControlsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 40,
+  },
+  controlBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  controlBtnActive: {
+    backgroundColor: '#333',
+  },
+  controlBtnOff: {
+    backgroundColor: 'rgba(255,107,107,0.2)',
+    borderWidth: 1,
+    borderColor: '#ff6b6b',
+  },
+  controlBtnMuted: {
+    backgroundColor: 'rgba(255,68,68,0.2)',
+    borderWidth: 1,
+    borderColor: '#ff4444',
+  },
+  controlBtnGreen: {
+    backgroundColor: '#00D26A',
+  },
+  floatingChatBtn: {
+    position: 'absolute',
+    bottom: 20,
+    right: 16,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#E88D94',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+
+  // Map Full Screen
+  mapTopOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    paddingHorizontal: 16,
+  },
+  mapTopHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+  },
+  sideCloseBtn: {
+    position: 'absolute',
+    left: 0,
+    top: 90,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mapMarker: {
+    alignItems: 'center',
+  },
+  mapMarkerAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#007aff',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#00D26A',
   },
-  sendButtonDisabled: {
-    backgroundColor: '#555',
-    opacity: 0.5,
+  liveVideoPipMap: {
+    position: 'absolute',
+    bottom: 180,
+    right: 16,
+    width: 120,
+    height: 160,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
+    overflow: 'hidden',
+    zIndex: 15,
+    borderWidth: 3,
+    borderColor: '#7DD3C0',
+  },
+  pipImage: {
+    width: '100%',
+    height: '100%',
+  },
+  commentsContainerMap: {
+    position: 'absolute',
+    bottom: 100,
+    left: 16,
+    right: 16,
+    maxHeight: 140,
+    zIndex: 5,
   },
 });

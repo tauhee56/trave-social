@@ -1,9 +1,13 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCurrentUser, getUserNotifications, markNotificationAsRead } from '../lib/firebaseHelpers';
+import { getCurrentUser } from '../lib/firebaseHelpers';
+// import { getCurrentUser } from '../lib/firebaseHelpers';
+import { collection, onSnapshot, query } from 'firebase/firestore';
+import { db } from '../config/firebase';
+import AcceptDeclineButtons from './components/AcceptDeclineButtons';
 
 export default function NotificationsScreen() {
     // Default avatar from Firebase Storage
@@ -11,97 +15,48 @@ export default function NotificationsScreen() {
   const router = useRouter();
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
+  // Removed legacy globalThis/firebase usage
 
   React.useEffect(() => {
-    async function fetchNotifications() {
-      const user = getCurrentUser();
-      if (!user) return;
-      const result = await getUserNotifications(user.uid);
-      if (result.success && Array.isArray(result.data)) {
-        setNotifications(result.data);
-      }
+    const user = getCurrentUser();
+    if (!user) {
       setLoading(false);
+      setNotifications([]);
+      return;
     }
-    fetchNotifications();
+    // Removed legacy one-time fetch block. Use only modular SDK (db) for Firestore.
+    setLoading(true);
+    // Modular SDK: Real-time listener for notifications (subcollection)
+    const notifRef = collection(db, 'users', user.uid, 'notifications');
+    const q = query(notifRef);
+    const unsub = onSnapshot(q,
+      (snapshot) => {
+        const notifs = snapshot.docs.map((doc: any) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt || null,
+          };
+        });
+        setNotifications(notifs);
+        setLoading(false);
+      },
+      (error) => {
+        console.log('Notification fetch error:', error);
+        setNotifications([]);
+        setLoading(false);
+      }
+    );
+    // Safety: always set loading to false after 3 seconds if still loading
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 3000);
+    return () => {
+      unsub && unsub();
+      clearTimeout(timeout);
+    };
   }, []);
-
-  async function handleNotificationClick(notification: any) {
-    // Mark as read
-    if (!notification.read) {
-      await markNotificationAsRead(notification.id);
-      setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: true } : n));
-    }
-
-    // Instagram-style notification click logic
-    switch (notification.type) {
-      case 'follow-request':
-        // Go to follow requests page (or profile requests)
-        router.push('/privacy');
-        break;
-      case 'follow-approved':
-        // Go to sender's profile
-        if (notification.senderId) {
-          router.push({ pathname: '/user-profile', params: { user: notification.senderId } } as any);
-        }
-        break;
-      case 'follow':
-      case 'new-follower':
-        // Go to sender's profile
-        if (notification.senderId) {
-          router.push({ pathname: '/user-profile', params: { user: notification.senderId } } as any);
-        }
-        break;
-      case 'like':
-        // Go to post details
-        if (notification.postId) {
-          router.push({ pathname: '/post', params: { postId: notification.postId } } as any);
-        }
-        break;
-      case 'comment':
-        // Go to post details, scroll to comment
-        if (notification.postId) {
-          router.push({ pathname: '/post', params: { postId: notification.postId, commentId: notification.commentId } } as any);
-        }
-        break;
-      case 'mention':
-        // Go to post or comment where mentioned
-        if (notification.postId) {
-          router.push({ pathname: '/post', params: { postId: notification.postId, mentionId: notification.mentionId } } as any);
-        }
-        break;
-      case 'dm':
-      case 'message':
-        // Go to DM/chat screen
-        if (notification.senderId) {
-          router.push({ pathname: '/dm', params: { otherUserId: notification.senderId } } as any);
-        }
-        break;
-      case 'story-mention':
-        // Go to story viewer
-        if (notification.storyId) {
-          router.push({ pathname: '/highlight/[id]', params: { id: notification.storyId } } as any);
-        }
-        break;
-      case 'story-reply':
-        // Go to DM/chat screen, highlight reply
-        if (notification.senderId) {
-          router.push({ pathname: '/dm', params: { otherUserId: notification.senderId, replyId: notification.replyId } } as any);
-        }
-        break;
-      case 'tag':
-        // Go to tagged post
-        if (notification.postId) {
-          router.push({ pathname: '/post', params: { postId: notification.postId, tagId: notification.tagId } } as any);
-        }
-        break;
-      default:
-        // Fallback: go to sender's profile
-        if (notification.senderId) {
-          router.push({ pathname: '/user-profile', params: { user: notification.senderId } } as any);
-        }
-        break;
-    }
-  }
 
   function getNotificationIcon(type: string) {
     switch (type) {
@@ -141,22 +96,64 @@ export default function NotificationsScreen() {
 
   function formatTime(timestamp: any) {
     if (!timestamp) return '';
-    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    let date;
+    if (timestamp.toDate) {
+      date = timestamp.toDate();
+    } else if (typeof timestamp === 'string' || typeof timestamp === 'number') {
+      date = new Date(timestamp);
+    } else {
+      date = timestamp;
+    }
     const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    
-    if (hours < 1) return 'now';
-    if (hours < 24) return `${hours}h ago`;
-    if (days < 7) return `${days}d ago`;
+    const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+    if (diff < 604800) return `${Math.floor(diff/86400)}d ago`;
     return date.toLocaleDateString();
+  }
+
+  function handleNotificationClick(item: any) {
+    let navRoute = '';
+    if (item.type === 'follow' || item.type === 'follow-request' || item.type === 'new-follower') {
+      navRoute = `/user-profile/${item.senderId}`;
+    } else if (item.type === 'like' || item.type === 'tag') {
+      if (!item.postId || typeof item.postId !== 'string' || item.postId.trim() === '') {
+        alert('Notification missing postId. Cannot open post.');
+        return;
+      }
+      navRoute = `/post/${item.postId}`;
+    } else if (item.type === 'comment') {
+      if (!item.postId || typeof item.postId !== 'string' || item.postId.trim() === '') {
+        alert('Notification missing postId. Cannot open post.');
+        return;
+      }
+      navRoute = `/post/${item.postId}?commentId=${item.commentId}`;
+    } else if (item.type === 'dm' || item.type === 'message') {
+      navRoute = `/dm?otherUserId=${item.senderId}`;
+    } else if (item.type === 'story-mention' || item.type === 'story-reply') {
+      navRoute = '/stories';
+    } else {
+      navRoute = `/user-profile/${item.senderId}`;
+    }
+    router.push(navRoute as any);
   }
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color="#007aff" />
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}> 
+        <View style={{ width: '100%', padding: 16 }}>
+          {[1,2,3,4].map(i => (
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 18 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#eee', marginRight: 8 }} />
+              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#eee', marginRight: 14 }} />
+              <View style={{ flex: 1 }}>
+                <View style={{ width: '60%', height: 16, borderRadius: 6, backgroundColor: '#eee', marginBottom: 6 }} />
+                <View style={{ width: '40%', height: 13, borderRadius: 6, backgroundColor: '#eee' }} />
+              </View>
+            </View>
+          ))}
+        </View>
       </SafeAreaView>
     );
   }
@@ -171,34 +168,87 @@ export default function NotificationsScreen() {
         <View style={{ width: 24 }} />
       </View>
 
+      {/* Bulk Actions */}
+      <View style={{ flexDirection: 'row', gap: 12, margin: 12 }}>
+        <TouchableOpacity
+          style={{ backgroundColor: '#007aff', padding: 8, borderRadius: 8 }}
+          onPress={async () => {
+            try {
+              // Mark all notifications as read
+              const { db } = await import('../config/firebase');
+              const { collection, getDocs, updateDoc, doc } = await import('firebase/firestore');
+              const user = getCurrentUser();
+              if (!user) return;
+              const notifRef = collection(db, 'users', user.uid, 'notifications');
+              const snap = await getDocs(notifRef);
+              await Promise.all(snap.docs.map(d => updateDoc(doc(db, 'users', user.uid, 'notifications', d.id), { read: true })));
+              alert('All notifications marked as read');
+            } catch (err) {
+              alert('Error marking all as read');
+            }
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>Mark All Read</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ backgroundColor: '#FF3B30', padding: 8, borderRadius: 8 }}
+          onPress={async () => {
+            try {
+              // Delete all notifications
+              const { db } = await import('../config/firebase');
+              const { collection, getDocs, deleteDoc, doc } = await import('firebase/firestore');
+              const user = getCurrentUser();
+              if (!user) return;
+              const notifRef = collection(db, 'users', user.uid, 'notifications');
+              const snap = await getDocs(notifRef);
+              await Promise.all(snap.docs.map(d => deleteDoc(doc(db, 'users', user.uid, 'notifications', d.id))));
+              alert('All notifications deleted');
+            } catch (err) {
+              alert('Error deleting all notifications');
+            }
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: 'bold' }}>Clear All</Text>
+        </TouchableOpacity>
+      </View>
+
       {notifications.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Feather name="bell-off" size={64} color="#ccc" />
           <Text style={styles.emptyText}>No notifications yet</Text>
-          <Text style={styles.emptySubtext}>When someone likes or comments, you'll see it here</Text>
         </View>
       ) : (
         <FlatList
           data={notifications}
           keyExtractor={n => n.id}
           renderItem={({ item }) => (
-            <TouchableOpacity 
-              style={[styles.nRow, !item.read && styles.nRowUnread]} 
-              onPress={() => handleNotificationClick(item)}
-            >
-              <View style={[styles.iconContainer, { backgroundColor: getNotificationColor(item.type) + '15' }]}>
-                <Feather name={getNotificationIcon(item.type) as any} size={20} color={getNotificationColor(item.type)} />
-              </View>
-              <Image source={{ uri: item.senderAvatar && item.senderAvatar.trim() !== "" ? item.senderAvatar : DEFAULT_AVATAR_URL }} style={styles.nAvatar} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.nTitle}>
-                  <Text style={{ fontWeight: '700', color: '#FF6B00' }}>{item.senderName}</Text>
-                  <Text style={{ fontWeight: '400', color: '#444' }}> {item.message}</Text>
-                </Text>
-                <Text style={styles.nBody}>{formatTime(item.createdAt)}</Text>
-              </View>
-              {!item.read && <View style={styles.unreadDot} />}
-            </TouchableOpacity>
+            <View>
+              <TouchableOpacity 
+                style={[styles.nRow, !item.read && styles.nRowUnread]} 
+                onPress={() => handleNotificationClick(item)}
+              >
+                <View style={[styles.iconContainer, { backgroundColor: getNotificationColor(item.type) + '15' }]}>
+                  <Feather name={getNotificationIcon(item.type) as any} size={20} color={getNotificationColor(item.type)} />
+                </View>
+                <Image source={{ uri: item.senderAvatar && item.senderAvatar.trim() !== "" ? item.senderAvatar : DEFAULT_AVATAR_URL }} style={styles.nAvatar} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.nTitle}>
+                    <Text style={{ fontWeight: '700', color: '#FF6B00' }}>{item.senderName}</Text>
+                    <Text style={{ fontWeight: '400', color: '#444' }}> {item.message}</Text>
+                  </Text>
+                  <Text style={styles.nBody}>{formatTime(item.createdAt)}</Text>
+                </View>
+                {!item.read && <View style={styles.unreadDot} />}
+              </TouchableOpacity>
+              {/* Accept/Decline for follow-request notifications */}
+              {item.type === 'follow-request' && (
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginRight: 24, marginBottom: 8 }}>
+                  <AcceptDeclineButtons item={item} onActionTaken={(id) => {
+                    setNotifications((prev) => prev.filter(n => n.id !== id));
+                  }} />
+                </View>
+              )}
+            </View>
           )}
           ItemSeparatorComponent={() => <View style={styles.nSep} />}
           contentContainerStyle={{ paddingBottom: 16 }}

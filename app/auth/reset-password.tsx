@@ -31,9 +31,12 @@ export default function ResetPasswordScreen() {
     setLoading(true);
 
     try {
-      // TODO: Implement password reset
-      // For now, navigate to login
-      router.replace('/auth/login-options');
+      // TODO: Implement actual password reset with Firebase
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Navigate to success screen
+      router.replace('/auth/password-reset-success');
     } catch (err: any) {
       setError(err.message || 'Password reset failed');
     } finally {

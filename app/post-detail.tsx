@@ -1,47 +1,35 @@
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCurrentUser, getFeedPosts } from '../lib/firebaseHelpers';
-import PostCard from './components/PostCard';
+import { getCurrentUser } from '../lib/firebaseHelpers';
+import { getUserPosts } from '../lib/firebaseHelpers/user';
+import PostViewerModal from './components/PostViewerModal';
 
 export default function PostDetailScreen() {
   const params = useLocalSearchParams();
   const postId = params.id as string;
+  const router = useRouter();
   
-  const [posts, setPosts] = useState<any[]>([]);
+  const [post, setPost] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [initialIndex, setInitialIndex] = useState(0);
+  const [profile, setProfile] = useState<any>(null);
 
   useEffect(() => {
-    async function loadPosts() {
+    async function loadPost() {
       setLoading(true);
       const user = getCurrentUser();
       setCurrentUser(user);
-      
-      if (!user) {
-        setLoading(false);
-        return;
+      // Fetch post by ID
+      const { getPostById } = await import('../lib/firebaseHelpers/post');
+      const result = await getPostById(postId);
+      if (result.success && result.post) {
+        setPost(result.post);
       }
-
-      // Fetch all feed posts
-      const result = await getFeedPosts();
-      if (result.success && Array.isArray(result.posts)) {
-        const feedPosts = result.posts;
-        setPosts(feedPosts);
-        
-        // Find the index of the target post
-        const targetIndex = feedPosts.findIndex((p: any) => p.id === postId);
-        if (targetIndex !== -1) {
-          setInitialIndex(targetIndex);
-        }
-      }
-      
       setLoading(false);
     }
-
-    loadPosts();
+    loadPost();
   }, [postId]);
 
   if (loading) {
@@ -52,27 +40,31 @@ export default function PostDetailScreen() {
     );
   }
 
+  if (!post) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ActivityIndicator size="small" color="#999" style={{ marginTop: 40 }} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      <FlatList
-        data={posts}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <PostCard post={item} currentUser={currentUser} />}
-        initialScrollIndex={initialIndex}
-        getItemLayout={(data, index) => ({
-          length: 600, // Approximate height of each post
-          offset: 600 * index,
-          index,
-        })}
-        onScrollToIndexFailed={(info) => {
-          // Handle scroll failure gracefully
-          setTimeout(() => {
-            if (posts.length > 0 && info.index < posts.length) {
-              // Retry scroll
-            }
-          }, 100);
-        }}
-        showsVerticalScrollIndicator={false}
+      <PostViewerModal
+        visible={true}
+        onClose={() => router.back()}
+        posts={[post]}
+        selectedPostIndex={0}
+        profile={profile}
+        authUser={currentUser}
+        likedPosts={{}}
+        savedPosts={{}}
+        handleLikePost={() => {}}
+        handleSavePost={() => {}}
+        handleSharePost={() => {}}
+        setCommentModalPostId={() => {}}
+        setCommentModalAvatar={() => {}}
+        setCommentModalVisible={() => {}}
       />
     </SafeAreaView>
   );

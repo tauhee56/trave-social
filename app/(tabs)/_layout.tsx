@@ -1,9 +1,19 @@
-import { Feather, MaterialIcons } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import { Tabs, useRouter, useSegments } from "expo-router";
-import React, { createContext, useContext, useRef } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getCurrentUser, getUserConversations, getUserNotifications } from '../../lib/firebaseHelpers';
+import { getCurrentUser } from '../../lib/firebaseHelpers';
+import { getUserConversations } from '../../lib/firebaseHelpers/conversation';
+import { getUserNotifications } from '../../lib/firebaseHelpers/notification';
+import { fetchLogoUrl } from '../services/brandingService';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const isSmallDevice = SCREEN_WIDTH < 375;
+const isMediumDevice = SCREEN_WIDTH >= 375 && SCREEN_WIDTH < 414;
+const isLargeDevice = SCREEN_WIDTH >= 414;
+const ICON_SIZE = isSmallDevice ? 18 : (isLargeDevice ? 22 : 20);
+const CHEVRON_SIZE = isSmallDevice ? 18 : 20;
 
 
 // Create a context for tab events
@@ -60,13 +70,25 @@ export default function TabsLayout() {
               const tabEvent = useTabEvent();
               return (
                 <TouchableOpacity
-                  {...props}
                   onPress={() => {
                     tabEvent?.emitHomeTabPress();
                     router.push('/(tabs)/home');
                   }}
                   style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                />
+                  activeOpacity={0.7}
+                  disabled={typeof props.disabled === 'boolean' ? props.disabled : undefined}
+                  onBlur={typeof props.onBlur === 'function' ? props.onBlur : undefined}
+                  onFocus={typeof props.onFocus === 'function' ? props.onFocus : undefined}
+                  onLongPress={typeof props.onLongPress === 'function' ? props.onLongPress : undefined}
+                  onPressIn={typeof props.onPressIn === 'function' ? props.onPressIn : undefined}
+                  onPressOut={typeof props.onPressOut === 'function' ? props.onPressOut : undefined}
+                  accessibilityState={props.accessibilityState}
+                  accessibilityLabel={props.accessibilityLabel}
+                  testID={props.testID}
+                >
+                  <Ionicons name={props.accessibilityState?.selected ? "home" : "home-outline"} size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
+                  <Text style={{ fontSize: 10, color: props.accessibilityState?.selected ? '#f39c12' : '#777', marginTop: 2 }}>Home</Text>
+                </TouchableOpacity>
               );
             },
           }}
@@ -82,10 +104,8 @@ export default function TabsLayout() {
               const router = useRouter();
               return (
                 <TouchableOpacity
-                  // Do not spread props to TouchableOpacity to avoid type errors
                   onPress={() => router.push('/search-modal')}
                   style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                  delayLongPress={typeof props.delayLongPress === 'number' ? props.delayLongPress : undefined}
                   disabled={typeof props.disabled === 'boolean' ? props.disabled : undefined}
                   onBlur={typeof props.onBlur === 'function' ? props.onBlur : undefined}
                   onFocus={typeof props.onFocus === 'function' ? props.onFocus : undefined}
@@ -93,7 +113,8 @@ export default function TabsLayout() {
                   onPressIn={typeof props.onPressIn === 'function' ? props.onPressIn : undefined}
                   onPressOut={typeof props.onPressOut === 'function' ? props.onPressOut : undefined}
                 >
-                  <Feather name="search" size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
+                  <Ionicons name="search-outline" size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
+                  <Text style={{ fontSize: 10, color: '#777', marginTop: 2 }}>Search</Text>
                 </TouchableOpacity>
               );
             },
@@ -131,22 +152,8 @@ export default function TabsLayout() {
                   style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
                   activeOpacity={0.7}
                 >
-                  <View style={{
-                    width: 40,
-                    height: 30,
-                    borderRadius: 6,
-                    backgroundColor: '#f39c12',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginTop: 6,
-                    shadowColor: '#000',
-                    shadowOpacity: 0.12,
-                    shadowRadius: 4,
-                    shadowOffset: { width: 0, height: 2 },
-                    elevation: 4,
-                  }}>
-                    <Feather name="plus" size={18} color="#fff" />
-                  </View>
+                  <Ionicons name="add" size={28} color="#777" />
+                  <Text style={{ fontSize: 10, color: '#777', marginTop: 2 }}>Post</Text>
                 </TouchableOpacity>
               );
             },
@@ -156,8 +163,11 @@ export default function TabsLayout() {
           name="map"
           options={{
             title: "Map",
-            tabBarIcon: ({ color, size }) => (
-              <MaterialIcons name="map" size={size} color={color} />
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons name={focused ? "map" : "map-outline"} size={24} color={color} />
+            ),
+            tabBarLabel: ({ focused }) => (
+              <Text style={{ fontSize: 10, color: focused ? '#f39c12' : '#777', marginTop: 2 }}>Map</Text>
             ),
           }}
         />
@@ -165,8 +175,11 @@ export default function TabsLayout() {
           name="profile"
           options={{
             title: "Profile",
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="user" size={size} color={color} />
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
+            ),
+            tabBarLabel: ({ focused }) => (
+              <Text style={{ fontSize: 10, color: focused ? '#f39c12' : '#777', marginTop: 2 }}>Profile</Text>
             ),
             tabBarButton: (props) => <ProfileTabButton {...props} />,
           }}
@@ -200,138 +213,250 @@ function TopMenu() {
   const [unreadNotif, setUnreadNotif] = React.useState(0);
   const [unreadMsg, setUnreadMsg] = React.useState(0);
   const [menuVisible, setMenuVisible] = React.useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoLoading, setLogoLoading] = useState(true);
   const segments = useSegments();
   const isProfileScreen = segments[segments.length - 1] === 'profile';
 
+  useEffect(() => {
+    let isMounted = true;
+    fetchLogoUrl().then(url => {
+      if (isMounted) {
+        setLogoUrl(url);
+        setLogoLoading(false);
+      }
+    }).catch(() => setLogoLoading(false));
+    return () => { isMounted = false; };
+  }, []);
+
   React.useEffect(() => {
     async function fetchCounts() {
-      const user = getCurrentUser();
-      if (!user) return;
+      const user = getCurrentUser() as { uid: string } | null;
+      if (!user || !user.uid) return;
       // Notifications
-      const notifRes = await getUserNotifications(user.uid);
-      if (notifRes.success && Array.isArray(notifRes.data)) {
-        const unread = notifRes.data.filter((n: any) => n && typeof n.read === 'boolean' ? n.read === false : false);
-        setUnreadNotif(unread.length);
-      }
+        const notifRes = await getUserNotifications(user.uid);
+        if (Array.isArray(notifRes)) {
+          const unread = notifRes.filter((n: any) => n && typeof n.read === 'boolean' ? n.read === false : false);
+          setUnreadNotif(unread.length);
+        }
       // Messages
-      const msgRes = await getUserConversations(user.uid);
-      if (msgRes.success && Array.isArray(msgRes.data)) {
-        const unreadMsgs = msgRes.data.reduce((sum, convo) => sum + (convo.unread || 0), 0);
-        setUnreadMsg(unreadMsgs);
-      }
+        const msgRes = await getUserConversations(user.uid);
+        if (Array.isArray(msgRes)) {
+          const unreadMsgs = msgRes.reduce((sum: number, convo: any) => sum + (convo.unread || 0), 0);
+          setUnreadMsg(unreadMsgs);
+        }
     }
     fetchCounts();
   }, []);
 
   return (
-    <View style={styles.topMenu}>
+    <View style={[styles.topMenu, { justifyContent: 'flex-start' }]}> 
+      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+        {logoLoading ? (
+          <ActivityIndicator size="small" color="#f39c12" style={{ marginVertical: 2, marginLeft: 0, marginRight: 0, height: 54, width: 130 }} />
+        ) : (
+          <Image
+            source={{ uri: logoUrl || 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2Flogo.png?alt=media&token=e1db7a0b-4fb0-464a-82bc-44255729d46e' }}
+            style={[styles.logoImg, { marginLeft: 0, marginRight: 16, alignSelf: 'flex-start' }]}
+            resizeMode="contain"
+            accessibilityLabel="App Logo"
+          />
+        )}
+      </View>
       {isProfileScreen ? (
-        <>
-          <Text style={styles.logo}>Logo</Text>
-          <View style={{ flexDirection: 'row' }}>
-            <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/notifications' as any)}>
-              <Feather name="bell" size={20} color="#333" />
-              {unreadNotif > 0 && (
-                <View style={{
-                  position: 'absolute',
-                  top: -4,
-                  right: -4,
-                  backgroundColor: '#ff3b30',
-                  borderRadius: 10,
-                  minWidth: 16,
-                  paddingHorizontal: 4,
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 10 }}>{unreadNotif}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.topBtn, { zIndex: 101 }]} onPress={() => setMenuVisible(true)}>
-              <Feather name="more-vertical" size={20} color="#333" />
-            </TouchableOpacity>
-          </View>
-        </>
+        <View style={{ flexDirection: 'row' }}>
+          <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/notifications' as any)}>
+            <Feather name="bell" size={ICON_SIZE} color="#333" />
+            {unreadNotif > 0 && (
+              <View style={{
+                position: 'absolute',
+                top: isSmallDevice ? -4 : -6,
+                right: isSmallDevice ? -4 : -6,
+                backgroundColor: '#ff3b30',
+                borderRadius: isSmallDevice ? 7 : 8,
+                minWidth: unreadNotif > 99 ? (isSmallDevice ? 16 : 18) : (isSmallDevice ? 14 : 16),
+                height: unreadNotif > 99 ? (isSmallDevice ? 14 : 16) : (isSmallDevice ? 12 : 14),
+                paddingHorizontal: unreadNotif > 99 ? 1 : (isSmallDevice ? 2 : 3),
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 100,
+                borderWidth: 1,
+                borderColor: '#fff',
+              }}>
+                <Text style={{ 
+                  color: '#fff', 
+                  fontWeight: 'bold', 
+                  fontSize: unreadNotif > 99 ? (isSmallDevice ? 6 : 7) : unreadNotif > 9 ? (isSmallDevice ? 7 : 8) : (isSmallDevice ? 9 : 10), 
+                  lineHeight: unreadNotif > 99 ? (isSmallDevice ? 9 : 10) : (isSmallDevice ? 11 : 12) 
+                }}>{unreadNotif}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.topBtn, { zIndex: 101 }]} onPress={() => setMenuVisible(true)}>
+            <Feather name="more-vertical" size={ICON_SIZE} color="#333" />
+          </TouchableOpacity>
+        </View>
       ) : (
-        <>
-          <Text style={styles.logo}>Logo</Text>
-          <View style={{ flexDirection: 'row' }}>
-            <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/inbox' as any)}>
-              <Feather name="message-square" size={18} color="#333" />
-              {unreadMsg > 0 && (
-                <View style={{
-                  position: 'absolute',
-                  top: -4,
-                  right: -4,
-                  backgroundColor: '#f39c12',
-                  borderRadius: 10,
-                  minWidth: 16,
-                  paddingHorizontal: 4,
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 10 }}>{unreadMsg}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/notifications' as any)}>
-              <Feather name="bell" size={18} color="#333" />
-              {unreadNotif > 0 && (
-                <View style={{
-                  position: 'absolute',
-                  top: -4,
-                  right: -4,
-                  backgroundColor: '#ff3b30',
-                  borderRadius: 10,
-                  minWidth: 16,
-                  paddingHorizontal: 4,
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 10 }}>{unreadNotif}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
-        </>
+        <View style={{ flexDirection: 'row' }}>
+          <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/inbox' as any)}>
+            <Feather name="message-square" size={18} color="#333" />
+            {unreadMsg > 0 && (
+              <View style={{
+                position: 'absolute',
+                top: -4,
+                right: -4,
+                backgroundColor: '#f39c12',
+                borderRadius: 10,
+                minWidth: 16,
+                paddingHorizontal: 4,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 10 }}>{unreadMsg}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/notifications' as any)}>
+            <Feather name="bell" size={18} color="#333" />
+            {unreadNotif > 0 && (
+              <View style={{
+                position: 'absolute',
+                top: -4,
+                right: -4,
+                backgroundColor: '#ff3b30',
+                borderRadius: 10,
+                minWidth: 16,
+                paddingHorizontal: unreadNotif > 99 ? 2 : 4,
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 100
+              }}>
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: unreadNotif > 99 ? 8 : 10 }}>{unreadNotif}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
       )}
-      {/* Instagram-style bottom sheet for settings/activity */}
+      {/* Modern clean bottom sheet for settings/activity */}
       {menuVisible && (
         <View style={styles.menuOverlay}>
-          <TouchableOpacity style={{ flex: 1, width: '100%' }} activeOpacity={1} onPress={() => setMenuVisible(false)} />
+          <TouchableOpacity 
+            style={{ flex: 1, width: '100%' }} 
+            activeOpacity={1} 
+            onPress={() => setMenuVisible(false)} 
+          />
           <SafeAreaView style={{ width: '100%' }} edges={["bottom"]}>
-            <View style={[styles.igSheet, { paddingHorizontal: 0, paddingBottom: 56 }]}> 
-              <View style={{ alignItems: 'center', marginBottom: 10 }}>
+            <View style={styles.igSheet}> 
+              {/* Handle */}
+              <View style={styles.handleContainer}>
                 <View style={styles.igHandle} />
               </View>
-              <View style={{ width: '100%', paddingHorizontal: 18 }}>
-                <TouchableOpacity style={[styles.igItem, styles.igRow]} activeOpacity={0.85} onPress={() => { setMenuVisible(false); router.push('/privacy'); }}>
-                  <Feather name="lock" size={22} color="#333" style={styles.igIcon} />
-                  <Text style={styles.igText}>Privacy</Text>
+              
+              {/* Menu Items Container */}
+              <View style={styles.menuItemsContainer}>
+                {/* Settings Group */}
+                <View style={styles.menuGroup}>
+                  <TouchableOpacity 
+                    style={styles.igItem} 
+                    activeOpacity={0.7} 
+                    onPress={() => { setMenuVisible(false); router.push('/settings'); }}
+                  >
+                    <View style={styles.iconContainer}>
+                      <Feather name="settings" size={ICON_SIZE} color="#667eea" />
+                    </View>
+                    <Text style={styles.igText}>Settings</Text>
+                    <Feather name="chevron-right" size={CHEVRON_SIZE} color="#ccc" style={styles.chevron} />
+                  </TouchableOpacity>
+
+                  <View style={styles.separator} />
+
+                  <TouchableOpacity 
+                    style={styles.igItem} 
+                    activeOpacity={0.7} 
+                    onPress={() => { setMenuVisible(false); router.push('/friends'); }}
+                  >
+                    <View style={styles.iconContainer}>
+                      <Feather name="users" size={ICON_SIZE} color="#667eea" />
+                    </View>
+                    <Text style={styles.igText}>Friends</Text>
+                    <Feather name="chevron-right" size={CHEVRON_SIZE} color="#ccc" style={styles.chevron} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Content Group */}
+                <View style={styles.menuGroup}>
+                  <TouchableOpacity 
+                    style={styles.igItem} 
+                    activeOpacity={0.7} 
+                    onPress={() => { setMenuVisible(false); router.push('/saved'); }}
+                  >
+                    <View style={styles.iconContainer}>
+                      <Feather name="bookmark" size={ICON_SIZE} color="#667eea" />
+                    </View>
+                    <Text style={styles.igText}>Saved Posts</Text>
+                    <Feather name="chevron-right" size={CHEVRON_SIZE} color="#ccc" style={styles.chevron} />
+                  </TouchableOpacity>
+
+                  <View style={styles.separator} />
+
+                  <TouchableOpacity 
+                    style={styles.igItem} 
+                    activeOpacity={0.7} 
+                    onPress={() => { setMenuVisible(false); router.push('/archive'); }}
+                  >
+                    <View style={styles.iconContainer}>
+                      <Feather name="archive" size={ICON_SIZE} color="#667eea" />
+                    </View>
+                    <Text style={styles.igText}>Archive</Text>
+                    <Feather name="chevron-right" size={CHEVRON_SIZE} color="#ccc" style={styles.chevron} />
+                  </TouchableOpacity>
+
+                  <View style={styles.separator} />
+
+                  <TouchableOpacity 
+                    style={styles.igItem} 
+                    activeOpacity={0.7} 
+                    onPress={() => { setMenuVisible(false); router.push('/highlight/1'); }}
+                  >
+                    <View style={styles.iconContainer}>
+                      <Feather name="star" size={ICON_SIZE} color="#667eea" />
+                    </View>
+                    <Text style={styles.igText}>Highlights</Text>
+                    <Feather name="chevron-right" size={CHEVRON_SIZE} color="#ccc" style={styles.chevron} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Logout Button */}
+                <TouchableOpacity 
+                  style={styles.igItemLogout} 
+                  activeOpacity={0.7} 
+                  onPress={async () => { 
+                    setMenuVisible(false);
+                    try {
+                      const { signOut } = await import('firebase/auth');
+                      const { auth } = await import('../../config/firebase');
+                      await signOut(auth);
+                      console.log('Logged out successfully');
+                      router.replace('/auth/welcome');
+                    } catch (error) {
+                      console.error('Logout error:', error);
+                      Alert.alert('Error', 'Failed to log out. Please try again.');
+                    }
+                  }}
+                >
+                  <View style={[styles.iconContainer, { backgroundColor: '#fee' }]}>
+                    <Feather name="log-out" size={ICON_SIZE} color="#e74c3c" />
+                  </View>
+                  <Text style={styles.igTextLogout}>Log Out</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.igItem, styles.igRow]} activeOpacity={0.85} onPress={() => { setMenuVisible(false); router.push('/friends'); }}>
-                  <Feather name="users" size={22} color="#333" style={styles.igIcon} />
-                  <Text style={styles.igText}>Friends</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.igItem, styles.igRow]} activeOpacity={0.85} onPress={() => { setMenuVisible(false); router.push('/archive'); }}>
-                  <Feather name="archive" size={22} color="#333" style={styles.igIcon} />
-                  <Text style={styles.igText}>Archive Chats</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.igItem, styles.igRow]} activeOpacity={0.85} onPress={() => { setMenuVisible(false); router.push('/highlight/1'); }}>
-                  <Feather name="star" size={22} color="#333" style={styles.igIcon} />
-                  <Text style={styles.igText}>Highlights</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.igItem, styles.igRow]} activeOpacity={0.85} onPress={() => { setMenuVisible(false); router.push('/saved'); }}>
-                  <Feather name="bookmark" size={22} color="#333" style={styles.igIcon} />
-                  <Text style={styles.igText}>Saved</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.igItemLogout, styles.igRow]} activeOpacity={0.85} onPress={() => { setMenuVisible(false); router.replace('/auth/welcome'); }}>
-                  <Feather name="log-out" size={22} color="#e0245e" style={styles.igIcon} />
-                  <Text style={styles.igTextLogout}>Logout</Text>
-                </TouchableOpacity>
-                <View style={styles.igDivider} />
-                <TouchableOpacity style={[styles.igItem, { alignItems: 'center', marginBottom: 0 }]} activeOpacity={0.85} onPress={() => setMenuVisible(false)}>
-                  <Text style={[styles.igText, { fontSize: 17 }]}>Cancel</Text>
+
+                {/* Cancel Button */}
+                <TouchableOpacity 
+                  style={styles.cancelButton} 
+                  activeOpacity={0.7} 
+                  onPress={() => setMenuVisible(false)}
+                >
+                  <Text style={styles.cancelText}>Cancel</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -343,101 +468,146 @@ function TopMenu() {
 }
 
 const styles = StyleSheet.create({
-    igRow: {
-      // merged into igItem for consistency
-    },
-    igIcon: {
-      marginRight: 16,
-    },
-    igDivider: {
-      width: '100%',
-      height: 1,
-      backgroundColor: '#eee',
-      marginVertical: 8,
-    },
   topMenu: {
-    height: 56,
+    height: isSmallDevice ? 50 : 56,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
+    paddingHorizontal: isSmallDevice ? 12 : 14,
   },
-  logo: { fontSize: 16, fontWeight: '700' },
-  topBtn: { marginLeft: 12, padding: 6 },
+  logo: { 
+    fontSize: isSmallDevice ? 14 : (isLargeDevice ? 17 : 16), 
+    fontWeight: '700' 
+  },
+  logoImg: {
+    height: isSmallDevice ? 40 : 54,
+    width: isSmallDevice ? 130 : 170,
+    marginVertical: 2,
+    marginLeft: 2,
+    marginRight: 2,
+  },
+  topBtn: { 
+    marginLeft: isSmallDevice ? 8 : 12, 
+    padding: isSmallDevice ? 4 : 6 
+  },
   menuOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.18)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
     alignItems: 'center',
     zIndex: 999,
   },
   igSheet: {
     width: '100%',
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingBottom: 56,
-    paddingTop: 18,
-    paddingHorizontal: 0,
-    marginTop: 12,
+    backgroundColor: '#f8f9fa',
+    borderTopLeftRadius: isSmallDevice ? 18 : 24,
+    borderTopRightRadius: isSmallDevice ? 18 : 24,
+    paddingTop: 8,
+    paddingBottom: isSmallDevice ? 16 : 20,
+    maxHeight: SCREEN_HEIGHT * 0.85,
     shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
     shadowOffset: { width: 0, height: -4 },
-    elevation: 16,
+    elevation: 20,
+  },
+  handleContainer: {
     alignItems: 'center',
-    zIndex: 1001,
+    paddingVertical: 8,
   },
   igHandle: {
-    width: 38,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#e5e5e5',
-    marginBottom: 20,
-    marginTop: 2,
+    width: isSmallDevice ? 32 : 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#d1d5db',
+  },
+  menuItemsContainer: {
+    paddingHorizontal: isSmallDevice ? 12 : 16,
+    paddingTop: isSmallDevice ? 8 : 12,
+  },
+  menuGroup: {
+    backgroundColor: '#fff',
+    borderRadius: isSmallDevice ? 10 : 12,
+    marginBottom: isSmallDevice ? 10 : 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   igItem: {
-    width: '100%',
-    paddingVertical: 16,
-    paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    marginBottom: 2,
+    paddingVertical: isSmallDevice ? 12 : 14,
+    paddingHorizontal: isSmallDevice ? 14 : 16,
     backgroundColor: '#fff',
-    justifyContent: 'flex-start',
   },
-  igItemLogout: {
-    width: '100%',
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    flexDirection: 'row',
+  iconContainer: {
+    width: isSmallDevice ? 32 : (isLargeDevice ? 40 : 36),
+    height: isSmallDevice ? 32 : (isLargeDevice ? 40 : 36),
+    borderRadius: isSmallDevice ? 16 : (isLargeDevice ? 20 : 18),
+    backgroundColor: '#f0f3ff',
     alignItems: 'center',
-    borderRadius: 12,
-    marginBottom: 2,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e0245e',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
+    marginRight: isSmallDevice ? 10 : 12,
   },
   igText: {
-    color: '#222',
-    fontSize: 16,
+    flex: 1,
+    color: '#1f2937',
+    fontSize: isSmallDevice ? 14 : (isLargeDevice ? 17 : 16),
     fontWeight: '500',
-    letterSpacing: 0.1,
+  },
+  chevron: {
+    marginLeft: 'auto',
+  },
+  separator: {
+    height: 0.5,
+    backgroundColor: '#e5e7eb',
+    marginLeft: isSmallDevice ? 54 : (isLargeDevice ? 68 : 64),
+  },
+  igItemLogout: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: isSmallDevice ? 12 : 14,
+    paddingHorizontal: isSmallDevice ? 14 : 16,
+    backgroundColor: '#fff',
+    borderRadius: isSmallDevice ? 10 : 12,
+    marginBottom: isSmallDevice ? 10 : 12,
+    shadowColor: '#e74c3c',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   igTextLogout: {
-    color: '#e0245e',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    flex: 1,
+    color: '#e74c3c',
+    fontSize: isSmallDevice ? 14 : (isLargeDevice ? 17 : 16),
+    fontWeight: '600',
+  },
+  cancelButton: {
+    backgroundColor: '#fff',
+    borderRadius: isSmallDevice ? 10 : 12,
+    paddingVertical: isSmallDevice ? 14 : 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  cancelText: {
+    color: '#6b7280',
+    fontSize: isSmallDevice ? 15 : (isLargeDevice ? 17 : 16),
+    fontWeight: '600',
   },
 });
 

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -11,9 +12,23 @@ export type Highlight = {
 interface HighlightCarouselProps {
   highlights: Highlight[];
   onPressHighlight?: (highlight: Highlight) => void;
+  isOwnProfile?: boolean;
+  onAddHighlight?: () => void;
 }
 
-const HighlightCarousel: React.FC<HighlightCarouselProps> = ({ highlights, onPressHighlight }) => {
+const HighlightCarousel: React.FC<HighlightCarouselProps> = ({ highlights, onPressHighlight, isOwnProfile, onAddHighlight }) => {
+  const renderAddButton = () => {
+    if (!isOwnProfile) return null;
+    return (
+      <TouchableOpacity style={styles.highlightBubble} onPress={onAddHighlight}>
+        <View style={styles.addButton}>
+          <Ionicons name="add" size={24} color="#f39c12" />
+        </View>
+        <Text style={styles.title} numberOfLines={1}>New</Text>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <FlatList
@@ -21,6 +36,7 @@ const HighlightCarousel: React.FC<HighlightCarouselProps> = ({ highlights, onPre
         horizontal
         showsHorizontalScrollIndicator={false}
         keyExtractor={item => item.id}
+        ListHeaderComponent={renderAddButton}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.highlightBubble} onPress={() => onPressHighlight?.(item)}>
             <Image source={{ uri: item.coverImage }} style={styles.coverImage} />
@@ -35,27 +51,40 @@ const HighlightCarousel: React.FC<HighlightCarouselProps> = ({ highlights, onPre
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 8,
+    paddingVertical: 6,
     backgroundColor: '#fff',
   },
   highlightBubble: {
     alignItems: 'center',
-    marginRight: 16,
-    width: 64,
+    marginRight: 12,
+    width: 65,
   },
   coverImage: {
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#eee',
+    borderColor: '#f39c12',
     marginBottom: 4,
+    backgroundColor: '#f0f0f0',
+  },
+  addButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#f39c12',
+    borderStyle: 'dashed',
+    marginBottom: 4,
+    backgroundColor: '#fff8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: {
-    fontSize: 12,
-    color: '#222',
+    fontSize: 11,
+    color: '#333',
     textAlign: 'center',
-    maxWidth: 56,
+    maxWidth: 60,
   },
 });
 

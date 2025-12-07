@@ -4,14 +4,6 @@ import {
   signInWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
-  PhoneAuthProvider,
-  signInWithCredential,
-  RecaptchaVerifier,
-  signInWithPhoneNumber,
-  ConfirmationResult,
-  GoogleAuthProvider,
-  OAuthProvider,
-  signInWithPopup,
   User
 } from 'firebase/auth';
 import { 
@@ -81,43 +73,98 @@ export async function resetPassword(email: string) {
 
 // ==================== PHONE AUTH ====================
 
-let confirmationResult: ConfirmationResult | null = null;
+
 
 /**
- * Send OTP to phone number
- * Note: For React Native, you'll need @react-native-firebase/auth
- * This is a web implementation - adapt for mobile
+ * Send OTP to phone number using MSG91
+ * Securely reads API key and sender ID from environment variables
  */
-export async function sendPhoneOTP(phoneNumber: string, recaptchaVerifier?: RecaptchaVerifier) {
+export async function sendPhoneOTP(phoneNumber: string) {
   try {
-    if (!recaptchaVerifier) {
-      // For React Native, use different approach
-      throw new Error('RecaptchaVerifier required for web');
+    // Generate a 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutes expiry
+
+    // Store OTP in Firestore (collection: otps, doc: phoneNumber)
+    await setDoc(doc(db, 'otps', phoneNumber), {
+      otp,
+      expiresAt: expiresAt.toISOString(),
+      attempts: 0,
+      createdAt: now.toISOString(),
+    });
+
+    // MSG91 API details
+    const apiKey = process.env.MSG91_API_KEY || '<YOUR_MSG91_API_KEY>';
+    const senderId = process.env.MSG91_SENDER_ID || '<YOUR_SENDER_ID>';
+    const templateId = process.env.MSG91_TEMPLATE_ID || '<YOUR_TEMPLATE_ID>';
+
+    // Format phone number as per MSG91 requirements (e.g., with country code)
+    const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+91${phoneNumber}`;
+
+    // MSG91 API endpoint
+    const url = 'https://api.msg91.com/api/v5/otp';
+
+    const payload = {
+      mobile: formattedPhone,
+      otp,
+      sender: senderId,
+      template_id: templateId
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'authkey': apiKey
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (data.type === 'success') {
+      return { success: true };
+    } else {
+      return { success: false, error: data.message || 'Failed to send OTP' };
     }
-    
-    const result = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
-    confirmationResult = result;
-    return { success: true, confirmationResult: result };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 }
 
 /**
- * Verify OTP code
+ * Verify OTP code securely using Firestore
  */
-export async function verifyPhoneOTP(code: string) {
+export async function verifyPhoneOTP(phoneNumber: string, code: string) {
   try {
-    if (!confirmationResult) {
-      throw new Error('No confirmation result found. Send OTP first.');
+    const otpDocRef = doc(db, 'otps', phoneNumber);
+    const otpDoc = await getDoc(otpDocRef);
+    if (!otpDoc.exists()) {
+      return { success: false, error: 'OTP not found. Please request a new one.' };
     }
-    
-    const userCredential = await confirmationResult.confirm(code);
-    return { success: true, user: userCredential.user };
+    const data = otpDoc.data();
+    const now = new Date();
+    const expiresAt = new Date(data.expiresAt);
+    if (now > expiresAt) {
+      await setDoc(otpDocRef, { ...data, attempts: data.attempts + 1 }, { merge: true });
+      return { success: false, error: 'OTP expired. Please request a new one.' };
+    }
+    if (data.attempts >= 5) {
+      return { success: false, error: 'Too many attempts. Please request a new OTP.' };
+    }
+    if (data.otp !== code) {
+      await setDoc(otpDocRef, { ...data, attempts: data.attempts + 1 }, { merge: true });
+      return { success: false, error: 'Invalid OTP. Please try again.' };
+    }
+    // OTP is valid, delete it
+    await setDoc(otpDocRef, { ...data, otp: null }, { merge: true });
+    return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 }
+
+// ...existing code...
 
 // ==================== SOCIAL AUTH ====================
 

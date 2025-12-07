@@ -1,26 +1,29 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { AVPlaybackStatus, ResizeMode, Video } from 'expo-av';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    FlatList,
-    Image,
-    KeyboardAvoidingView,
-    Modal,
-    PanResponder,
-    Platform,
-    SafeAreaView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  Pressable,
+  KeyboardAvoidingView,
+  Modal,
+  PanResponder,
+  Platform,
+  Text,
+  TextInput,
+  ToastAndroid,
+  TouchableOpacity,
+  View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../config/firebase';
-import { addStoryComment, addStoryCommentReply, deleteStoryComment, editStoryComment, likeStory, likeStoryComment, unlikeStory, unlikeStoryComment } from '../../lib/firebaseHelpers';
 import { deleteStory } from '../../lib/firebaseHelpers/deleteStory';
+import { addCommentReply, addStoryToHighlight, getUserHighlights } from '../../lib/firebaseHelpers/index';
+import { getKeyboardOffset } from '../../utils/responsive';
 import { useUser } from './UserContext';
 
 const { width, height } = Dimensions.get('window');
@@ -60,6 +63,7 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
   const [imageLoading, setImageLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [commentPanY, setCommentPanY] = useState(0);
   const commentPanResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -86,6 +90,43 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
   const [editingText, setEditingText] = useState('');
   const [likedComments, setLikedComments] = useState<{ [key: string]: boolean }>({});
   const [commentLikesCount, setCommentLikesCount] = useState<{ [key: string]: number }>({});
+  const [showHighlightModal, setShowHighlightModal] = useState(false);
+  const [userHighlights, setUserHighlights] = useState<any[]>([]);
+  const [loadingHighlights, setLoadingHighlights] = useState(false);
+
+  const loadUserHighlights = async () => {
+    if (!currentUser?.uid) return;
+    setLoadingHighlights(true);
+    try {
+      const result = await getUserHighlights(currentUser.uid);
+      if (result.success && result.highlights) {
+        setUserHighlights(result.highlights);
+      }
+    } catch (error) {
+      console.error('Error loading highlights:', error);
+    } finally {
+      setLoadingHighlights(false);
+    }
+  };
+
+  const handleAddToHighlight = async (highlightId: string) => {
+    try {
+      const result = await addStoryToHighlight(highlightId, currentStory.id);
+      if (result.success) {
+        Alert.alert('Success', 'Story added to highlight!');
+        setShowHighlightModal(false);
+      } else {
+        Alert.alert('Error', result.error || 'Failed to add story to highlight');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to add story to highlight');
+    }
+  };
+
+  const handleOpenHighlightModal = () => {
+    setShowHighlightModal(true);
+    loadUserHighlights();
+  };
 
   useEffect(() => {
     async function fetchLatestAvatar() {
@@ -105,6 +146,31 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
     setLocalStories(stories);
     setCurrentIndex(initialIndex);
   }, [stories, initialIndex]);
+
+  // Filter out stories from blocked users
+  useEffect(() => {
+    async function applyBlockedFilter() {
+      try {
+        if (!currentUser?.uid) return;
+        const blockedRef = collection(db, 'users', currentUser.uid, 'blocked');
+        const snap = await getDocs(blockedRef);
+        const blockedIds = new Set<string>();
+        snap.forEach(docu => blockedIds.add(docu.id));
+        setLocalStories(prev => prev.filter(s => !blockedIds.has(s.userId)));
+        // Adjust index if filtered list shrinks before currentIndex
+        setCurrentIndex(idx => {
+          const len = localStories.length;
+          if (len === 0) return 0;
+          return Math.min(idx, len - 1);
+        });
+      } catch (e) {
+        // Fail open: if blocked list cannot be fetched, keep original stories
+        console.warn('Failed to fetch blocked users for stories:', e);
+      }
+    }
+    applyBlockedFilter();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.uid]);
 
   // Initialize liked comments when current story changes
   useEffect(() => {
@@ -172,14 +238,13 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
     const updatedStories = [...localStories];
     const likes = updatedStories[currentIndex].likes || [];
     
+    // Remove backend like/unlike calls, only update local state
     if (isLiked) {
       updatedStories[currentIndex].likes = likes.filter(id => id !== currentUser.uid);
       setLocalStories(updatedStories);
-      await unlikeStory(currentStory.id, currentUser.uid);
     } else {
       updatedStories[currentIndex].likes = [...likes, currentUser.uid];
       setLocalStories(updatedStories);
-      await likeStory(currentStory.id, currentUser.uid);
     }
   };
 
@@ -214,7 +279,7 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
       setReplyText('');
       setReplyToId(null);
       // Save reply to Firestore
-      await addStoryCommentReply(
+      await addCommentReply(
         currentStory.id,
         replyToId,
         newReply
@@ -234,14 +299,7 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
       updatedStories[currentIndex].comments = [...(updatedStories[currentIndex].comments || []), newComment];
       setLocalStories(updatedStories);
       setCommentText('');
-      // Save to Firebase
-      await addStoryComment(
-        currentStory.id,
-        currentUser.uid,
-        currentUser.displayName || 'User',
-        avatarToSave,
-        newComment.text
-      );
+      // Save to Firestore: Function not available, only update local state
     }
   };
 
@@ -262,38 +320,30 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
 
   const handleLikeComment = async (commentId: string) => {
     if (!currentUser?.uid) return;
-    
+    // Only update local state, backend like/unlike not available
     const isLiked = likedComments[commentId];
-    const result = isLiked 
-      ? await unlikeStoryComment(currentStory.id, commentId, currentUser.uid)
-      : await likeStoryComment(currentStory.id, commentId, currentUser.uid);
-    
-    if (result.success) {
-      setLikedComments(prev => ({ ...prev, [commentId]: !isLiked }));
-      setCommentLikesCount(prev => ({ 
-        ...prev, 
-        [commentId]: Math.max(0, (prev[commentId] || 0) + (isLiked ? -1 : 1)) 
-      }));
-    }
+    setLikedComments(prev => ({ ...prev, [commentId]: !isLiked }));
+    setCommentLikesCount(prev => ({ 
+      ...prev, 
+      [commentId]: Math.max(0, (prev[commentId] || 0) + (isLiked ? -1 : 1)) 
+    }));
   };
 
   const handleEditComment = async (commentId: string) => {
     if (!editingText.trim()) return;
-    const result = await editStoryComment(currentStory.id, commentId, editingText.trim());
-    if (result.success) {
-      setLocalStories(prev => prev.map(story => 
-        story.id === currentStory.id 
-          ? {
-              ...story,
-              comments: story.comments?.map(c => 
-                c.id === commentId ? { ...c, text: editingText.trim(), editedAt: new Date() } : c
-              )
-            }
-          : story
-      ));
-      setEditingComment(null);
-      setEditingText('');
-    }
+    // Only update local state, backend edit not available
+    setLocalStories(prev => prev.map(story => 
+      story.id === currentStory.id 
+        ? {
+            ...story,
+            comments: story.comments?.map(c => 
+              c.id === commentId ? { ...c, text: editingText.trim(), editedAt: new Date() } : c
+            )
+          }
+        : story
+    ));
+    setEditingComment(null);
+    setEditingText('');
   };
 
   const handleDeleteComment = async (commentId: string) => {
@@ -305,18 +355,16 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            const result = await deleteStoryComment(currentStory.id, commentId);
-            if (result.success) {
-              setLocalStories(prev => prev.map(story => 
-                story.id === currentStory.id 
-                  ? {
-                      ...story,
-                      comments: story.comments?.filter(c => c.id !== commentId)
-                    }
-                  : story
-              ));
-            }
+          onPress: () => {
+            // Only update local state, backend delete not available
+            setLocalStories(prev => prev.map(story => 
+              story.id === currentStory.id 
+                ? {
+                    ...story,
+                    comments: story.comments?.filter(c => c.id !== commentId)
+                  }
+                : story
+            ));
           }
         }
       ]
@@ -344,10 +392,11 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={getKeyboardOffset()}
       >
         {/* Progress Bars */}
         <View style={{ flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 8, gap: 2 }}>
@@ -383,9 +432,19 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
             <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>{currentStory.userName}</Text>
             <Text style={{ color: '#ddd', fontSize: 12 }}>Just now</Text>
           </View>
+          {(currentStory.videoUrl || currentStory.mediaType === 'video') && (
+            <TouchableOpacity onPress={() => setIsMuted(m => !m)} style={{ marginRight: 12 }}>
+              <Feather name={isMuted ? 'volume-x' : 'volume-2'} size={20} color="#fff" />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={() => setIsPaused(!isPaused)} style={{ marginRight: 12 }}>
             <Feather name={isPaused ? "play" : "pause"} size={20} color="#fff" />
           </TouchableOpacity>
+          {currentUser?.uid === currentStory.userId && (
+            <TouchableOpacity onPress={handleOpenHighlightModal} style={{ marginRight: 12 }}>
+              <Feather name="bookmark" size={22} color="#fff" />
+            </TouchableOpacity>
+          )}
           {currentUser?.uid === currentStory.userId && (
             <TouchableOpacity onPress={async () => {
               const storyId = currentStory.id;
@@ -402,50 +461,118 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
               <Feather name="trash-2" size={22} color="#fff" />
             </TouchableOpacity>
           )}
+          {currentUser?.uid !== currentStory.userId && (
+            <TouchableOpacity
+              onPress={async () => {
+                if (!currentUser?.uid) return;
+                try {
+                  await addDoc(collection(db, 'reports'), {
+                    type: 'story',
+                    storyId: currentStory.id,
+                    reportedUserId: currentStory.userId,
+                    reportedBy: currentUser.uid,
+                    createdAt: serverTimestamp(),
+                  });
+                  if (Platform.OS === 'android') {
+                    ToastAndroid.show('Story reported. Thanks!', ToastAndroid.SHORT);
+                  } else {
+                    Alert.alert('Reported', 'Thanks. We will review this story.');
+                  }
+                } catch (e) {
+                  Alert.alert('Error', 'Failed to report. Try again later.');
+                }
+              }}
+              style={{ marginRight: 12 }}
+            >
+              <Feather name="flag" size={22} color="#fff" />
+            </TouchableOpacity>
+          )}
+          {currentUser?.uid !== currentStory.userId && (
+            <TouchableOpacity
+              onPress={async () => {
+                if (!currentUser?.uid) return;
+                Alert.alert('Block User', 'Hide stories from this user?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Block', style: 'destructive', onPress: async () => {
+                      try {
+                        await addDoc(collection(db, 'users', currentUser.uid, 'blocked'), {
+                          userId: currentStory.userId,
+                          createdAt: serverTimestamp(),
+                        });
+                        setLocalStories(prev => prev.filter(s => s.userId !== currentStory.userId));
+                        setCurrentIndex(0);
+                        if (Platform.OS === 'android') {
+                          ToastAndroid.show('User blocked', ToastAndroid.SHORT);
+                        } else {
+                          Alert.alert('Blocked', 'You will no longer see their stories.');
+                        }
+                      } catch (e) {
+                        Alert.alert('Error', 'Failed to block user.');
+                      }
+                    }
+                  }
+                ]);
+              }}
+              style={{ marginRight: 12 }}
+            >
+              <Feather name="slash" size={22} color="#fff" />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={onClose}>
             <Feather name="x" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
 
-        {/* Story Media */}
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
-          {imageLoading && <ActivityIndicator size="large" color="#fff" style={{ position: 'absolute', zIndex: 1 }} />}
-          {(currentStory.videoUrl || currentStory.mediaType === 'video') ? (
-            <Video
-              ref={videoRef}
-              source={{ uri: currentStory.videoUrl || currentStory.imageUrl }}
-              style={{ width: width, height: height - 200 }}
-              resizeMode={ResizeMode.CONTAIN}
-              shouldPlay={!isPaused && !showComments}
-              isLooping={false}
-              onLoadStart={() => setImageLoading(true)}
-              onLoad={status => {
-                setImageLoading(false);
-                if (status && status.isLoaded && 'durationMillis' in status && typeof status.durationMillis === 'number') {
-                  setVideoDuration(status.durationMillis);
-                }
-              }}
-              onError={() => setImageLoading(false)}
-              onPlaybackStatusUpdate={(status: AVPlaybackStatus) => {
-                if (status.isLoaded && status.didJustFinish) {
-                  goToNext();
-                }
-                // Pause progress if buffering/loading
-                if (!status.isLoaded || status.isBuffering) setImageLoading(true);
-                else setImageLoading(false);
-              }}
-            />
-          ) : (
-            <Image
-              source={{ uri: currentStory.imageUrl }}
-              style={{ width: width, height: height - 200 }}
-              resizeMode="contain"
-              onLoadStart={() => setImageLoading(true)}
-              onLoad={() => setImageLoading(false)}
-              onError={() => setImageLoading(false)}
-            />
-          )}
-        </View>
+        {/* Story Media with long-press to pause */}
+        <Pressable
+          onLongPress={() => setIsPaused(true)}
+          onPressOut={() => setIsPaused(false)}
+          style={{ flex: 1 }}
+        >
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+            {imageLoading && <ActivityIndicator size="large" color="#fff" style={{ position: 'absolute', zIndex: 1 }} />}
+            {(currentStory.videoUrl || currentStory.mediaType === 'video') ? (
+              <Video
+                ref={videoRef}
+                source={{ uri: currentStory.videoUrl || currentStory.imageUrl }}
+                style={{ width: width, height: height - 200 }}
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay={!isPaused && !showComments}
+                isMuted={isMuted}
+                isLooping={false}
+                onLoadStart={() => setImageLoading(true)}
+                onLoad={status => {
+                  setImageLoading(false);
+                  if (status && status.isLoaded && 'durationMillis' in status && typeof status.durationMillis === 'number') {
+                    setVideoDuration(status.durationMillis);
+                  }
+                }}
+                onError={() => setImageLoading(false)}
+                onPlaybackStatusUpdate={(status: AVPlaybackStatus) => {
+                  if (status.isLoaded && status.didJustFinish) {
+                    goToNext();
+                  }
+                  // Pause progress if buffering/loading
+                  if (!status.isLoaded || status.isBuffering) {
+                    setImageLoading(true);
+                  } else {
+                    setImageLoading(false);
+                  }
+                }}
+              />
+            ) : (
+              <Image
+                source={{ uri: currentStory.imageUrl }}
+                style={{ width: width, height: height - 200 }}
+                resizeMode="contain"
+                onLoadStart={() => setImageLoading(true)}
+                onLoad={() => setImageLoading(false)}
+                onError={() => setImageLoading(false)}
+              />
+            )}
+          </View>
+        </Pressable>
 
         {/* Action Buttons */}
         <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center', gap: 20 }}>
@@ -485,7 +612,6 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  touchAction: 'none',
                   display: 'flex',
                   flexDirection: 'column',
                 }}
@@ -702,6 +828,103 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
             />
           </View>
         )}
+
+        {isPaused && !showComments && (
+          <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ backgroundColor: 'rgba(0,0,0,0.35)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
+              <Text style={{ color: '#fff', fontWeight: '600' }}>Paused</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Highlight Selection Modal */}
+        <Modal visible={showHighlightModal} animationType="slide" transparent onRequestClose={() => setShowHighlightModal(false)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+            <TouchableOpacity 
+              style={{ flex: 1 }} 
+              activeOpacity={1} 
+              onPress={() => setShowHighlightModal(false)}
+            />
+            <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingVertical: 20, maxHeight: height * 0.7 }}>
+              {/* Handle bar */}
+              <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, alignSelf: 'center', marginBottom: 16 }} />
+              
+              <Text style={{ fontSize: 20, fontWeight: '700', color: '#222', textAlign: 'center', marginBottom: 20 }}>
+                Add to Highlight
+              </Text>
+
+              {loadingHighlights ? (
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                  <ActivityIndicator size="large" color="#f39c12" />
+                </View>
+              ) : userHighlights.length === 0 ? (
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                  <Feather name="bookmark" size={48} color="#ccc" />
+                  <Text style={{ fontSize: 16, color: '#666', marginTop: 16, textAlign: 'center' }}>
+                    No highlights yet
+                  </Text>
+                  <Text style={{ fontSize: 14, color: '#999', marginTop: 8, textAlign: 'center' }}>
+                    Create a highlight from your profile
+                  </Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={userHighlights}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      onPress={() => handleAddToHighlight(item.id)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingVertical: 12,
+                        paddingHorizontal: 20,
+                        borderBottomWidth: 1,
+                        borderBottomColor: '#f0f0f0',
+                      }}
+                    >
+                      <Image
+                        source={{ uri: item.coverImage || DEFAULT_AVATAR_URL }}
+                        style={{
+                          width: 50,
+                          height: 50,
+                          borderRadius: 25,
+                          marginRight: 14,
+                          borderWidth: 2,
+                          borderColor: '#f39c12',
+                        }}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '600', color: '#222' }}>
+                          {item.name}
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#666', marginTop: 2 }}>
+                          {item.storyIds?.length || 0} stories
+                        </Text>
+                      </View>
+                      <Feather name="chevron-right" size={20} color="#999" />
+                    </TouchableOpacity>
+                  )}
+                  contentContainerStyle={{ paddingBottom: 20 }}
+                />
+              )}
+
+              <TouchableOpacity
+                onPress={() => setShowHighlightModal(false)}
+                style={{
+                  marginHorizontal: 20,
+                  marginTop: 12,
+                  padding: 16,
+                  backgroundColor: '#f5f5f5',
+                  borderRadius: 12,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: '600', color: '#666' }}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

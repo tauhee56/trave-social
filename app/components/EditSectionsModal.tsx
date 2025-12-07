@@ -4,8 +4,10 @@ import React, { useState } from 'react';
 import { Alert, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { addUserSection, deleteUserSection, updateUserSection, updateUserSectionsOrder } from '../../lib/firebaseHelpers';
+// import { updateUserSectionsOrder } from '../../lib/firebaseHelpers';
 import { getUserSectionsSorted } from '../../lib/firebaseHelpers/getUserSectionsSorted';
+import { addUserSection, deleteUserSection, updateUserSection } from '../../lib/firebaseHelpers/index';
+import { updateUserSectionsOrder } from '../../lib/firebaseHelpers/updateUserSectionsOrder';
 
 type Section = {
   name: string;
@@ -83,9 +85,25 @@ export default function EditSectionsModal({
     const section = sections.find(s => s.name === selectedSectionForEdit);
     if (!section) return;
 
+    console.log('Post selected:', post.id, 'Mode:', sectionMode);
+
     if (sectionMode === 'cover') {
       const uri = post.imageUrl || post.imageUrls?.[0];
-      await updateUserSection(userId, { name: selectedSectionForEdit, postIds: section.postIds, coverImage: uri });
+      console.log('Setting cover image:', uri);
+      
+      // Update local state immediately for instant feedback
+      const updatedSections = sections.map(s => 
+        s.name === selectedSectionForEdit 
+          ? { ...s, coverImage: uri }
+          : s
+      );
+      onSectionsUpdate(updatedSections);
+      
+      // Then save to Firebase
+      const result = await updateUserSection(userId, { name: selectedSectionForEdit, postIds: section.postIds, coverImage: uri });
+      console.log('Cover update result:', result);
+      
+      // Refresh from Firebase to ensure consistency
       const res = await getUserSectionsSorted(userId);
       if (res.success && res.data) {
         onSectionsUpdate(res.data);
@@ -94,7 +112,21 @@ export default function EditSectionsModal({
       const newPostIds = section.postIds.includes(post.id)
         ? section.postIds.filter(id => id !== post.id)
         : [...section.postIds, post.id];
-      await updateUserSection(userId, { name: selectedSectionForEdit, postIds: newPostIds, coverImage: section.coverImage });
+      console.log('Updating postIds:', newPostIds);
+      
+      // Update local state immediately for instant feedback
+      const updatedSections = sections.map(s => 
+        s.name === selectedSectionForEdit 
+          ? { ...s, postIds: newPostIds }
+          : s
+      );
+      onSectionsUpdate(updatedSections);
+      
+      // Then save to Firebase
+      const result = await updateUserSection(userId, { name: selectedSectionForEdit, postIds: newPostIds, coverImage: section.coverImage });
+      console.log('Post selection update result:', result);
+      
+      // Refresh from Firebase to ensure consistency
       const res = await getUserSectionsSorted(userId);
       if (res.success && res.data) {
         onSectionsUpdate(res.data);
@@ -267,26 +299,37 @@ export default function EditSectionsModal({
 
               {/* Posts grid for selection */}
               <View style={styles.grid}>
-                {posts.map((p) => (
-                  <TouchableOpacity
-                    key={p.id}
-                    style={styles.gridItem}
-                    activeOpacity={0.8}
-                    onPress={() => handlePostSelection(p)}
-                  >
-                    <ExpoImage
-                      source={{ uri: p.imageUrl || p.imageUrls?.[0] }}
-                      style={styles.gridImage}
-                      contentFit="cover"
-                      transition={200}
-                    />
-                    {sectionMode === 'select' && sections.find(s => s.name === selectedSectionForEdit)?.postIds.includes(p.id) && (
-                      <View style={styles.checkmark}>
-                        <Ionicons name="checkmark" size={16} color="#fff" />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
+                {posts.map((p) => {
+                  const section = sections.find(s => s.name === selectedSectionForEdit);
+                  const isSelected = sectionMode === 'select' && section?.postIds.includes(p.id);
+                  const isCoverSelected = sectionMode === 'cover' && section?.coverImage === (p.imageUrl || p.imageUrls?.[0]);
+                  return (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={styles.gridItem}
+                      activeOpacity={0.7}
+                      onPress={() => handlePostSelection(p)}
+                    >
+                      <ExpoImage
+                        source={{ uri: p.imageUrl || p.imageUrls?.[0] }}
+                        style={styles.gridImage}
+                        contentFit="cover"
+                        transition={200}
+                      />
+                      {isSelected && (
+                        <View style={styles.checkmark}>
+                          <Ionicons name="checkmark-circle" size={28} color="#4CAF50" />
+                        </View>
+                      )}
+                      {isCoverSelected && (
+                        <View style={styles.coverBadge}>
+                          <Ionicons name="star" size={20} color="#FFD700" />
+                          <Text style={styles.coverBadgeText}>Cover</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           )}
@@ -460,14 +503,38 @@ const styles = StyleSheet.create({
   gridImage: { width: '100%', height: '100%' },
   checkmark: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: '#f39c12',
-    borderRadius: 12,
-    width: 24,
-    height: 24,
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 14,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  coverBadge: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    right: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  coverBadgeText: {
+    color: '#FFD700',
+    fontSize: 11,
+    fontWeight: '700',
   },
   bottomActions: {
     flexDirection: 'row',

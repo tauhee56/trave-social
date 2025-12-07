@@ -2,17 +2,42 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-import { followUser, getUserHighlights, getUserPosts, getUserProfile, getUserSections, getUserStories, likePost, sendFollowRequest, unfollowUser, unlikePost } from '../../lib/firebaseHelpers';
-import CommentSection from '../components/CommentSection';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { db } from '../../config/firebase';
+import { fetchBlockedUserIds, filterOutBlocked } from '../../services/moderation';
+import { useCurrentLocation } from '../hooks/useCurrentLocation';
+// import { getUserProfile } from '../../lib/firebaseHelpers';
+import { followUser, sendFollowRequest, unfollowUser } from '../../lib/firebaseHelpers/follow';
+import { getUserSectionsSorted } from '../../lib/firebaseHelpers/getUserSectionsSorted';
+import { likePost, unlikePost } from '../../lib/firebaseHelpers/post';
+import { getUserHighlights, getUserPosts, getUserProfile, getUserStories } from '../../lib/firebaseHelpers/user';
+import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
+import { CommentSection } from '../components/CommentSection';
+import CreateHighlightModal from '../components/CreateHighlightModal';
 import EditSectionsModal from '../components/EditSectionsModal';
 import HighlightCarousel from '../components/HighlightCarousel';
 import HighlightViewer from '../components/HighlightViewer';
 import PostViewerModal from '../components/PostViewerModal';
 import StoriesViewer from '../components/StoriesViewer';
 import { useUser } from '../components/UserContext';
+
+// Default avatar URL
+const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+const DEFAULT_IMAGE_URL = DEFAULT_AVATAR_URL;
+
+// Utility to parse/sanitize coordinates
+function parseCoord(val: any): number | null {
+  if (typeof val === 'number' && isFinite(val)) return val;
+  if (typeof val === 'string') {
+    const n = parseFloat(val);
+    return isFinite(n) ? n : null;
+  }
+  return null;
+}
 
 // Types
 const standardMapStyle = [
@@ -51,17 +76,31 @@ type ProfileData = {
   locationsCount?: number;
   followers?: string[];
   following?: string[];
-  // Add backend fields
   isPrivate?: boolean;
   approvedFollowers?: string[];
   followRequestPending?: boolean;
 };
 
 export default function Profile({ userIdProp }: any) {
-  // State
+      // Skeleton loader for posts
+      const renderSkeletonPosts = () => (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 0 }}>
+          {Array.from({ length: POSTS_PER_PAGE }).map((_, idx) => (
+            <View key={idx} style={{ flexBasis: '25%', aspectRatio: 1, padding: 1 }}>
+              <View style={{ backgroundColor: '#eee', borderRadius: 8, width: '100%', height: '100%' }} />
+            </View>
+          ))}
+        </View>
+      );
+    // Pagination state for posts
+    const [postsPage, setPostsPage] = useState(1);
+    const POSTS_PER_PAGE = 12;
+    const [loadingMorePosts, setLoadingMorePosts] = useState(false);
+  // State and context
   const [storiesViewerVisible, setStoriesViewerVisible] = useState(false);
   const [userStories, setUserStories] = useState<any[]>([]);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [userMenuVisible, setUserMenuVisible] = useState(false);
   const [highlightViewerVisible, setHighlightViewerVisible] = useState(false);
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
   const router = useRouter();
@@ -81,6 +120,7 @@ export default function Profile({ userIdProp }: any) {
   const [postViewerVisible, setPostViewerVisible] = useState<boolean>(false);
   const [selectedPostIndex, setSelectedPostIndex] = useState<number>(0);
   const [segmentTab, setSegmentTab] = useState<'grid' | 'map' | 'tagged'>('grid');
+  const { location: currentLocation } = useCurrentLocation();
   const [taggedPosts, setTaggedPosts] = useState<any[]>([]);
   const [editSectionsModal, setEditSectionsModal] = useState<boolean>(false);
   const [followLoading, setFollowLoading] = useState(false);
@@ -90,6 +130,7 @@ export default function Profile({ userIdProp }: any) {
   const [commentModalPostId, setCommentModalPostId] = useState<string>('');
   const [commentModalAvatar, setCommentModalAvatar] = useState<string>('');
   const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const [createHighlightModalVisible, setCreateHighlightModalVisible] = useState(false);
   const isOwnProfile = !userIdProp && (!params.user || params.user === authUser?.uid);
   const isFollowing = !!(profile?.followers || []).includes(authUser?.uid || '');
   const visiblePosts = selectedSection
@@ -126,13 +167,20 @@ export default function Profile({ userIdProp }: any) {
 
   const handleMessage = () => {
     if (!viewedUserId || !profile) return;
-    router.push({ 
-      pathname: '/dm', 
-      params: { 
-        otherUserId: viewedUserId, 
+    
+    // Check if account is private and user is not approved follower
+    if (isPrivate && !approvedFollower) {
+      Alert.alert('Private Account', 'You need to be an approved follower to send messages to this user.');
+      return;
+    }
+    
+    router.push({
+      pathname: '/dm',
+      params: {
+        otherUserId: viewedUserId,
         user: profile.name || 'User',
         avatar: profile.avatar || ''
-      } 
+      }
     });
   };
 
@@ -147,8 +195,33 @@ export default function Profile({ userIdProp }: any) {
     }
   };
 
-  const handleSavePost = (post: any) => {
-    setSavedPosts(prev => ({ ...prev, [post.id]: !prev[post.id] }));
+  const handleSavePost = async (post: any) => {
+    if (!authUser?.uid || !post?.id) return;
+
+    const isSaved = savedPosts[post.id];
+
+    try {
+      const { db } = await import('../../config/firebase');
+      const { doc, updateDoc, arrayUnion, arrayRemove, setDoc, deleteDoc } = await import('firebase/firestore');
+
+      if (isSaved) {
+        // Unsave
+        const postRef = doc(db, 'posts', post.id);
+        await updateDoc(postRef, { savedBy: arrayRemove(authUser.uid) });
+        const userSavedRef = doc(db, 'users', authUser.uid, 'saved', post.id);
+        await deleteDoc(userSavedRef);
+        setSavedPosts(prev => ({ ...prev, [post.id]: false }));
+      } else {
+        // Save
+        const postRef = doc(db, 'posts', post.id);
+        await updateDoc(postRef, { savedBy: arrayUnion(authUser.uid) });
+        const userSavedRef = doc(db, 'users', authUser.uid, 'saved', post.id);
+        await setDoc(userSavedRef, { savedAt: Date.now() });
+        setSavedPosts(prev => ({ ...prev, [post.id]: true }));
+      }
+    } catch (error) {
+      console.error('Error saving/unsaving post:', error);
+    }
   };
 
   const handleSharePost = (post: any) => {
@@ -159,6 +232,85 @@ export default function Profile({ userIdProp }: any) {
         title: 'Check out this post!'
       });
     });
+  };
+
+  // Block user handler
+  const handleBlockUser = async () => {
+    if (!authUser?.uid || !viewedUserId || isOwnProfile) return;
+    
+    Alert.alert(
+      'Block User',
+      `Block ${profile?.name || 'this user'}?\n\nThey won't be able to find your profile, posts, or stories. They won't be notified that you blocked them.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Add to blocked list
+              await setDoc(doc(db, 'users', authUser.uid, 'blocked', viewedUserId), {
+                blockedAt: serverTimestamp(),
+                userId: viewedUserId,
+              });
+              
+              // Also unfollow if following
+              if (isFollowing) {
+                await unfollowUser(authUser.uid, viewedUserId);
+              }
+              
+              // Remove from your followers if they follow you
+              const theyFollowYou = profile?.followers?.includes(authUser.uid);
+              if (theyFollowYou) {
+                await unfollowUser(viewedUserId, authUser.uid);
+              }
+              
+              setUserMenuVisible(false);
+              Alert.alert('Blocked', `${profile?.name || 'User'} has been blocked.`, [
+                { text: 'OK', onPress: () => router.back() }
+              ]);
+            } catch (error) {
+              console.error('Error blocking user:', error);
+              Alert.alert('Error', 'Failed to block user. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Report user handler
+  const handleReportUser = () => {
+    setUserMenuVisible(false);
+    Alert.alert(
+      'Report User',
+      'What would you like to report?',
+      [
+        { text: 'Spam', onPress: () => submitReport('spam') },
+        { text: 'Inappropriate Content', onPress: () => submitReport('inappropriate') },
+        { text: 'Harassment', onPress: () => submitReport('harassment') },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const submitReport = async (reason: string) => {
+    if (!authUser?.uid || !viewedUserId) return;
+    
+    try {
+      const { addDoc, collection } = await import('firebase/firestore');
+      await addDoc(collection(db, 'reports'), {
+        reportedUserId: viewedUserId,
+        reportedBy: authUser.uid,
+        reason,
+        createdAt: serverTimestamp(),
+        status: 'pending',
+      });
+      Alert.alert('Report Submitted', 'Thank you for your report. We will review it shortly.');
+    } catch (error) {
+      console.error('Error submitting report:', error);
+      Alert.alert('Error', 'Failed to submit report. Please try again.');
+    }
   };
 
   // Add missing highlight handler
@@ -192,12 +344,13 @@ export default function Profile({ userIdProp }: any) {
           if (postsRes.success) {
             if ('data' in postsRes && Array.isArray(postsRes.data)) postsData = postsRes.data;
             else if ('posts' in postsRes && Array.isArray(postsRes.posts)) postsData = postsRes.posts;
-            setPosts(postsData);
+            const blocked = authUser?.uid ? await fetchBlockedUserIds(authUser.uid) : new Set<string>();
+            setPosts(filterOutBlocked(postsData, blocked));
           } else {
             setPosts([]);
           }
-          // Fetch sections
-          const sectionsRes = await getUserSections(viewedUserId || '');
+          // Fetch sections (sorted by user's preferred order)
+          const sectionsRes = await getUserSectionsSorted(viewedUserId || '');
           let sectionsData: any[] = [];
           if (sectionsRes.success) {
             if ('data' in sectionsRes && Array.isArray(sectionsRes.data)) sectionsData = sectionsRes.data;
@@ -246,11 +399,59 @@ export default function Profile({ userIdProp }: any) {
       if (postsRes.success) {
         if ('data' in postsRes && Array.isArray(postsRes.data)) postsData = postsRes.data;
         else if ('posts' in postsRes && Array.isArray(postsRes.posts)) postsData = postsRes.posts;
-        setPosts(postsData);
+        const blocked = authUser?.uid ? await fetchBlockedUserIds(authUser.uid) : new Set<string>();
+        // Pagination logic
+        const paginatedPosts = filterOutBlocked(postsData, blocked).slice(0, postsPage * POSTS_PER_PAGE);
+        setPosts(paginatedPosts);
+
+        // Initialize liked and saved states for posts
+        if (authUser?.uid) {
+          const likedState: { [key: string]: boolean } = {};
+          const savedState: { [key: string]: boolean } = {};
+          paginatedPosts.forEach(post => {
+            likedState[post.id] = post.likes?.includes(authUser.uid) || false;
+            savedState[post.id] = post.savedBy?.includes(authUser.uid) || false;
+          });
+          setLikedPosts(likedState);
+          setSavedPosts(savedState);
+        }
       } else {
         setPosts([]);
       }
-      const sectionsRes = await getUserSections(viewedUserId);
+        // Load more posts handler
+        const handleLoadMorePosts = () => {
+          if (loadingMorePosts) return;
+          setLoadingMorePosts(true);
+          setPostsPage(prev => prev + 1);
+          setLoadingMorePosts(false);
+        };
+        // Skeleton loader for posts
+        const renderSkeletonPosts = () => (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 0 }}>
+            {Array.from({ length: POSTS_PER_PAGE }).map((_, idx) => (
+              <View key={idx} style={{ flexBasis: '25%', aspectRatio: 1, padding: 1 }}>
+                <View style={{ backgroundColor: '#eee', borderRadius: 8, width: '100%', height: '100%' }} />
+              </View>
+            ))}
+          </View>
+        );
+      // Fetch tagged posts
+      try {
+        if (viewedUserId) {
+          const { collection, query, where, getDocs } = await import('firebase/firestore');
+          const taggedQ = query(collection(db, 'posts'), where('taggedUsers', 'array-contains', viewedUserId));
+          const taggedSnap = await getDocs(taggedQ);
+          const tagged = taggedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const blocked = authUser?.uid ? await fetchBlockedUserIds(authUser.uid) : new Set<string>();
+          setTaggedPosts(filterOutBlocked(tagged, blocked));
+        } else {
+          setTaggedPosts([]);
+        }
+      } catch (err) {
+        console.error('Error fetching tagged posts:', err);
+        setTaggedPosts([]);
+      }
+      const sectionsRes = await getUserSectionsSorted(viewedUserId);
       let sectionsData: any[] = [];
       if (sectionsRes.success) {
         if ('data' in sectionsRes && Array.isArray(sectionsRes.data)) sectionsData = sectionsRes.data;
@@ -273,12 +474,22 @@ export default function Profile({ userIdProp }: any) {
     loadData();
   }, [viewedUserId]);
 
-  // Single return statement
+  // UI
   return (
-    <SafeAreaView style={styles.container}>
-      {/* TopMenu is rendered by (tabs)/_layout.tsx, so no need for duplicate top bar here */}
-      {/* Ensure top bar 3 dots button opens settings modal, not alert */}
-      {/* If you have a custom top bar, make sure its 3 dots button calls setSettingsModalVisible(true) */}
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      {/* Header for other users' profiles with back button and 3-dots menu */}
+      {!isOwnProfile && (
+        <View style={styles.profileHeader}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.headerBackBtn}>
+            <Feather name="arrow-left" size={24} color="#000" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle} numberOfLines={1}>{profile?.username || profile?.name || 'Profile'}</Text>
+          <TouchableOpacity onPress={() => setUserMenuVisible(true)} style={styles.headerMenuBtn}>
+            <Feather name="more-vertical" size={24} color="#000" />
+          </TouchableOpacity>
+        </View>
+      )}
+      
       {loading && (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 99, backgroundColor: 'rgba(255,255,255,0.7)', justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color="#007aff" />
@@ -306,13 +517,17 @@ export default function Profile({ userIdProp }: any) {
               }}
             >
               <ExpoImage
-                // Debug: log which avatar is being used
-                {...(() => { console.log('Profile avatar:', { photoURL: authUser?.photoURL, avatar: profile?.avatar }); return {}; })()}
-                source={{ uri: profile?.avatar || 'https://via.placeholder.com/120x120.png?text=User' }}
-                style={styles.avatar}
+                source={{ uri: profile?.avatar || authUser?.photoURL || DEFAULT_AVATAR_URL }}
+                style={[styles.avatar, isPrivate && !isOwnProfile && !approvedFollower && { opacity: 0.3 }]}
                 contentFit="cover"
                 transition={200}
+                cachePolicy="memory-disk"
               />
+              {isPrivate && !isOwnProfile && !approvedFollower && (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 60 }}>
+                  <Ionicons name="lock-closed" size={40} color="#fff" />
+                </View>
+              )}
             </TouchableOpacity>
             {/* Avatar change logic for own profile */}
             {isOwnProfile && (
@@ -330,6 +545,13 @@ export default function Profile({ userIdProp }: any) {
                     if (uploadRes.success && uploadRes.url) {
                       // Update backend profile
                       const updateRes = await updateUserProfile(authUser.uid, { avatar: uploadRes.url });
+                      // Update Firebase Auth user photoURL
+                      try {
+                        const { updateProfile } = await import('firebase/auth');
+                        await updateProfile(authUser, { photoURL: uploadRes.url });
+                      } catch (e) {
+                        console.log('Failed to update Firebase Auth photoURL:', e);
+                      }
                       if (updateRes.success) {
                         setProfile(prev => prev ? { ...prev, avatar: uploadRes.url ?? '' } : prev);
                         alert('Profile picture updated!');
@@ -372,16 +594,38 @@ export default function Profile({ userIdProp }: any) {
                 <Text style={styles.statNum}>{posts.length}</Text>
                 <Text style={styles.statLbl}>Posts</Text>
               </View>
-              <View style={styles.statItem}>
+              <TouchableOpacity 
+                style={styles.statItem}
+                onPress={() => {
+                  if (!isPrivate || isOwnProfile || approvedFollower) {
+                    router.push(`/friends?userId=${viewedUserId}&tab=followers` as any);
+                  }
+                }}
+                disabled={isPrivate && !isOwnProfile && !approvedFollower}
+              >
                 <Text style={styles.statNum}>{profile?.followersCount ?? (profile?.followers?.length || 0)}</Text>
                 <Text style={styles.statLbl}>Followers</Text>
-              </View>
-              <View style={styles.statItem}>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.statItem}
+                onPress={() => {
+                  if (!isPrivate || isOwnProfile || approvedFollower) {
+                    router.push(`/friends?userId=${viewedUserId}&tab=following` as any);
+                  }
+                }}
+                disabled={isPrivate && !isOwnProfile && !approvedFollower}
+              >
                 <Text style={styles.statNum}>{profile?.followingCount ?? (profile?.following?.length || 0)}</Text>
                 <Text style={styles.statLbl}>Following</Text>
-              </View>
+              </TouchableOpacity>
             </>
-          ) : null}
+          ) : (
+            <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+              <Ionicons name="lock-closed" size={32} color="#999" />
+              <Text style={{ marginTop: 8, fontSize: 14, color: '#999', textAlign: 'center' }}>This account is private</Text>
+              <Text style={{ fontSize: 13, color: '#999', textAlign: 'center', marginTop: 4 }}>Follow to see their stats and posts</Text>
+            </View>
+          )}
         </View>
 
         {/* Name + Bio + Website */}
@@ -390,19 +634,7 @@ export default function Profile({ userIdProp }: any) {
           {!!profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
           {!!profile?.website && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.website}>{profile.website}</Text>}
           {/* Only show follow button for other users, and only once */}
-          {!isOwnProfile && (
-            <TouchableOpacity
-              style={[styles.followBtn, (isPrivate && !approvedFollower ? followRequestPending : isFollowing) && styles.followingBtn]}
-              onPress={handleFollowToggle}
-              disabled={followLoading || (isPrivate && !approvedFollower ? followRequestPending : false)}
-            >
-              <Text style={[styles.followText, (isPrivate && !approvedFollower ? followRequestPending : isFollowing) && styles.followingText]}>
-                {isPrivate && !approvedFollower
-                  ? (followRequestPending ? 'Requested' : (followLoading ? 'Requesting...' : 'Follow'))
-                  : (isFollowing ? (followLoading ? 'Unfollowing...' : 'Following') : (followLoading ? 'Following...' : 'Follow'))}
-              </Text>
-            </TouchableOpacity>
-          )}
+          {/* Only show follow button for other users in pillRow below, not here */}
         </View>
 
         {/* Pill buttons: Profile | Sections | Passport (only show for own profile) */}
@@ -423,9 +655,10 @@ export default function Profile({ userIdProp }: any) {
           </View>
         )}
 
-        {/* Highlights carousel (Instagram-style) - always show under pill buttons */}
-        <View style={{ marginBottom: 8 }}>
-          <HighlightCarousel highlights={highlights} onPressHighlight={handlePressHighlight} />
+        {/* Highlights carousel (Instagram-style) - only show for own profile or approved followers */}
+        {(!isPrivate || isOwnProfile || approvedFollower) && (
+          <View style={{ marginBottom: 4, marginTop: 4 }}>
+            <HighlightCarousel highlights={highlights} onPressHighlight={handlePressHighlight} isOwnProfile={isOwnProfile} onAddHighlight={() => setCreateHighlightModalVisible(true)} />
           {/* StoriesViewer for own stories */}
           {storiesViewerVisible && (
             <Modal
@@ -440,12 +673,13 @@ export default function Profile({ userIdProp }: any) {
               />
             </Modal>
           )}
-          <HighlightViewer
-            visible={highlightViewerVisible}
-            highlightId={selectedHighlightId}
-            onClose={() => setHighlightViewerVisible(false)}
-          />
-        </View>
+            <HighlightViewer
+              visible={highlightViewerVisible}
+              highlightId={selectedHighlightId}
+              onClose={() => setHighlightViewerVisible(false)}
+            />
+          </View>
+        )}
 
         {/* Follow/Unfollow button for other users' profiles */}
         {!isOwnProfile && (
@@ -455,86 +689,125 @@ export default function Profile({ userIdProp }: any) {
                 {isFollowing ? (followLoading ? 'Unfollowing...' : 'Following') : (followLoading ? 'Following...' : 'Follow')}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.pillBtn} onPress={handleMessage}>
-              <Ionicons name="chatbubble-outline" size={16} color="#000" style={{ marginRight: 4 }} />
-              <Text style={styles.pillText}>Message</Text>
+            {(!isPrivate || approvedFollower) && (
+              <>
+                <TouchableOpacity style={styles.pillBtn} onPress={handleMessage}>
+                  <Ionicons name="chatbubble-outline" size={16} color="#000" style={{ marginRight: 4 }} />
+                  <Text style={styles.pillText}>Message</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pillBtn} onPress={() => router.push({ pathname: '/passport', params: { user: viewedUserId } })}>
+                  <Ionicons name="map-outline" size={16} color="#000" style={{ marginRight: 4 }} />
+                  <Text style={styles.pillText}>Passport</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+
+        {/* Icon-based segment control: grid | map | tagged - only show if not private or approved */}
+        {(!isPrivate || isOwnProfile || approvedFollower) && (
+          <View style={styles.segmentControl}>
+            <TouchableOpacity
+              style={[styles.segmentBtn, segmentTab === 'grid' && styles.segmentBtnActive]}
+              onPress={() => {
+                setSegmentTab('grid');
+                setSelectedSection(null); // Clear section filter when clicking grid icon
+              }}
+            >
+              <Ionicons name="grid-outline" size={24} color={segmentTab === 'grid' ? '#000' : '#999'} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.pillBtn} onPress={() => router.push({ pathname: '/passport', params: { user: viewedUserId } })}>
-              <Ionicons name="map-outline" size={16} color="#000" style={{ marginRight: 4 }} />
-              <Text style={styles.pillText}>Passport</Text>
+            <TouchableOpacity style={[styles.segmentBtn, segmentTab === 'map' && styles.segmentBtnActive]} onPress={() => setSegmentTab('map')}>
+              <Ionicons name="location-outline" size={24} color={segmentTab === 'map' ? '#000' : '#999'} />
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.segmentBtn, segmentTab === 'tagged' && styles.segmentBtnActive]} onPress={() => setSegmentTab('tagged')}>
+              <Ionicons name="pricetag-outline" size={24} color={segmentTab === 'tagged' ? '#000' : '#999'} />
             </TouchableOpacity>
           </View>
         )}
 
-        {/* Icon-based segment control: grid | map | tagged */}
-        <View style={styles.segmentControl}>
-          <TouchableOpacity 
-            style={[styles.segmentBtn, segmentTab === 'grid' && styles.segmentBtnActive]} 
-            onPress={() => {
-              setSegmentTab('grid');
-              setSelectedSection(null); // Clear section filter when clicking grid icon
-            }}
-          >
-            <Ionicons name="grid-outline" size={24} color={segmentTab === 'grid' ? '#000' : '#999'} />
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.segmentBtn, segmentTab === 'map' && styles.segmentBtnActive]} onPress={() => setSegmentTab('map')}>
-            <Ionicons name="location-outline" size={24} color={segmentTab === 'map' ? '#000' : '#999'} />
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.segmentBtn, segmentTab === 'tagged' && styles.segmentBtnActive]} onPress={() => setSegmentTab('tagged')}>
-            <Ionicons name="pricetag-outline" size={24} color={segmentTab === 'tagged' ? '#000' : '#999'} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Map view */}
-        {segmentTab === 'map' && (
+        {/* Map view - only show if not private or approved */}
+        {(!isPrivate || isOwnProfile || approvedFollower) && segmentTab === 'map' && (
           <View style={styles.mapContainer}>
             <MapView
               style={styles.map}
-              initialRegion={{
-                latitude: posts.find(p => p.location)?.location?.latitude || 37.78825,
-                longitude: posts.find(p => p.location)?.location?.longitude || -122.4324,
+              initialRegion={currentLocation ? {
+                latitude: currentLocation.latitude,
+                longitude: currentLocation.longitude,
+                latitudeDelta: 0.0922,
+                longitudeDelta: 0.0421,
+              } : {
+                latitude: 37.78825,
+                longitude: -122.4324,
                 latitudeDelta: 0.0922,
                 longitudeDelta: 0.0421,
               }}
+              showsUserLocation={true}
+              showsMyLocationButton={true}
               customMapStyle={standardMapStyle}
             >
-              {posts.filter(p => p.location && p.location.latitude && p.location.longitude).map((post, index) => (
-                <Marker
-                  key={post.id}
-                  coordinate={{
-                    latitude: Number(post.location.latitude),
-                    longitude: Number(post.location.longitude),
-                  }}
-                  onPress={() => {
-                    const postIndex = posts.findIndex(p => p.id === post.id);
-                    setSelectedPostIndex(postIndex);
-                    setPostViewerVisible(true);
-                  }}
-                  tracksViewChanges={false}
-                >
-                  <View style={styles.markerContainer}>
-                    <ExpoImage
-                      source={{ uri: profile?.avatar || 'https://via.placeholder.com/40x40.png?text=User' }}
-                      style={styles.markerAvatar}
-                      contentFit="cover"
-                      cachePolicy="memory-disk"
+              {posts.filter(p => {
+                const lat = parseCoord(p.location?.latitude ?? p.location?.lat ?? p.lat ?? p.locationData?.lat);
+                const lon = parseCoord(p.location?.longitude ?? p.location?.lon ?? p.lon ?? p.locationData?.lon);
+                return lat !== null && lon !== null;
+              }).map((post) => {
+                const lat = parseCoord(post.location?.latitude ?? post.location?.lat ?? post.lat ?? post.locationData?.lat);
+                const lon = parseCoord(post.location?.longitude ?? post.location?.lon ?? post.lon ?? post.locationData?.lon);
+                if (lat === null || lon === null) return null;
+                const imageUrl = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls[0] : DEFAULT_IMAGE_URL);
+                const avatarUrl = post.userAvatar || profile?.avatar || authUser?.photoURL || DEFAULT_AVATAR_URL;
+                
+                // Use default marker on Android, custom on iOS
+                if (Platform.OS === 'android') {
+                  return (
+                    <Marker
+                      key={`post-${post.id}`}
+                      coordinate={{ latitude: lat, longitude: lon }}
+                      pinColor="#ffa726"
+                      onPress={() => {
+                        setTimeout(() => {
+                          const postIndex = posts.findIndex(p => p.id === post.id);
+                          setSelectedPostIndex(postIndex);
+                          setPostViewerVisible(true);
+                        }, 0);
+                      }}
                     />
-                  </View>
-                </Marker>
-              ))}
+                  );
+                } else {
+                  // iOS - Custom marker style
+                  return (
+                    <Marker
+                      key={`post-${post.id}`}
+                      coordinate={{ latitude: lat, longitude: lon }}
+                      tracksViewChanges={false}
+                      onPress={() => {
+                        setTimeout(() => {
+                          const postIndex = posts.findIndex(p => p.id === post.id);
+                          setSelectedPostIndex(postIndex);
+                          setPostViewerVisible(true);
+                        }, 0);
+                      }}
+                    >
+                      <TouchableOpacity activeOpacity={0.9} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent' }} onPress={() => {
+                        setSelectedPostIndex(posts.findIndex(p => p.id === post.id));
+                        setPostViewerVisible(true);
+                      }}>
+                        <View style={{ width: 48, height: 48, borderRadius: 12, borderWidth: 3, borderColor: '#ffa726', overflow: 'hidden', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 }}>
+                          <Image source={{ uri: imageUrl }} style={{ width: 44, height: 44, borderRadius: 10 }} />
+                        </View>
+                        <View style={{ marginLeft: 4, marginRight: 0, width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: '#fff', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 }}>
+                          <Image source={{ uri: avatarUrl }} style={{ width: 34, height: 34, borderRadius: 17 }} />
+                        </View>
+                      </TouchableOpacity>
+                    </Marker>
+                  );
+                }
+              })}
             </MapView>
           </View>
         )}
 
-        {/* Sections horizontal scroller */}
-        {/* Highlights carousel (Instagram-style) */}
-        {segmentTab === 'grid' && (
-          <View style={{ marginBottom: 8 }}>
-            <HighlightCarousel highlights={highlights} onPressHighlight={handlePressHighlight} />
-          </View>
-        )}
-        {/* Sections horizontal scroller */}
-        {segmentTab === 'grid' && sections.length > 0 && (
+        {/* Sections horizontal scroller - only show if not private or approved */}
+        {(!isPrivate || isOwnProfile || approvedFollower) && segmentTab === 'grid' && sections.length > 0 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sectionsScroller} contentContainerStyle={{ paddingHorizontal: 12, gap: 12 }}>
             {sections.map((s) => (
               <TouchableOpacity
@@ -544,7 +817,7 @@ export default function Profile({ userIdProp }: any) {
                 onPress={() => setSelectedSection(selectedSection === s.name ? null : s.name)}
               >
                 <ExpoImage
-                  source={{ uri: s.coverImage || posts.find(p => s.postIds?.includes?.(p.id))?.imageUrl || 'https://via.placeholder.com/72x72.png?text=+' }}
+                  source={{ uri: s.coverImage || posts.find(p => s.postIds?.includes?.(p.id))?.imageUrl || DEFAULT_AVATAR_URL }}
                   style={styles.sectionCover}
                   contentFit="cover"
                   transition={200}
@@ -555,28 +828,40 @@ export default function Profile({ userIdProp }: any) {
           </ScrollView>
         )}
 
-        {/* Posts grid by segment tab */}
-        {segmentTab !== 'map' && (
+        {/* Posts grid by segment tab - only show if not private or approved */}
+        {(!isPrivate || isOwnProfile || approvedFollower) && segmentTab !== 'map' && (
           <View style={styles.grid}>
             {/* Posts */}
-            {(segmentTab === 'grid' ? (selectedSection ? visiblePosts : posts) : taggedPosts).map((p, index) => (
-              <TouchableOpacity
-                key={p.id}
-                style={styles.gridItem}
-                activeOpacity={0.8}
-                onPress={() => {
-                  setSelectedPostIndex(index);
-                  setPostViewerVisible(true);
-                }}
-              >
-                <ExpoImage
-                  source={{ uri: p.imageUrl || p.imageUrls?.[0] }}
-                  style={{ width: '100%', height: '100%' }}
-                  contentFit="cover"
-                  transition={200}
-                />
+            {loading ? renderSkeletonPosts() : (segmentTab === 'grid' ? (selectedSection ? visiblePosts : posts) : taggedPosts).map((p, index) => {
+              const currentPostsArray = segmentTab === 'grid' ? (selectedSection ? visiblePosts : posts) : taggedPosts;
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={styles.gridItem}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    // Find correct index in the posts array being passed to modal
+                    const modalIndex = currentPostsArray.findIndex(post => post.id === p.id);
+                    setSelectedPostIndex(modalIndex >= 0 ? modalIndex : index);
+                    setPostViewerVisible(true);
+                  }}
+                >
+                  <ExpoImage
+                    source={{ uri: p.thumbnailUrl || p.imageUrl || p.imageUrls?.[0] || DEFAULT_IMAGE_URL }}
+                    style={{ width: '100%', height: '100%' }}
+                    contentFit="cover"
+                    transition={200}
+                    cachePolicy="memory-disk"
+                  />
+                </TouchableOpacity>
+              );
+            })}
+            {/* Load more button for pagination */}
+            {!loading && posts.length >= POSTS_PER_PAGE && (
+              <TouchableOpacity style={{ width: '100%', padding: 12, alignItems: 'center' }} onPress={handleLoadMorePosts}>
+                <Text style={{ color: '#007aff', fontWeight: '600' }}>Load More</Text>
               </TouchableOpacity>
-            ))}
+            )}
           </View>
         )}
       </ScrollView>
@@ -600,21 +885,25 @@ export default function Profile({ userIdProp }: any) {
       />
 
       <Modal visible={commentModalVisible} animationType="slide" transparent={true} onRequestClose={() => setCommentModalVisible(false)}>
-        <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView
+          style={{ flex: 1, justifyContent: 'flex-end' }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={getKeyboardOffset()}
+        >
           <View style={{ flex: 1, justifyContent: 'flex-end' }}>
             <TouchableOpacity
-              style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.18)' }}
+              style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }}
               activeOpacity={1}
               onPress={() => setCommentModalVisible(false)}
             />
             <View
               style={{
                 backgroundColor: '#fff',
-                borderTopLeftRadius: 18,
-                borderTopRightRadius: 18,
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
                 paddingTop: 18,
                 paddingHorizontal: 16,
-                height: '92%',
+                maxHeight: getModalHeight(0.9),
                 shadowColor: '#000',
                 shadowOpacity: 0.08,
                 shadowRadius: 8,
@@ -623,15 +912,18 @@ export default function Profile({ userIdProp }: any) {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                touchAction: 'none',
               }}
             >
               <View style={{ alignItems: 'center', marginBottom: 8 }}>
-                <View style={{ width: 40, height: 4, backgroundColor: '#eee', borderRadius: 2, marginBottom: 8 }} />
+                <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, marginBottom: 8 }} />
                 <Text style={{ fontWeight: '700', fontSize: 17, color: '#222' }}>Comments</Text>
               </View>
               {!!commentModalPostId && (
-                <CommentSection postId={commentModalPostId} currentAvatar={commentModalAvatar} instagramStyle />
+                <CommentSection
+                  postId={commentModalPostId}
+                  postOwnerId={posts.find(p => p.id === commentModalPostId)?.userId || ''}
+                  currentAvatar={commentModalAvatar}
+                />
               )}
             </View>
           </View>
@@ -647,51 +939,214 @@ export default function Profile({ userIdProp }: any) {
         posts={posts}
         onSectionsUpdate={setSections}
       />
+
+      {/* Create Highlight Modal */}
+      <CreateHighlightModal
+        visible={createHighlightModalVisible}
+        onClose={() => setCreateHighlightModalVisible(false)}
+        userId={authUser?.uid || ''}
+        onSuccess={async () => {
+          // Refresh highlights after creating new one
+          if (viewedUserId) {
+            const highlightsRes = await getUserHighlights(viewedUserId);
+            let highlightsData: any[] = [];
+            if (highlightsRes.success) {
+              if ('data' in highlightsRes && Array.isArray(highlightsRes.data)) highlightsData = highlightsRes.data;
+              else if ('highlights' in highlightsRes && Array.isArray(highlightsRes.highlights)) highlightsData = highlightsRes.highlights;
+              setHighlights(highlightsData);
+            }
+          }
+        }}
+      />
+
+      {/* User Menu Modal (for other users' profiles) - Block, Report options */}
+      <Modal
+        visible={userMenuVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setUserMenuVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => setUserMenuVisible(false)}
+        >
+          <View style={styles.menuSheet}>
+            {/* Handle */}
+            <View style={styles.menuHandle} />
+            
+            {/* Menu Options */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleBlockUser}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: '#fee' }]}>
+                <Ionicons name="ban-outline" size={22} color="#e74c3c" />
+              </View>
+              <Text style={[styles.menuItemText, { color: '#e74c3c' }]}>Block</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuSeparator} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleReportUser}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: '#fff5e6' }]}>
+                <Ionicons name="flag-outline" size={22} color="#f39c12" />
+              </View>
+              <Text style={styles.menuItemText}>Report</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuSeparator} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setUserMenuVisible(false);
+                // Share profile
+                import('react-native').then(({ Share }) => {
+                  Share.share({
+                    message: `Check out ${profile?.name || 'this user'}'s profile on Trave Social!`,
+                    title: 'Share Profile'
+                  });
+                });
+              }}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: '#e8f4fd' }]}>
+                <Ionicons name="share-outline" size={22} color="#0095f6" />
+              </View>
+              <Text style={styles.menuItemText}>Share Profile</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuSeparator} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setUserMenuVisible(false);
+                // Copy profile URL
+                import('expo-clipboard').then(async (Clipboard) => {
+                  await Clipboard.setStringAsync(`trave-social://user/${viewedUserId}`);
+                  Alert.alert('Copied', 'Profile link copied to clipboard');
+                }).catch(() => {
+                  Alert.alert('Error', 'Could not copy link');
+                });
+              }}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: '#f0f0f0' }]}>
+                <Ionicons name="link-outline" size={22} color="#666" />
+              </View>
+              <Text style={styles.menuItemText}>Copy Profile URL</Text>
+            </TouchableOpacity>
+
+            {/* Cancel Button */}
+            <TouchableOpacity
+              style={styles.menuCancelBtn}
+              onPress={() => setUserMenuVisible(false)}
+            >
+              <Text style={styles.menuCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+    headerBackBtn: { padding: 8, marginRight: 8 },
+    headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#222', flex: 1, textAlign: 'center' },
+    headerMenuBtn: { padding: 8, marginLeft: 8 },
+    menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'flex-end' },
+    menuSheet: { backgroundColor: '#fff', borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: 24, paddingTop: 8, minHeight: 120 },
+    menuHandle: { width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, alignSelf: 'center', marginVertical: 8 },
+    menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: '#f4f4f4' },
+    menuIconContainer: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+    menuItemText: { fontSize: 16, color: '#222', fontWeight: '500' },
   container: { flex: 1, backgroundColor: '#fff' },
   topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: '#e0e0e0', justifyContent: 'space-between' },
   topIcon: { padding: 4 },
   topTitle: { fontSize: 16, fontWeight: '600', color: '#000' },
-  content: { paddingHorizontal: 16, paddingBottom: 16 },
-  avatarContainer: { alignItems: 'center', paddingVertical: 16 },
-  avatar: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#eee' },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: '#e0e0e0' },
-  statItem: { alignItems: 'center' },
-  statNum: { fontWeight: '700', fontSize: 18, color: '#222' },
-  statLbl: { fontSize: 12, color: '#666', marginTop: 2 },
-  infoBlock: { alignItems: 'center', paddingVertical: 12 },
-  displayName: { fontSize: 16, fontWeight: '600', color: '#222' },
-  bio: { fontSize: 14, color: '#333', marginTop: 4, textAlign: 'center' },
-  website: { fontSize: 13, color: '#007aff', marginTop: 2 },
-  pillRow: { flexDirection: 'row', gap: 8, paddingVertical: 12 },
-  pillBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0', paddingVertical: 10, borderRadius: 8 },
-  pillText: { fontSize: 13, fontWeight: '500', color: '#000' },
-  followBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FF6B00', paddingVertical: 10, borderRadius: 8 },
-  followingBtn: { backgroundColor: '#f0f0f0', borderWidth: 1, borderColor: '#d0d0d0' },
-  followText: { fontSize: 13, fontWeight: '600', color: '#fff' },
-  followingText: { color: '#000' },
-  sectionsScroller: { paddingVertical: 12 },
-  sectionCard: { alignItems: 'center', width: 80 },
-  sectionCover: { width: 40, height: 40, borderRadius: 8, backgroundColor: '#eee' },
-  sectionLabel: { marginTop: 6, fontSize: 12, color: '#666', textAlign: 'center' },
+  content: { paddingHorizontal: 0, paddingBottom: 16 },
+  avatarContainer: { alignItems: 'center', paddingVertical: 12, marginTop: 4 },
+  avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#eee', borderWidth: 2, borderColor: '#f39c12' },
+  statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16, gap: 24 },
+  statItem: { alignItems: 'center', minWidth: 50 },
+  statNum: { fontWeight: '700', fontSize: 16, color: '#222' },
+  statLbl: { fontSize: 11, color: '#666', marginTop: 2 },
+  infoBlock: { alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16 },
+  displayName: { fontSize: 15, fontWeight: '600', color: '#222' },
+  bio: { fontSize: 13, color: '#555', marginTop: 4, textAlign: 'center', lineHeight: 18 },
+  website: { fontSize: 12, color: '#007aff', marginTop: 4 },
+  pillRow: { flexDirection: 'row', gap: 8, paddingVertical: 8, paddingHorizontal: 16 },
+  pillBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f5f5', paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: '#e0e0e0' },
+  pillText: { fontSize: 12, fontWeight: '500', color: '#333' },
+  followBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#f39c12', paddingVertical: 8, borderRadius: 6 },
+  followingBtn: { backgroundColor: '#f5f5f5', borderWidth: 1, borderColor: '#e0e0e0' },
+  followText: { fontSize: 12, fontWeight: '600', color: '#fff' },
+  followingText: { color: '#333' },
+  sectionsScroller: { paddingVertical: 8 },
+  sectionCard: { alignItems: 'center', width: 70, marginRight: 4 },
+  sectionCover: { width: 60, height: 60, borderRadius: 8, backgroundColor: '#eee' },
+  sectionLabel: { marginTop: 4, fontSize: 10, color: '#666', textAlign: 'center' },
   sectionLabelActive: { fontWeight: '700', color: '#000' },
-  segmentControl: { flexDirection: 'row', borderTopWidth: 0.5, borderBottomWidth: 0.5, borderColor: '#e0e0e0', marginVertical: 8 },
-  segmentBtn: { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  segmentBtnActive: { flex: 1, alignItems: 'center', paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: '#f39c12' },
+  segmentControl: { flexDirection: 'row', borderTopWidth: 0.5, borderBottomWidth: 0.5, borderColor: '#e0e0e0', marginTop: 8 },
+  segmentBtn: { flex: 1, alignItems: 'center', paddingVertical: 10 },
+  segmentBtnActive: { flex: 1, alignItems: 'center', paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: '#f39c12' },
   card: { backgroundColor: '#f7f7f7', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#eee', marginTop: 8 },
   cardText: { color: '#333', lineHeight: 20 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
-  gridItem: { flexBasis: '33.3333%', aspectRatio: 1, padding: 1 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 0 },
+  gridItem: { flexBasis: '25%', aspectRatio: 1, padding: 1 },
   sectionOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, alignItems: 'center' },
   sectionGridLabel: { color: '#fff', fontSize: 12, fontWeight: '600', textAlign: 'center' },
-  mapContainer: { width: '100%', height: 400, marginTop: 8, borderRadius: 12, overflow: 'hidden' },
+  mapContainer: { width: '100%', height: 400, marginTop: 8, borderRadius: 12, overflow: 'hidden', backgroundColor: '#ffcccc' },
   map: { width: '100%', height: '100%' },
-  markerContainer: { alignItems: 'center', justifyContent: 'center' },
-  markerAvatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 3, borderColor: '#fff', backgroundColor: '#eee' },
+  markerContainer: { alignItems: 'center', justifyContent: 'center', width: 60, height: 60, backgroundColor: '#FF6B6B', borderRadius: 30, borderWidth: 3, borderColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 },
+  markerAvatar: { width: 54, height: 54, borderRadius: 27, backgroundColor: '#eee' },
+  customMarkerWrap: {
+    width: 70,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    elevation: 6,
+    overflow: 'visible',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  customMarkerImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 14,
+    resizeMode: 'cover',
+  },
+  customMarkerAvatarWrap: {
+    position: 'absolute',
+    top: -10,
+    right: -10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 4,
+  },
+  customMarkerAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
   postViewerHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.5)' },
   postViewerHeaderContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12 },
   postViewerCloseBtn: { padding: 4 },
@@ -708,4 +1163,34 @@ const styles = StyleSheet.create({
   captionText: { color: '#fff', fontSize: 15 },
   captionUsername: { fontWeight: '700', color: '#fff' },
   commentsContainer: { paddingHorizontal: 16, paddingBottom: 24 },
+  // Profile header styles (for other users)
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#000',
+  },
+  menuSeparator: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+  },
+  menuCancelBtn: {
+    marginTop: 16,
+    paddingVertical: 14,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  menuCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+  },
 });

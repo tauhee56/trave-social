@@ -3,441 +3,48 @@ import type { Video as VideoType } from 'expo-av';
 import { ResizeMode, Video } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Dimensions, Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View, ScrollView } from "react-native";
 import { getLocationVisitCount, likePost, unlikePost } from "../../lib/firebaseHelpers";
-import CommentSection from "./CommentSection";
+import { CommentSection } from "./CommentSection";
 import SaveButton from "./SaveButton";
 import { useUser } from "./UserContext";
+import VerifiedBadge from "./VerifiedBadge";
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const isSmallDevice = SCREEN_WIDTH < 375;
 
 // Props type for PostCard
 interface PostCardProps {
   post: any;
   currentUser: any;
   showMenu?: boolean;
+  highlightedCommentId?: string;
+  highlightedCommentText?: string;
+  showCommentsModal?: boolean;
+  onCloseCommentsModal?: () => void;
 }
-
-const PostCard: React.FC<PostCardProps> = ({ post, currentUser, showMenu = true }) => {
-      // Visits logic
-      const [visitCount, setVisitCount] = useState<number>(typeof post?.visits === 'number' ? post.visits : 0);
-      useEffect(() => {
-        async function fetchVisits() {
-          if (post?.location) {
-            const count = await getLocationVisitCount(post.location);
-            setVisitCount(count);
-          }
-        }
-        fetchVisits();
-      }, [post?.location]);
-    // App color scheme
-    const appColors = {
-      background: '#fff',
-      text: '#222',
-      accent: '#007aff',
-      muted: '#888',
-      border: '#eee',
-      input: '#f5f5f5',
-      like: '#e74c3c',
-      icon: '#222',
-    };
-    // Expandable description
-    const showFullDesc = false;
-  // Real-time Firestore listener for likes, likesCount, and savedBy
-  const [likes, setLikes] = useState<string[]>(post?.likes || []);
-  const [likesCount, setLikesCount] = useState(post?.likesCount || likes.length);
-  const [savedBy, setSavedBy] = useState<string[]>(post?.savedBy || []);
-  const user = useUser();
-  const liked = likes.includes(user?.uid || "");
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    (async () => {
-      const firestore = await import('firebase/firestore');
-      const { db } = await import('../../config/firebase');
-      if (!post?.id) return;
-      const postRef = firestore.doc(db, 'posts', post.id);
-      unsubscribe = firestore.onSnapshot(postRef, (docSnap: any) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setLikes(data.likes || []);
-          setLikesCount(data.likesCount || 0);
-          setSavedBy(data.savedBy || []);
-        }
-      });
-    })();
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [post?.id]);
-  const [showCommentsModal, setShowCommentsModal] = useState(false);
-  const [commentCount, setCommentCount] = useState(0);
-  const [currentAvatar, setCurrentAvatar] = useState<string>("");
-  const images = post?.imageUrls && post.imageUrls.length > 0 ? post.imageUrls : [post?.imageUrl];
-  // Video support: gather video URLs
-  const videos = post?.videoUrls && post.videoUrls.length > 0 ? post.videoUrls : (post?.videoUrl ? [post.videoUrl] : []);
-  // Combine images and videos for carousel
-  const mediaItems = [
-    ...images.filter(Boolean).map((url: string) => ({ type: 'image', url })),
-    ...videos.filter(Boolean).map((url: string) => ({ type: 'video', url }))
-  ];
-  // Track current media index
-  const [mediaIndex, setMediaIndex] = useState(0);
-  // Add state for video loading, play, mute, progress, and completed
-  const [videoLoading, setVideoLoading] = useState(false);
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const [isVideoMuted, setIsVideoMuted] = useState(true);
-  const [videoProgress, setVideoProgress] = useState(0);
-  const [videoCompleted, setVideoCompleted] = useState(false);
-  // Add ref for Video with correct type
-  const videoRef = useRef<VideoType>(null);
-  // Menu state
-  const [showMenuModal, setShowMenuModal] = useState(false);
-
-  useEffect(() => {
-    async function fetchCurrentAvatar() {
-      if (post?.userId) {
-        const res = await import("../../lib/firebaseHelpers");
-        const profile = await res.getUserProfile(post.userId);
-        if (profile.success && "data" in profile) {
-          if (profile.data.avatar) {
-            setCurrentAvatar(profile.data.avatar);
-          } else if (profile.data.photoURL) {
-            setCurrentAvatar(profile.data.photoURL);
-          } else {
-            setCurrentAvatar("https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d");
-          }
-        } else {
-          setCurrentAvatar("https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d");
-        }
-      }
-    }
-    fetchCurrentAvatar();
-    setLikes(post?.likes || []);
-  }, [post?.likes, post?.userId]);
-
-  // Add replay handler
-  const onReplay = () => {
-    setVideoCompleted(false);
-    setIsVideoPlaying(true);
-    setVideoProgress(0);
-    if (videoRef.current) {
-      videoRef.current.setPositionAsync(0);
-    }
-  };
-
-  // Delete post handler
-  const handleDeletePost = async () => {
-    if (!post?.id || !user?.uid) return;
-    try {
-      const { deletePost } = await import('../../lib/firebaseHelpers');
-      const result = await deletePost(post.id, user.uid);
-      if (result.success) {
-        alert('Post deleted successfully');
-        // Optionally: trigger parent to refresh posts
-      } else {
-        alert(result.error || 'Failed to delete post');
-      }
-    } catch {
-      alert('Error deleting post');
-    }
-  };
-
-  return (
-    <View style={{ flex: 1, backgroundColor: appColors.background }}>
-      <View style={[styles.card, { backgroundColor: appColors.background }]}> 
-        {/* Top section: Location, Visits, Avatar */}
-        <View style={styles.topRow}>
-          {post?.locationData?.verified ? (
-            <View style={styles.verifiedBadgeBox}>
-              <MaterialCommunityIcons name="shield-check" size={14} color="#111" />
-            </View>
-          ) : (
-            <View style={styles.locationIconBox}>
-              <Feather name="map-pin" size={18} color={appColors.accent} />
-            </View>
-          )}
-          <View style={styles.locationInfo}>
-            <Text style={styles.locationName}>{(() => {
-              let name = '';
-              if (typeof post?.locationData?.name === 'string' || typeof post?.locationData?.name === 'number') {
-                name = String(post?.locationData?.name);
-              } else if (typeof post?.location === 'string' || typeof post?.location === 'number') {
-                name = String(post?.location);
-              }
-              return name;
-            })()}</Text>
-            {post?.location ? (
-              <Text style={styles.visits}>{(() => {
-                let visits = '';
-                if (typeof visitCount === 'number' || typeof visitCount === 'string') {
-                  visits = String(visitCount);
-                }
-                return `${visits} visits`;
-              })()}</Text>
-            ) : null}
-          </View>
-          <View style={{ flex: 1 }} />
-          <ExpoImage source={{ uri: currentAvatar || 'https://via.placeholder.com/120x120.png?text=User' }} style={styles.avatar} contentFit="cover" transition={300} />
-          {showMenu && (
-            <TouchableOpacity onPress={() => setShowMenuModal(true)} style={{ marginLeft: 12, padding: 4 }}>
-              <Feather name="more-vertical" size={20} color={appColors.icon} />
-            </TouchableOpacity>
-          )}
-        </View>
-        {/* Post Image or Video */}
-        <View style={styles.imageWrap}>
-          {mediaItems.length > 0 && mediaItems[mediaIndex].type === 'image' ? (
-            <ExpoImage source={{ uri: mediaItems[mediaIndex].url }} style={styles.image} contentFit="cover" transition={300} />
-          ) : mediaItems.length > 0 && mediaItems[mediaIndex].type === 'video' ? (
-            <View style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}>
-              {/* Timeline progress bar at bottom */}
-              <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 4, backgroundColor: 'rgba(255,255,255,0.3)', zIndex: 5 }}>
-                <View style={{ width: `${videoProgress * 100}%`, height: '100%', backgroundColor: '#FFB800' }} />
-              </View>
-              {videoLoading && (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', zIndex: 2 }}>
-                  <ActivityIndicator size="large" color="#FFB800" />
-                </View>
-              )}
-              <Video
-                ref={videoRef}
-                source={{ uri: mediaItems[mediaIndex].url }}
-                style={styles.image}
-                resizeMode={ResizeMode.COVER}
-                shouldPlay={isVideoPlaying}
-                useNativeControls={true}
-                isLooping={false}
-                isMuted={isVideoMuted}
-                posterSource={{ uri: mediaItems[mediaIndex].url }}
-                posterStyle={{ width: '100%', height: '100%' }}
-                onLoadStart={() => setVideoLoading(true)}
-                onLoad={() => setVideoLoading(false)}
-                onPlaybackStatusUpdate={status => {
-                  if ('didJustFinish' in status && status.didJustFinish) {
-                    setIsVideoPlaying(false);
-                    setVideoCompleted(true);
-                  }
-                  if (
-                    status &&
-                    status.isLoaded &&
-                    'positionMillis' in status &&
-                    'durationMillis' in status &&
-                    typeof status.positionMillis === 'number' &&
-                    typeof status.durationMillis === 'number' &&
-                    status.durationMillis > 0
-                  ) {
-                    setVideoProgress(status.positionMillis / status.durationMillis);
-                  }
-                }}
-              />
-              {!isVideoPlaying && !videoLoading && !videoCompleted && (
-                <TouchableOpacity
-                  style={{ position: 'absolute', top: '45%', left: '45%', zIndex: 3, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 32, padding: 12 }}
-                  onPress={() => setIsVideoPlaying(true)}
-                >
-                  <Feather name="play" size={36} color="#FFB800" />
-                </TouchableOpacity>
-              )}
-              {/* Mute/unmute button */}
-              {isVideoPlaying && !videoLoading && !videoCompleted && (
-                <TouchableOpacity
-                  style={{ position: 'absolute', top: 16, right: 16, zIndex: 4, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8 }}
-                  onPress={() => setIsVideoMuted(m => !m)}
-                >
-                  <Feather name={isVideoMuted ? "volume-x" : "volume-2"} size={24} color="#FFB800" />
-                </TouchableOpacity>
-              )}
-              {/* Blur and replay icon button when video completed */}
-              {videoCompleted && (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 6 }}>
-                  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 7 }} />
-                  <TouchableOpacity style={{ zIndex: 8, backgroundColor: '#FFB800', borderRadius: 32, padding: 12 }} onPress={onReplay}>
-                    <Feather name="rotate-ccw" size={24} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          ) : null}
-          {/* Carousel navigation: left/right tap zones */}
-          {mediaItems.length > 1 && (
-            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row' }}>
-              <TouchableOpacity style={{ flex: 1 }} onPress={() => { setIsVideoPlaying(false); setMediaIndex(i => i > 0 ? i - 1 : i); setVideoCompleted(false); }} activeOpacity={1} />
-              <TouchableOpacity style={{ flex: 1 }} onPress={() => { setIsVideoPlaying(false); setMediaIndex(i => i < mediaItems.length - 1 ? i + 1 : i); setVideoCompleted(false); }} activeOpacity={1} />
-            </View>
-          )}
-        </View>
-        {/* All content inside card box */}
-        <View style={{ paddingHorizontal: 2 }}>
-          <View style={styles.iconRow}>
-            <TouchableOpacity
-              onPress={async () => {
-                const userId = user?.uid;
-                if (!userId) {
-                  alert('User not logged in');
-                  return;
-                }
-                try {
-                  if (likes.includes(userId)) {
-                    const res = await unlikePost(post.id, userId);
-                    if (!res.success) {
-                      alert('Unlike error: ' + res.error);
-                    }
-                  } else {
-                    const res = await likePost(post.id, userId);
-                    if (!res.success) {
-                      alert('Like error: ' + res.error);
-                    }
-                  }
-                } catch (err) {
-                  alert('Like/unlike exception: ' + err);
-                }
-              }}
-              style={{ marginRight: 8, flexDirection: 'row', alignItems: 'center' }}
-            >
-              {liked ? (
-                <MaterialCommunityIcons name="heart" size={24} color={appColors.like} />
-              ) : (
-                <MaterialCommunityIcons name="heart-outline" size={24} color={appColors.icon} />
-              )}
-              <Text style={{ marginLeft: 6, fontWeight: '700', color: appColors.text, fontSize: 15 }}>{typeof likesCount === 'number' || typeof likesCount === 'string' ? String(likesCount) : ''}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowCommentsModal(true)} style={{ marginRight: 24 }}>
-              <Feather name="message-circle" size={22} color={appColors.icon} />
-            </TouchableOpacity>
-            <TouchableOpacity style={{ marginRight: 24 }}>
-              <Feather name="send" size={22} color={appColors.accent} />
-            </TouchableOpacity>
-            <View style={{ flex: 1 }} />
-            <SaveButton post={{ ...post, savedBy }} />
-          </View>
-          {/* Likes Count */}
-          <Text style={[styles.likes, { color: appColors.text }]}>{typeof likesCount === 'number' ? `${likesCount.toLocaleString()} likes` : ''}</Text>
-          {/* Description (expandable) */}
-          <Text style={[styles.caption, { color: appColors.text }]} numberOfLines={showFullDesc ? undefined : 2}>
-            {(() => {
-              let username = '';
-              if (typeof post?.userName === 'string' || typeof post?.userName === 'number') {
-                username = String(post?.userName);
-              }
-              let caption = '';
-              if (typeof post?.caption === 'string' || typeof post?.caption === 'number') {
-                caption = String(post?.caption);
-              } else if (Array.isArray(post?.caption) || typeof post?.caption === 'object') {
-                caption = JSON.stringify(post?.caption);
-              }
-              return username ? `${username} ${caption}`.trim() : caption;
-            })()}
-          </Text>
-          {/* Comments Preview */}
-          <TouchableOpacity onPress={() => setShowCommentsModal(true)}>
-            <Text style={[styles.commentPreview, { color: appColors.muted }]}>{`View all ${commentCount} comments`}</Text>
-          </TouchableOpacity>
-          {/* Remove the comment input box below like button */}
-          {/* Time */}
-          <Text style={styles.time}>{typeof post?.timeAgo === 'string' || typeof post?.timeAgo === 'number' ? String(post?.timeAgo) : '1 day ago'}</Text>
-        </View>
-        {/* Comments Modal */}
-        <Modal
-          visible={showCommentsModal}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setShowCommentsModal(false)}
-        >
-          <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.18)' }}
-                activeOpacity={1}
-                onPress={() => setShowCommentsModal(false)}
-              />
-              <View
-                style={{
-                  backgroundColor: '#fff',
-                  borderTopLeftRadius: 18,
-                  borderTopRightRadius: 18,
-                  paddingTop: 18,
-                  paddingHorizontal: 16,
-                  height: '92%',
-                  shadowColor: '#000',
-                  shadowOpacity: 0.08,
-                  shadowRadius: 8,
-                  elevation: 8,
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  touchAction: 'none',
-                }}
-              >
-                <View style={{ alignItems: 'center', marginBottom: 8 }}>
-                  <View style={{ width: 40, height: 4, backgroundColor: '#eee', borderRadius: 2, marginBottom: 8 }} />
-                  <Text style={{ fontWeight: '700', fontSize: 17, color: '#222' }}>Comments</Text>
-                </View>
-                {/* Use reusable CommentSection component */}
-                <CommentSection 
-                  postId={post.id} 
-                  currentAvatar={currentAvatar}
-                  maxHeight={300}
-                  showInput={true}
-                  inlineMode={false}
-                  onCommentsLoaded={setCommentCount}
-                  instagramStyle
-                />
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
-        {/* Menu Modal */}
-        <Modal
-          visible={showMenuModal}
-          animationType="fade"
-          transparent={true}
-          onRequestClose={() => setShowMenuModal(false)}
-        >
-          <TouchableOpacity
-            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}
-            activeOpacity={1}
-            onPress={() => setShowMenuModal(false)}
-          >
-            <View style={styles.menuContainer}>
-              {user?.uid === post?.userId && (
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={() => {
-                    setShowMenuModal(false);
-                    setTimeout(() => {
-                      Alert.alert(
-                        'Delete Post',
-                        'Are you sure you want to delete this post?',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          { text: 'Delete', style: 'destructive', onPress: handleDeletePost }
-                        ]
-                      );
-                    }, 300);
-                  }}
-                >
-                  <Feather name="trash-2" size={20} color="#e74c3c" />
-                  <Text style={[styles.menuText, { color: '#e74c3c' }]}>Delete Post</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => setShowMenuModal(false)}
-              >
-                <Feather name="x" size={20} color="#666" />
-                <Text style={styles.menuText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </Modal>
-      </View>
-    </View>
-  );
-}
-
-
-export default PostCard;
 
 const styles = StyleSheet.create({
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
+    backgroundColor: '#fff',
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 8,
+  },
+  locationTextWrap: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 0,
+  },
   verifiedBadgeBox: {
     width: 40,
     height: 40,
@@ -449,28 +56,44 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   locationIconBox: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: 12,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F5F5F5',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
-    marginTop: 2,
+    marginRight: 12,
   },
   locationInfo: {
     flexDirection: 'column',
-    justifyContent: 'flex-start',
-    marginRight: 10,
-    minWidth: 80,
-    marginTop: 2,
+    justifyContent: 'center',
+    flex: 1,
+    minWidth: 0,
   },
-      locationName: {
-        fontWeight: '600',
-        fontSize: 15,
-        color: '#222',
-        marginBottom: 2,
-      },
+  locationName: {
+    fontWeight: 'bold',
+    fontSize: 15,
+    color: '#111',
+    marginBottom: 0,
+    flexShrink: 1,
+    letterSpacing: 0.1,
+  },
+  visits: {
+    fontSize: 13,
+    color: '#666',
+    fontWeight: '400',
+    marginTop: 2,
+    letterSpacing: 0.1,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#eee',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    overflow: 'hidden',
+  },
   card: {
     marginBottom: 16,
     backgroundColor: '#fff',
@@ -487,48 +110,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  topRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: '100%',
-    minHeight: 50,
-    paddingHorizontal: 16,
-    alignSelf: 'center',
-    marginBottom: 8,
-  },
-  userInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  userName: {
-    fontWeight: "700",
-    fontSize: 16,
-  },
-  locationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  locationIcon: {
-    marginRight: 4,
-  },
-  location: {
-    fontSize: 14,
-    color: "#666",
-  },
-  visits: {
-    fontSize: 12,
-    color: "#999",
-    marginTop: 2,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#eee",
-  },
   categoryImage: {
     width: 60,
     height: 60,
@@ -537,8 +118,9 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   imageWrap: {
+    flex: 1,
     width: '100%',
-    height: 520, // Increased height for feed/profile posts
+    height: SCREEN_HEIGHT,
     backgroundColor: "#000",
     justifyContent: "center",
     alignItems: "center",
@@ -546,8 +128,8 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    height: 520, // Increased height for feed/profile posts
-    resizeMode: "cover",
+    height: SCREEN_HEIGHT,
+    resizeMode: "contain",
     alignSelf: 'center',
   },
   iconRow: {
@@ -621,17 +203,18 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     width: "100%",
-    maxWidth: 600,
+    maxWidth: 800, // Increased max width
+    minHeight: 400, // Increased min height
     backgroundColor: "#fff",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingTop: 18,
-    paddingHorizontal: 16,
-    paddingBottom: 24,
+    borderTopLeftRadius: 28, // Larger radius
+    borderTopRightRadius: 28,
+    paddingTop: 32, // More padding
+    paddingHorizontal: 32,
+    paddingBottom: 40,
     shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
     position: "absolute",
     left: 0,
     right: 0,
@@ -759,4 +342,778 @@ const styles = StyleSheet.create({
     color: '#222',
     fontWeight: '500',
   },
+  // Video overlay styles
+  muteOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    zIndex: 5,
+  },
+  muteIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  muteText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  muteButton: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  playButtonOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  playButtonCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoControlsBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    zIndex: 10,
+  },
+  videoProgressBar: {
+    flex: 1,
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 2,
+    marginHorizontal: 10,
+    overflow: 'hidden',
+  },
+  videoProgressFill: {
+    height: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 2,
+  },
+  videoControlButton: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoTimeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '500',
+    minWidth: 35,
+  },
 });
+
+function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, highlightedCommentText }: PostCardProps) {
+  // Visits logic
+  const [visitCount, setVisitCount] = useState<number>(typeof post?.visits === 'number' ? post.visits : 0);
+  useEffect(() => {
+    async function fetchVisits() {
+      if (post?.location) {
+        const count = await getLocationVisitCount(post.location);
+        setVisitCount(count);
+      }
+    }
+    fetchVisits();
+  }, [post?.location]);
+
+  // App color scheme
+  const appColors = {
+    background: '#fff',
+    text: '#222',
+    accent: '#007aff',
+    muted: '#888',
+    border: '#eee',
+    input: '#f5f5f5',
+    like: '#e74c3c',
+    icon: '#222',
+  };
+  const showFullDesc = false;
+  // OPTIMIZATION: Use post data directly instead of real-time listeners
+  const [likes, setLikes] = useState<string[]>(Array.isArray(post?.likes) ? post.likes : []);
+  const [likesCount, setLikesCount] = useState<number>(typeof post?.likesCount === 'number' ? post.likesCount : (Array.isArray(post?.likes) ? post.likes.length : 0));
+  const [savedBy, setSavedBy] = useState<string[]>(post?.savedBy || []);
+  const user = useUser();
+  const liked = likes.includes(user?.uid || "");
+  
+  // OPTIMIZATION: Update local state when post prop changes (no real-time listener)
+  useEffect(() => {
+    setLikes(Array.isArray(post?.likes) ? post.likes : []);
+    setLikesCount(typeof post?.likesCount === 'number' ? post.likesCount : (Array.isArray(post?.likes) ? post.likes.length : 0));
+    setSavedBy(Array.isArray(post?.savedBy) ? post.savedBy : []);
+  }, [post?.likes, post?.likesCount, post?.savedBy]);
+
+  // OPTIMIZATION: Use commentCount from post data, no real-time listener
+  const [commentCount, setCommentCount] = useState(post?.commentCount || 0);
+  
+  useEffect(() => {
+    setCommentCount(post?.commentCount || 0);
+  }, [post?.commentCount]);
+  
+  const [currentAvatar, setCurrentAvatar] = useState<string>("https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d");
+    useEffect(() => {
+      async function fetchAvatar() {
+        if (post?.userId) {
+          try {
+            const { getUserProfile } = await import('../../lib/firebaseHelpers/user');
+            const res = await getUserProfile(post.userId);
+            if (res && res.success && res.data && res.data.avatar) {
+              setCurrentAvatar(res.data.avatar);
+            }
+          } catch {
+            setCurrentAvatar("https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d");
+          }
+        }
+      }
+      fetchAvatar();
+    }, [post?.userId]);
+  
+  // Helper function to check if URL is a video
+  const isVideoUrl = (url: string) => {
+    if (!url) return false;
+    const videoExtensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'];
+    const lowerUrl = url.toLowerCase();
+    return videoExtensions.some(ext => lowerUrl.includes(ext));
+  };
+
+  // Filter out video URLs from images array
+  const rawImages: string[] = post?.imageUrls && post.imageUrls.length > 0 ? post.imageUrls.filter(Boolean) : (post?.imageUrl ? [post.imageUrl] : []);
+  const images: string[] = rawImages.filter((url: string) => !isVideoUrl(url));
+  
+  const videos: string[] = post?.videoUrls && post.videoUrls.length > 0 ? post.videoUrls.filter(Boolean) : (post?.videoUrl ? [post.videoUrl] : []);
+
+  // If images exist, show only image carousel. If no images, show only first video. If neither, show placeholder.
+  let showImages = images.length > 0;
+  let showVideo = !showImages && videos.length > 0;
+  const [mediaIndex, setMediaIndex] = useState(0);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false); // Videos don't auto-play
+  const [isVideoMuted, setIsVideoMuted] = useState(true); // Muted by default
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoCompleted, setVideoCompleted] = useState(false);
+  const [showMuteOverlay, setShowMuteOverlay] = useState(true); // Show tap to unmute overlay
+  const [videoDuration, setVideoDuration] = useState(0); // Total duration in seconds
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0); // Current position in seconds
+  const [showControls, setShowControls] = useState(true); // Show video controls
+  const videoRef = useRef<VideoType>(null);
+  const mediaIndexRef = useRef(0);
+  
+  // Update ref when state changes
+  useEffect(() => {
+    mediaIndexRef.current = mediaIndex;
+  }, [mediaIndex]);
+
+  // Carousel swipe gesture - improved handling
+  const carouselPanResponder = React.useMemo(() => 
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only capture horizontal swipes
+        return Math.abs(gestureState.dx) > 15 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderRelease: (_, gestureState) => {
+        const currentIndex = mediaIndexRef.current;
+        const totalImages = images.length;
+        
+        if (gestureState.dx > 40 && currentIndex > 0) {
+          // Swipe right - go to previous
+          setMediaIndex(currentIndex - 1);
+        } else if (gestureState.dx < -40 && currentIndex < totalImages - 1) {
+          // Swipe left - go to next
+          setMediaIndex(currentIndex + 1);
+        }
+      },
+    }), [images.length]);
+  const [showMenuModal, setShowMenuModal] = useState(false);
+  const [localShowCommentsModal, setLocalShowCommentsModal] = useState(false);
+  const showCommentsModal = localShowCommentsModal;
+  const setShowCommentsModal = setLocalShowCommentsModal;
+  // Add PanResponder for swipe down to close comments modal
+  const [modalTranslateY, setModalTranslateY] = useState(0);
+  const panResponder = React.useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only respond to downward vertical swipes from top area
+        return gestureState.dy > 10 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        // Only allow downward movement
+        if (gestureState.dy > 0) {
+          setModalTranslateY(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        // If swiped down more than 100px, close modal
+        if (gestureState.dy > 100) {
+          setShowCommentsModal(false);
+          setModalTranslateY(0);
+        } else {
+          // Otherwise, snap back to position
+          setModalTranslateY(0);
+        }
+      },
+    })
+  ).current;
+
+  const onReplay = () => {
+    setVideoCompleted(false);
+    setIsVideoPlaying(true);
+    setVideoProgress(0);
+    if (videoRef.current) {
+      videoRef.current.setPositionAsync(0);
+    }
+  };
+
+  const handleDeletePost = async () => {
+    if (!post?.id || !user?.uid) return;
+    try {
+      const { deletePost } = await import('../../lib/firebaseHelpers');
+      const result = await deletePost(post.id, user.uid);
+      if (result.success) {
+        alert('Post deleted successfully');
+      } else {
+        alert(result.error || 'Failed to delete post');
+      }
+    } catch {
+      alert('Error deleting post');
+    }
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: appColors.background }}>
+      <View style={[styles.card, { backgroundColor: appColors.background }]}> 
+        {/* Top section: Location/Visits (left), Avatar (right) */}
+        <View style={styles.topRow}>
+          {/* Location and Visits (left) */}
+          <View style={styles.locationInfo}>
+            <View style={styles.locationRow}>
+              {/* Show verified badge if location is verified, otherwise show map pin */}
+              {post?.locationData?.verified ? (
+                <View style={styles.verifiedBadgeBox}>
+                  <VerifiedBadge size={20} color="#000" />
+                </View>
+              ) : (
+                <View style={styles.locationIconBox}>
+                  {/* Map marker is now non-clickable */}
+                  <Feather name="map-pin" size={20} color="#111" />
+                </View>
+              )}
+              <View style={styles.locationTextWrap}>
+                <Text style={styles.locationName} numberOfLines={1} ellipsizeMode="tail">
+                  {post?.locationName || 'Unknown Location'}
+                </Text>
+                <Text style={styles.visits}>{visitCount.toLocaleString()} Visits</Text>
+              </View>
+            </View>
+          </View>
+          {/* Avatar (right) */}
+          <View>
+            <ExpoImage
+              source={{ uri: currentAvatar }}
+              style={styles.avatar}
+              contentFit="cover"
+            />
+          </View>
+        </View>
+        {/* Media content: Image/Video */}
+        {/* Image carousel if images exist */}
+        {showImages && (
+          <View style={styles.imageWrap} {...carouselPanResponder.panHandlers}>
+            <ExpoImage
+              source={{ uri: images[mediaIndex] || 'https://via.placeholder.com/600x600.png?text=No+Image' }}
+              style={styles.image}
+              contentFit="cover"
+            />
+            {/* Left/Right tap areas for navigation */}
+            {images.length > 1 && (
+              <>
+                <TouchableOpacity 
+                  style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '30%', zIndex: 5 }}
+                  onPress={() => mediaIndex > 0 && setMediaIndex(mediaIndex - 1)}
+                  activeOpacity={1}
+                />
+                <TouchableOpacity 
+                  style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '30%', zIndex: 5 }}
+                  onPress={() => mediaIndex < images.length - 1 && setMediaIndex(mediaIndex + 1)}
+                  activeOpacity={1}
+                />
+              </>
+            )}
+            {/* Page indicators (dots) - Instagram style at bottom center */}
+            {images.length > 1 && (
+              <View style={{ position: 'absolute', bottom: 12, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', zIndex: 10 }}>
+                {images.map((_: string, idx: number) => (
+                  <View
+                    key={idx}
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      marginHorizontal: 3,
+                      backgroundColor: idx === mediaIndex ? '#fff' : 'rgba(255,255,255,0.4)',
+                    }}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+        {/* Video if no images and video exists */}
+        {showVideo && (
+          <TouchableOpacity 
+            style={styles.imageWrap} 
+            activeOpacity={1}
+            onPress={() => {
+              // Toggle play/pause on tap (center area)
+              if (isVideoPlaying) {
+                setIsVideoPlaying(false);
+              } else {
+                setIsVideoPlaying(true);
+                setVideoCompleted(false);
+              }
+            }}
+          >
+            {videoLoading && (
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 10 }}>
+                <ActivityIndicator size="large" color="#FFB800" />
+              </View>
+            )}
+            {videos[0] ? (
+              <>
+                <Video
+                  ref={videoRef}
+                  source={{ uri: videos[0] }}
+                  style={[styles.image, { width: '100%', height: '100%' }]}
+                  resizeMode={ResizeMode.COVER}
+                  shouldPlay={isVideoPlaying}
+                  useNativeControls={false}
+                  isLooping={false}
+                  isMuted={isVideoMuted}
+                  posterSource={{ uri: videos[0] }}
+                  posterStyle={{ width: '100%', height: '100%' }}
+                  onLoadStart={() => { setVideoLoading(true); setVideoError(null); }}
+                  onLoad={(status: any) => { 
+                    setVideoLoading(false); 
+                    if (status.durationMillis) {
+                      setVideoDuration(Math.floor(status.durationMillis / 1000));
+                    }
+                  }}
+                  onError={(e: any) => { setVideoError(e?.nativeEvent?.error || 'Video failed to load'); setVideoLoading(false); }}
+                  onPlaybackStatusUpdate={status => {
+                    if ('didJustFinish' in status && status.didJustFinish) {
+                      setVideoCompleted(true);
+                      setIsVideoPlaying(false);
+                    }
+                    if (
+                      status &&
+                      status.isLoaded &&
+                      'positionMillis' in status &&
+                      'durationMillis' in status &&
+                      typeof status.positionMillis === 'number' &&
+                      typeof status.durationMillis === 'number' &&
+                      status.durationMillis > 0
+                    ) {
+                      setVideoProgress(status.positionMillis / status.durationMillis);
+                      setVideoCurrentTime(Math.floor(status.positionMillis / 1000));
+                      setVideoDuration(Math.floor(status.durationMillis / 1000));
+                    }
+                  }}
+                />
+                
+                {/* Tap to Unmute Overlay - only on first load when muted */}
+                {showMuteOverlay && isVideoMuted && !videoCompleted && (
+                  <TouchableOpacity 
+                    style={styles.muteOverlay}
+                    onPress={() => {
+                      setIsVideoMuted(false);
+                      setShowMuteOverlay(false);
+                      setIsVideoPlaying(true);
+                    }}
+                  >
+                    <View style={styles.muteIconContainer}>
+                      <Feather name="volume-x" size={24} color="#fff" />
+                    </View>
+                    <Text style={styles.muteText}>Tap to unmute</Text>
+                  </TouchableOpacity>
+                )}
+                
+                {/* Replay Overlay - when video completed */}
+                {videoCompleted && (
+                  <TouchableOpacity 
+                    style={styles.muteOverlay}
+                    onPress={async () => {
+                      // Replay from beginning
+                      if (videoRef.current) {
+                        await videoRef.current.setPositionAsync(0);
+                      }
+                      setVideoCompleted(false);
+                      setIsVideoPlaying(true);
+                      setVideoProgress(0);
+                      setVideoCurrentTime(0);
+                    }}
+                  >
+                    <View style={styles.muteIconContainer}>
+                      <Feather name="rotate-ccw" size={28} color="#fff" />
+                    </View>
+                    <Text style={styles.muteText}>Tap to replay</Text>
+                  </TouchableOpacity>
+                )}
+                
+                {/* Play/Pause Button (center) - only show when paused and not loading and not completed */}
+                {!isVideoPlaying && !videoLoading && !videoCompleted && !showMuteOverlay && (
+                  <TouchableOpacity 
+                    style={styles.playButtonOverlay}
+                    onPress={() => {
+                      setIsVideoPlaying(true);
+                      setVideoCompleted(false);
+                    }}
+                  >
+                    <View style={styles.playButtonCircle}>
+                      <Feather name="play" size={32} color="#fff" style={{ marginLeft: 4 }} />
+                    </View>
+                  </TouchableOpacity>
+                )}
+                
+                {/* Video Controls Bar (bottom) */}
+                <View style={styles.videoControlsBar}>
+                  {/* Play/Pause Button */}
+                  <TouchableOpacity 
+                    style={styles.videoControlButton}
+                    onPress={() => {
+                      if (videoCompleted) {
+                        // Replay
+                        if (videoRef.current) {
+                          videoRef.current.setPositionAsync(0);
+                        }
+                        setVideoCompleted(false);
+                        setIsVideoPlaying(true);
+                        setVideoProgress(0);
+                      } else {
+                        setIsVideoPlaying(!isVideoPlaying);
+                      }
+                    }}
+                  >
+                    <Feather 
+                      name={videoCompleted ? "rotate-ccw" : (isVideoPlaying ? "pause" : "play")} 
+                      size={18} 
+                      color="#fff" 
+                    />
+                  </TouchableOpacity>
+                  
+                  {/* Current Time */}
+                  <Text style={styles.videoTimeText}>
+                    {Math.floor(videoCurrentTime / 60)}:{(videoCurrentTime % 60).toString().padStart(2, '0')}
+                  </Text>
+                  
+                  {/* Progress Bar */}
+                  <View style={styles.videoProgressBar}>
+                    <View style={[styles.videoProgressFill, { width: `${videoProgress * 100}%` }]} />
+                  </View>
+                  
+                  {/* Duration */}
+                  <Text style={styles.videoTimeText}>
+                    {Math.floor(videoDuration / 60)}:{(videoDuration % 60).toString().padStart(2, '0')}
+                  </Text>
+                  
+                  {/* Mute/Unmute Button */}
+                  <TouchableOpacity 
+                    style={styles.videoControlButton}
+                    onPress={() => {
+                      setIsVideoMuted(!isVideoMuted);
+                      setShowMuteOverlay(false);
+                    }}
+                  >
+                    <Feather name={isVideoMuted ? "volume-x" : "volume-2"} size={18} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#222' }}>
+                <Text style={{ color: '#fff', fontSize: 16 }}>No video found</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
+        {/* Placeholder if no images or videos */}
+        {!showImages && !showVideo && (
+          <View style={styles.imageWrap}>
+            <ExpoImage
+              source={{ uri: 'https://via.placeholder.com/600x600.png?text=No+Media' }}
+              style={styles.image}
+              contentFit="cover"
+            />
+          </View>
+        )}
+        {/* Removed old carousel navigation and page counter - now using Instagram-style dots at bottom */}
+      </View>
+      {/* All content inside card box */}
+      <View style={{ paddingHorizontal: 2 }}>
+        <View style={styles.iconRow}>
+          <TouchableOpacity
+            onPress={async () => {
+              const userId = user?.uid;
+              if (!userId) {
+                alert('User not logged in');
+                return;
+              }
+              try {
+                // OPTIMIZATION: Optimistic update - update UI immediately
+                const wasLiked = likes.includes(userId);
+                if (wasLiked) {
+                  setLikes(prev => prev.filter(id => id !== userId));
+                  setLikesCount((prev: number) => Math.max(0, prev - 1));
+                } else {
+                  setLikes(prev => [...prev, userId]);
+                  setLikesCount((prev: number) => prev + 1);
+                }
+                
+                // Then update in background
+                if (wasLiked) {
+                  const res = await unlikePost(post.id, userId);
+                  if (!res.success) {
+                    // Revert on error
+                    setLikes(prev => [...prev, userId]);
+                    setLikesCount((prev: number) => prev + 1);
+                    alert('Unlike error: ' + res.error);
+                  }
+                } else {
+                  const res = await likePost(post.id, userId);
+                  if (!res.success) {
+                    // Revert on error
+                    setLikes(prev => prev.filter(id => id !== userId));
+                    setLikesCount((prev: number) => Math.max(0, prev - 1));
+                    alert('Like error: ' + res.error);
+                  }
+                }
+              } catch (err) {
+                // Revert on exception
+                const wasLiked = !likes.includes(userId);
+                if (wasLiked) {
+                  setLikes(prev => [...prev, userId]);
+                  setLikesCount((prev: number) => prev + 1);
+                } else {
+                  setLikes(prev => prev.filter(id => id !== userId));
+                  setLikesCount((prev: number) => Math.max(0, prev - 1));
+                }
+                alert('Like/unlike exception: ' + err);
+              }
+            }}
+            style={{ marginRight: 8, flexDirection: 'row', alignItems: 'center' }}
+          >
+            {liked ? (
+              <MaterialCommunityIcons name="heart" size={24} color={appColors.like} />
+            ) : (
+              <MaterialCommunityIcons name="heart-outline" size={24} color={appColors.icon} />
+            )}
+            <Text style={{ marginLeft: 6, fontWeight: '700', color: appColors.text, fontSize: 15 }}>{typeof likesCount === 'number' || typeof likesCount === 'string' ? String(likesCount) : ''}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowCommentsModal(true)} style={{ marginRight: 24 }}>
+            <Feather name="message-circle" size={22} color={appColors.icon} />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={{ marginRight: 24 }}
+            onPress={async () => {
+              try {
+                const { Share } = await import('react-native');
+                let shareMessage = `Check out this post`;
+                if (post?.userName) {
+                  shareMessage += ` by ${post.userName}`;
+                }
+                if (post?.location) {
+                  shareMessage += ` at ${post.location}`;
+                }
+                if (post?.caption) {
+                  shareMessage += `\n\n${post.caption}`;
+                }
+                await Share.share({
+                  message: shareMessage,
+                });
+              } catch (error) {
+                console.log('Share error:', error);
+              }
+            }}
+          >
+            <Feather name="send" size={22} color={appColors.accent} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <SaveButton post={{ ...post, savedBy }} />
+        </View>
+        {/* Likes Count */}
+        <Text style={[styles.likes, { color: appColors.text }]}>{typeof likesCount === 'number' ? `${likesCount.toLocaleString()} likes` : ''}</Text>
+        {/* Description (expandable) */}
+        <Text style={[styles.caption, { color: appColors.text }]} numberOfLines={showFullDesc ? undefined : 2}>
+          {(() => {
+            let username = '';
+            if (typeof post?.userName === 'string' || typeof post?.userName === 'number') {
+              username = String(post?.userName);
+            }
+            let caption = '';
+            if (typeof post?.caption === 'string' || typeof post?.caption === 'number') {
+              caption = String(post?.caption);
+            } else if (Array.isArray(post?.caption) || typeof post?.caption === 'object') {
+              caption = JSON.stringify(post?.caption);
+            }
+            return username ? `${username} ${caption}`.trim() : caption;
+          })()}
+        </Text>
+        {/* Comments Preview */}
+        <TouchableOpacity onPress={() => setShowCommentsModal(true)}>
+          <Text style={[styles.commentPreview, { color: appColors.muted }]}>{`View all ${commentCount} comments`}</Text>
+        </TouchableOpacity>
+        {/* Remove the comment input box below like button */}
+        {/* Time */}
+        <Text style={styles.time}>{getTimeAgo(post?.createdAt)}</Text>
+      </View>
+      {/* Comments Modal */}
+      <Modal
+        visible={showCommentsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowCommentsModal(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => setShowCommentsModal(false)}
+          />
+          <View
+            style={{
+              backgroundColor: '#fff',
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              height: '90%',
+              shadowColor: '#000',
+              shadowOpacity: 0.1,
+              shadowRadius: 12,
+              elevation: 10,
+              transform: [{ translateY: modalTranslateY }],
+            }}
+          >
+            {/* Swipe Handle */}
+            <View 
+              style={{ 
+                alignItems: 'center', 
+                paddingTop: 12, 
+                paddingBottom: 8,
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+              }}
+              {...panResponder.panHandlers}
+            >
+              <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2 }} />
+            </View>
+
+            {/* Header */}
+            <View style={{ 
+              paddingHorizontal: 16, 
+              paddingBottom: 12, 
+              borderBottomWidth: 1, 
+              borderBottomColor: '#f0f0f0',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <Text style={{ fontWeight: '700', fontSize: 18, color: '#222' }}>Comments</Text>
+              <TouchableOpacity 
+                onPress={() => setShowCommentsModal(false)}
+                style={{ padding: 4 }}
+              >
+                <Feather name="x" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Comments Section */}
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
+              <CommentSection
+                postId={post.id}
+                postOwnerId={post.userId}
+                currentAvatar={user?.photoURL || "https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d"}
+                maxHeight={undefined}
+                showInput={true}
+                highlightedCommentId={highlightedCommentId}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function getTimeAgo(date: any) {
+  if (!date) return "";
+  let d;
+  if (date && date.toDate) {
+    d = date.toDate();
+  } else if (typeof date === 'string' || typeof date === 'number') {
+    d = new Date(date);
+  } else {
+    d = date;
+  }
+  const now = new Date();
+  const diff = Math.floor((now.getTime() - d.getTime()) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  const days = Math.floor(diff / 86400);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 4) return `${weeks}w ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(days / 365);
+  return `${years}y ago`;
+}
+
+export default React.memo(PostCard, (prevProps, nextProps) => {
+  // Memoization comparison - only re-render if these props change
+
+  return (
+    prevProps.post?.id === nextProps.post?.id &&
+    prevProps.post?.likesCount === nextProps.post?.likesCount &&
+    prevProps.post?.commentCount === nextProps.post?.commentCount &&
+    prevProps.post?.savedBy?.length === nextProps.post?.savedBy?.length &&
+    prevProps.currentUser?.uid === nextProps.currentUser?.uid
+  );
+});
+

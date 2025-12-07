@@ -1,8 +1,10 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCurrentUser, getUserProfile, updateUserProfile, uploadImage } from '../lib/firebaseHelpers';
+import { uploadImage } from '../lib/firebaseHelpers';
+import { getCurrentUser, getUserProfile, updateUserProfile } from '../lib/firebaseHelpers/index';
 
 // Runtime import with fallback
 let ImagePicker: any = null;
@@ -24,24 +26,25 @@ export default function EditProfile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPrivate, setIsPrivate] = useState(false);
 
   useEffect(() => {
     loadProfile();
   }, []);
 
   async function loadProfile() {
-    const user = getCurrentUser();
-    if (!user) {
-      router.replace('/login');
+    const user = getCurrentUser() as { uid: string } | null;
+    if (!user || !user.uid) {
+      router.replace('/auth/welcome');
       return;
     }
-    
     const result = await getUserProfile(user.uid);
-    if (result.success && result.data) {
+    if (result && result.success && result.data) {
       setName(result.data.name || '');
       setBio(result.data.bio || '');
       setWebsite(result.data.website || '');
       setAvatar(result.data.avatar || '');
+      setIsPrivate(!!(result.data as any).isPrivate);
     }
     setLoading(false);
   }
@@ -56,8 +59,8 @@ export default function EditProfile() {
     setError(v);
     if (v) return;
     
-    const user = getCurrentUser();
-    if (!user) {
+    const user = getCurrentUser() as { uid: string } | null;
+    if (!user || !user.uid) {
       Alert.alert('Error', 'Not signed in');
       return;
     }
@@ -71,7 +74,7 @@ export default function EditProfile() {
       // Upload new avatar if picked
       if (newAvatarUri) {
         const uploadResult = await uploadImage(newAvatarUri, `avatars/${user.uid}`);
-        if (uploadResult.success && uploadResult.url) {
+        if (uploadResult && uploadResult.success && uploadResult.url) {
           finalAvatar = uploadResult.url;
         } else {
           throw new Error(uploadResult.error || 'Failed to upload image');
@@ -83,9 +86,46 @@ export default function EditProfile() {
         bio,
         website,
         avatar: finalAvatar,
+        isPrivate,
       });
       
-      if (result.success) {
+      if (result && result.success) {
+        // If privacy setting changed, update all user's posts
+        console.log('🔄 Updating posts privacy to:', isPrivate);
+        const { collection, query, where, getDocs, updateDoc, doc } = await import('firebase/firestore');
+        const { db } = await import('../config/firebase');
+        
+        try {
+          const postsQuery = query(
+            collection(db, 'posts'),
+            where('userId', '==', user.uid)
+          );
+          const postsSnapshot = await getDocs(postsQuery);
+          
+          console.log(`📝 Found ${postsSnapshot.size} posts to update`);
+          
+          // Get user's followers list for allowedFollowers
+          const userProfileRes = await getUserProfile(user.uid);
+          const followers = userProfileRes?.data?.followers || [];
+          
+          console.log(`👥 User has ${followers.length} followers`);
+          
+          // Update all posts with new privacy settings
+          const updatePromises = postsSnapshot.docs.map(async (postDoc) => {
+            console.log(`🔒 Updating post ${postDoc.id} - isPrivate: ${isPrivate}, allowedFollowers: ${followers.length}`);
+            await updateDoc(doc(db, 'posts', postDoc.id), {
+              isPrivate: isPrivate,
+              allowedFollowers: isPrivate ? followers : []
+            });
+          });
+          
+          await Promise.all(updatePromises);
+          console.log(`✅ Successfully updated ${postsSnapshot.size} posts!`);
+        } catch (error) {
+          console.error('❌ Error updating posts privacy:', error);
+          Alert.alert('Warning', `Profile updated but some posts may not have been updated. Please try again.`);
+        }
+        
         await loadProfile();
         Alert.alert('Success', 'Profile updated!', [
           { text: 'OK', onPress: () => router.back() }
@@ -192,13 +232,36 @@ export default function EditProfile() {
 
           <View style={styles.formGroup}>
             <Text style={styles.fieldLabel}>Links</Text>
-            <TextInput 
-              value={website} 
-              onChangeText={setWebsite} 
-              style={styles.input} 
-              placeholder="Add links" 
-              placeholderTextColor="#999" 
+            <TextInput
+              value={website}
+              onChangeText={setWebsite}
+              style={styles.input}
+              placeholder="Add links"
+              placeholderTextColor="#999"
             />
+          </View>
+
+          {/* Privacy Toggle */}
+          <View style={styles.privacySection}>
+            <View style={styles.privacyRow}>
+              <View style={styles.privacyLeft}>
+                <Ionicons name="lock-closed-outline" size={22} color="#667eea" style={{ marginRight: 10 }} />
+                <View>
+                  <Text style={styles.privacyLabel}>Private Account</Text>
+                  <Text style={styles.privacyInfo}>
+                    {isPrivate
+                      ? 'Only approved followers can see your posts'
+                      : 'Anyone can see your posts'}
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={isPrivate}
+                onValueChange={setIsPrivate}
+                trackColor={{ false: '#ddd', true: '#667eea' }}
+                thumbColor="#fff"
+              />
+            </View>
           </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -312,19 +375,48 @@ const styles = StyleSheet.create({
     color: '#999', 
     paddingVertical: 4 
   },
-  error: { 
-    color: '#e0245e', 
-    marginTop: 12, 
-    paddingHorizontal: 16 
+  error: {
+    color: '#e0245e',
+    marginTop: 12,
+    paddingHorizontal: 16
   },
-  bottomBar: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    paddingHorizontal: 16, 
-    paddingVertical: 16, 
-    borderTopWidth: 0.5, 
-    borderTopColor: '#e0e0e0' 
+  privacySection: {
+    marginTop: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    marginHorizontal: 16,
+  },
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  privacyLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  privacyLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#222',
+    marginBottom: 4,
+  },
+  privacyInfo: {
+    fontSize: 13,
+    color: '#666',
+    maxWidth: 220,
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderTopWidth: 0.5,
+    borderTopColor: '#e0e0e0'
   },
   logoutBtn: { 
     paddingVertical: 12, 

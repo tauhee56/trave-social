@@ -2,7 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 
-export default function FriendsScreen({ friends }) {
+interface FriendsScreenProps {
+  friends: any[];
+}
+export default function FriendsScreen({ friends }: FriendsScreenProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.header}>Friends</Text>

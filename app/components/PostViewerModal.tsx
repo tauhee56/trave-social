@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import React, { useEffect, useState } from 'react';
-import { Alert, Dimensions, FlatList, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Dimensions, FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getPostComments } from '../../lib/firebaseHelpers';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -14,6 +15,8 @@ interface Post {
   userId: string;
   likes?: string[];
   savedBy?: string[];
+  commentsCount?: number;
+  comments?: any[];
   // Add other fields as needed
 }
 
@@ -93,7 +96,7 @@ export default function PostViewerModal({
       <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: '#000' }}>
         {/* Header */}
-        <SafeAreaView style={styles.postViewerHeader}>
+        <SafeAreaView style={styles.postViewerHeader} edges={['top']}>
           <View style={styles.postViewerHeaderContent}>
             <TouchableOpacity onPress={onClose} style={styles.postViewerCloseBtn}>
               <Ionicons name="close" size={32} color="#fff" />
@@ -136,17 +139,53 @@ export default function PostViewerModal({
           keyExtractor={(item) => item.id}
           renderItem={({ item: post }) => (
             <View style={[styles.postViewerSlide, { height: SCREEN_HEIGHT }]}> 
-              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }} bounces={false} showsVerticalScrollIndicator={false}>
-                {/* Post Image */}
-                <View style={[styles.postImageContainer, { height: SCREEN_HEIGHT * 0.8, marginTop: 40, marginBottom: 12 }]}> 
-                  <ExpoImage
-                    source={{ uri: String(post?.imageUrl || (Array.isArray(post?.imageUrls) ? post.imageUrls[0] : '')) }}
-                    style={[styles.postViewerImage, { height: SCREEN_HEIGHT * 0.8, width: SCREEN_WIDTH }]}
-                    contentFit="cover"
-                  />
-                </View>
-                {/* Post Info & Actions */}
-                <View style={styles.postActionsBar}>
+              {/* Unified Post Media Carousel (images + videos) */}
+              <View style={[styles.postImageContainer, { height: SCREEN_HEIGHT * 0.88 }]}> 
+                {(() => {
+                  // Build unified media list (images + videos)
+                  const images = Array.isArray(post?.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls : (post?.imageUrl ? [post.imageUrl] : []);
+                  const videos = Array.isArray((post as any)?.videoUrls) && (post as any).videoUrls.length > 0 ? (post as any).videoUrls : ((post as any)?.videoUrl ? [(post as any).videoUrl] : []);
+                  const media = [
+                    ...images.map((url: string) => ({ type: 'image', url })),
+                    ...videos.map((url: string) => ({ type: 'video', url })),
+                  ];
+                  const hasCarousel = media.length > 1;
+                  return hasCarousel ? (
+                    <FlatList
+                      data={media}
+                      horizontal
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                      keyExtractor={(item, idx) => `${item.type}-${idx}`}
+                      renderItem={({ item }) => (
+                        item.type === 'image' ? (
+                          <ExpoImage
+                            source={{ uri: String(item.url) }}
+                            style={[styles.postViewerImage, { height: SCREEN_HEIGHT * 0.88, width: SCREEN_WIDTH }]}
+                            contentFit="cover"
+                          />
+                        ) : (
+                          <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.88 }}>
+                            <ExpoImage
+                              source={{ uri: String(item.url) }}
+                              style={[styles.postViewerImage, { height: SCREEN_HEIGHT * 0.88, width: SCREEN_WIDTH }]}
+                              contentFit="cover"
+                            />
+                          </View>
+                        )
+                      )}
+                    />
+                  ) : (
+                    <ExpoImage
+                      source={{ uri: String(images[0] || videos[0] || '') }}
+                      style={[styles.postViewerImage, { height: SCREEN_HEIGHT * 0.88, width: SCREEN_WIDTH }]}
+                      contentFit="cover"
+                    />
+                  );
+                })()}
+              </View>
+              {/* Post Info & Actions */}
+              <View style={styles.postActionsBar}>
                   <View style={styles.postActions}>
                     <TouchableOpacity style={styles.actionBtn} onPress={() => handleLikePostAndRefresh(post.id)}>
                       <Ionicons name={likedPosts[post.id] ? 'heart' : 'heart-outline'} size={28} color={likedPosts[post.id] ? '#e74c3c' : '#fff'} />
@@ -158,27 +197,26 @@ export default function PostViewerModal({
                     }}>
                       <Ionicons name="chatbubble-outline" size={26} color="#fff" />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionBtn} onPress={() => handleSharePost(post.id)}>
+                    <TouchableOpacity style={styles.actionBtn} onPress={() => handleSharePost(post)}>
                       <Ionicons name="paper-plane-outline" size={26} color="#fff" />
                     </TouchableOpacity>
                   </View>
-                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleSavePost(post.id)}>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleSavePost(post)}>
                     <Ionicons name={savedPosts[post.id] ? 'bookmark' : 'bookmark-outline'} size={26} color="#fff" />
                   </TouchableOpacity>
-                </View>
-                {/* Caption */}
-                {post?.caption && typeof post.caption === 'string' && post.caption.trim() && (
-                  <View style={styles.captionContainer}>
-                    <Text style={styles.captionText}>
-                      <Text style={styles.captionUsername}>
-                        {String(profile?.username || profile?.name || '')}
-                      </Text>
-                      {' '}
-                      {post.caption}
+              </View>
+              {/* Caption */}
+              {post?.caption && typeof post.caption === 'string' && post.caption.trim() && (
+                <View style={styles.captionContainer}>
+                  <Text style={styles.captionText}>
+                    <Text style={styles.captionUsername}>
+                      {String(profile?.username || profile?.name || '')}
                     </Text>
-                  </View>
-                )}
-              </ScrollView>
+                    {' '}
+                    {post.caption}
+                  </Text>
+                </View>
+              )}
             </View>
           )}
         />
@@ -203,6 +241,59 @@ export default function PostViewerModal({
             <Text style={{ color: '#d00', fontSize: 16 }}>Delete</Text>
           </TouchableOpacity>
           <View style={{ height: 1, backgroundColor: '#eee', marginVertical: 8 }} />
+          {/* Moderation for non-owner */}
+          {authUser?.uid !== posts[currentPostIndex]?.userId && (
+            <>
+              <TouchableOpacity onPress={async () => {
+                setShowMenu(false);
+                const post = posts[currentPostIndex];
+                if (!authUser?.uid || !post) return;
+                try {
+                  const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
+                  const { db } = await import('../../config/firebase');
+                  await addDoc(collection(db, 'reports'), {
+                    type: 'post',
+                    postId: post.id,
+                    reportedUserId: post.userId,
+                    reportedBy: authUser.uid,
+                    createdAt: serverTimestamp(),
+                  });
+                  Alert.alert('Reported', 'Thanks. We will review this post.');
+                } catch (e) {
+                  Alert.alert('Error', 'Failed to report. Try again later.');
+                }
+              }} style={{ paddingVertical: 8 }}>
+                <Text style={{ color: '#e67e22', fontSize: 16 }}>Report</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={async () => {
+                setShowMenu(false);
+                const post = posts[currentPostIndex];
+                if (!authUser?.uid || !post) return;
+                const uid = authUser.uid; // Capture uid
+                Alert.alert('Block User', 'Hide posts from this user?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Block', style: 'destructive', onPress: async () => {
+                      try {
+                        const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
+                        const { db } = await import('../../config/firebase');
+                        await addDoc(collection(db, 'users', uid, 'blocked'), {
+                          userId: post.userId,
+                          createdAt: serverTimestamp(),
+                        });
+                        onClose();
+                      } catch (e) {
+                        console.error('Failed to block user:', e);
+                      }
+                    }
+                  }
+                ]);
+              }} style={{ paddingVertical: 8 }}>
+                <Text style={{ color: '#d00', fontSize: 16 }}>Block</Text>
+              </TouchableOpacity>
+              <View style={{ height: 1, backgroundColor: '#eee', marginVertical: 8 }} />
+            </>
+          )}
           <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 4 }}>
             <Ionicons name={likedPosts[posts[currentPostIndex]?.id] ? 'heart' : 'heart-outline'} size={16} color={likedPosts[posts[currentPostIndex]?.id] ? '#e74c3c' : '#333'} />
             <Text style={{ fontSize: 14, color: '#333', marginLeft: 8 }}>Likes: {Array.isArray(posts[currentPostIndex]?.likes) ? posts[currentPostIndex].likes.length : 0}</Text>
@@ -230,9 +321,9 @@ const styles = StyleSheet.create({
   postViewerAvatar: { width: 32, height: 32, borderRadius: 16, marginRight: 8 },
   postViewerUsername: { color: '#fff', fontWeight: '700', fontSize: 15 },
   menuBtn: { padding: 4 },
-  postViewerSlide: { flex: 1, backgroundColor: '#000' },
-  postImageContainer: { width: '100%', aspectRatio: 1, backgroundColor: '#222' },
-  postViewerImage: { width: '100%', height: undefined, aspectRatio: 1, borderRadius: 12 },
+  postViewerSlide: { flex: 1, backgroundColor: '#000', justifyContent: 'flex-start' },
+  postImageContainer: { width: '100%', backgroundColor: '#000' },
+  postViewerImage: { width: '100%', height: '100%', borderRadius: 0 },
   postActionsBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
   postActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   actionBtn: { padding: 8 },

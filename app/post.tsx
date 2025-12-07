@@ -1,32 +1,54 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { doc, onSnapshot } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserPosts } from '../lib/firebaseHelpers';
+import { db } from '../config/firebase';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function PostScreen() {
   const router = useRouter();
   const { postId, commentId, mentionId, tagId } = useLocalSearchParams();
+  // Debug log for params
+  React.useEffect(() => {
+    console.log('[POST SCREEN PARAMS]', { postId, commentId, mentionId, tagId });
+  }, [postId, commentId, mentionId, tagId]);
   const [post, setPost] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchPost() {
-      if (!postId) return;
-      // You may want to use a getPostById helper for efficiency
-      const res = await getUserPosts(''); // Replace with actual getPostById
-      if (res.success && Array.isArray(res.data)) {
-        const found = res.data.find((p: any) => p.id === postId);
-        setPost(found || null);
+    if (!postId) return;
+    setLoading(true);
+    const postRef = doc(db, 'posts', typeof postId === 'string' ? postId : Array.isArray(postId) ? postId[0] : '');
+    const unsub = onSnapshot(postRef,
+      (docSnap) => {
+        setPost(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
+        setLoading(false);
+      },
+      (err) => {
+        setLoading(false);
       }
-      setLoading(false);
-    }
-    fetchPost();
+    );
+    return () => {
+      unsub && unsub();
+    };
   }, [postId]);
 
+  if (!postId) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <Text style={styles.notFound}>No postId provided. Cannot load post.</Text>
+      </SafeAreaView>
+    );
+  }
   if (loading) return (
     <SafeAreaView style={styles.container}>
-      <ActivityIndicator size="large" color="#FF6B00" />
+      <View style={{ padding: 24 }}>
+        <View style={{ width: '100%', height: 200, borderRadius: 12, backgroundColor: '#eee', marginBottom: 16 }} />
+        <View style={{ width: 120, height: 24, borderRadius: 8, backgroundColor: '#eee', marginBottom: 12 }} />
+        <View style={{ width: '80%', height: 16, borderRadius: 6, backgroundColor: '#eee', marginBottom: 8 }} />
+        <View style={{ width: '60%', height: 16, borderRadius: 6, backgroundColor: '#eee', marginBottom: 8 }} />
+      </View>
     </SafeAreaView>
   );
 
@@ -36,18 +58,37 @@ export default function PostScreen() {
     </SafeAreaView>
   );
 
+  // Helper to fetch comment text by commentId
+  const [highlightedComment, setHighlightedComment] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    // getPostComments removed (not exported). Only setHighlightedComment(null)
+    React.useEffect(() => {
+      setHighlightedComment(null);
+    }, [commentId, postId]);
+  }, [commentId, postId]);
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.header}>Post Details</Text>
-        <Text style={styles.caption}>{post.caption}</Text>
-        {/* Show comment, mention, or tag highlight if param exists */}
-        {commentId && <Text style={styles.highlight}>Comment: {commentId}</Text>}
-        {mentionId && <Text style={styles.highlight}>Mention: {mentionId}</Text>}
-        {tagId && <Text style={styles.highlight}>Tag: {tagId}</Text>}
-        {/* Add more post details as needed */}
-      </ScrollView>
-    </SafeAreaView>
+    <ErrorBoundary>
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <Text style={styles.header}>Post Details</Text>
+          {/* Highlight post caption for like notifications */}
+          {postId && !commentId && (
+            <Text style={[styles.highlight, { backgroundColor: '#fffbe6', padding: 8, borderRadius: 8 }]}>Post: {post.caption}</Text>
+          )}
+          {/* Show comment, mention, or tag highlight if param exists */}
+          {commentId && highlightedComment && (
+            <Text style={[styles.highlight, { backgroundColor: '#eaf3ff', padding: 8, borderRadius: 8 }]}>Comment: {highlightedComment}</Text>
+          )}
+          {commentId && !highlightedComment && (
+            <Text style={styles.highlight}>Comment not found.</Text>
+          )}
+          {mentionId && <Text style={styles.highlight}>Mention: {mentionId}</Text>}
+          {tagId && <Text style={styles.highlight}>Tag: {tagId}</Text>}
+          {/* Add more post details as needed */}
+        </ScrollView>
+      </SafeAreaView>
+    </ErrorBoundary>
   );
 }
 

@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Alert, ActivityIndicator, ScrollView, Modal, FlatList } from 'react-native';
-import { useRouter } from 'expo-router';
-import Constants from 'expo-constants';
 import { Feather, MaterialIcons } from '@expo/vector-icons';
-import { createPost, getCurrentUser, searchUsers } from '../../lib/firebaseHelpers';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { createPost, getCurrentUser, searchUsers } from '../../lib/firebaseHelpers/index';
+import VerifiedBadge from '../components/VerifiedBadge';
 
 // Runtime import of ImagePicker with graceful fallback
 let ImagePicker: any = null;
@@ -20,9 +20,6 @@ const MOCK_LOCATIONS = [
   { id: "3", name: "The Campaner", address: "Chelsea Barracks, 1 Garrison Square, London SW1W 8BG, United Kingdom" },
   { id: "4", name: "Inchel", address: "33H King's Rd, London SW3 4LX, United Kingdom" },
 ];
-
-// Hardcoded API key for production builds (process.env doesn't work in production APK)
-const GOOGLE_MAP_API_KEY = 'AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c';
 
 export default function PostScreen() {
     // Default avatar from Firebase Storage
@@ -112,17 +109,17 @@ export default function PostScreen() {
       return;
     }
     
-    const user = getCurrentUser();
-    if (!user) {
+    const user = getCurrentUser() as { uid: string } | null;
+    if (!user || !user.uid) {
       Alert.alert('Not signed in', 'Please sign in to create a post');
-      router.replace('/login');
+      router.replace('/auth/welcome');
       return;
     }
     
     setLoading(true);
     try {
-      const result = await createPost(user.uid, selectedImages[0], caption, location?.name || '');
-      if (result.success) {
+      const result = await createPost(user.uid, selectedImages, caption, location?.name || '');
+      if (result && typeof result.success === 'boolean' && result.success) {
         Alert.alert('Success', 'Post created successfully!', [
           { text: 'OK', onPress: () => {
             setSelectedImages([]);
@@ -134,7 +131,7 @@ export default function PostScreen() {
           }}
         ]);
       } else {
-        Alert.alert('Error', result.error || 'Failed to create post');
+        Alert.alert('Error', 'Failed to create post');
       }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to create post');
@@ -228,7 +225,7 @@ export default function PostScreen() {
 
           {/* Verified Location */}
           <TouchableOpacity style={styles.optionRow} onPress={() => setShowVerifiedModal(true)}>
-            <MaterialIcons name="verified" size={20} color="#000" style={{ marginRight: 12 }} />
+            <View style={{ marginRight: 12 }}><VerifiedBadge size={20} color="#000" /></View>
             <View style={{ flex: 1 }}>
               <Text style={styles.optionText}>
                 {verifiedLocation ? "Verified location added" : "Add a verified location"}
@@ -353,7 +350,7 @@ export default function PostScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
             <View style={styles.verifiedHeader}>
-              <MaterialIcons name="verified" size={24} color="#000" />
+              <VerifiedBadge size={24} color="#000" />
               <Text style={styles.modalTitle}>Add a verified location</Text>
             </View>
             <Text style={styles.modalSubtitle}>

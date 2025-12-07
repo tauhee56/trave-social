@@ -54,28 +54,12 @@ export default function PhoneLoginScreen() {
     setLoading(true);
 
     try {
-      // Note: Phone auth on mobile requires reCAPTCHA verification
-      // For now, show a message
-      Alert.alert(
-        'Phone Authentication',
-        `OTP will be sent to ${fullPhoneNumber}\n\nNote: Phone authentication requires additional setup for production. For testing, please use Email login.`,
-        [
-          {
-            text: 'Use Email Instead',
-            onPress: () => router.push('/auth/email-login')
-          },
-          {
-            text: 'Continue Anyway',
-            onPress: () => {
-              // Navigate to OTP screen with phone number
-              router.push({
-                pathname: '/auth/phone-otp',
-                params: { phone: fullPhoneNumber }
-              });
-            }
-          }
-        ]
-      );
+      // Navigate directly to phone OTP screen
+      // SMS will be sent via Firebase Phone Auth
+      router.push({
+        pathname: '/auth/phone-otp',
+        params: { phone: fullPhoneNumber, flow: 'login' }
+      });
     } catch (error: any) {
       console.error('Phone auth error:', error);
       Alert.alert('Error', error.message || 'Failed to send OTP');

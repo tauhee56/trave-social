@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { uploadImage } from '../../lib/firebaseHelpers';
+import { checkUsernameAvailability, signUpWithUsername } from '../../services/usernameAuthService';
 import CustomButton from '../components/auth/CustomButton';
 
 export default function UsernameSignUpScreen() {
@@ -11,6 +13,26 @@ export default function UsernameSignUpScreen() {
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+
+  // Check username availability with debounce
+  useEffect(() => {
+    if (!username || username.trim().length < 3) {
+      setUsernameAvailable(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setCheckingUsername(true);
+      const available = await checkUsernameAvailability(username);
+      setUsernameAvailable(available);
+      setCheckingUsername(false);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [username]);
 
   const pickImage = async () => {
     // Request permission
@@ -34,24 +56,57 @@ export default function UsernameSignUpScreen() {
     }
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!username.trim()) {
       Alert.alert('Error', 'Please enter a username');
       return;
     }
 
-    // TODO: Save username and profile data to Firebase
-    // For now, just show message and go back to welcome
-    Alert.alert(
-      'Profile Setup Complete!',
-      'Username signup is coming soon. Please use Email or Phone login for now.',
-      [
-        {
-          text: 'OK',
-          onPress: () => router.replace('/auth/welcome')
+    if (username.trim().length < 3) {
+      Alert.alert('Error', 'Username must be at least 3 characters');
+      return;
+    }
+
+    if (usernameAvailable === false) {
+      Alert.alert('Error', 'Username is not available');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      let avatarUrl: string | undefined = undefined;
+
+      // Upload profile image if selected
+      if (profileImage) {
+        const uploadResult = await uploadImage(profileImage, `avatars/${username}_${Date.now()}`);
+        if (uploadResult.success && uploadResult.url) {
+          avatarUrl = uploadResult.url;
         }
-      ]
-    );
+      }
+
+      // Sign up with username
+      const result = await signUpWithUsername(username, name, avatarUrl);
+
+      if (result.success) {
+        Alert.alert(
+          'Success!',
+          'Your account has been created. Please use Email or Phone login to continue.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/auth/login-options')
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Sign-Up Failed', result.error || 'Could not create account');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to create account');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -103,15 +158,35 @@ export default function UsernameSignUpScreen() {
         {/* Username Input */}
         <View style={styles.inputContainer}>
           <Text style={styles.label}>Create a username</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="teru35"
-            placeholderTextColor="#999"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-          />
-          <Text style={styles.hint}>This is not available</Text>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.input}
+              placeholder="username"
+              placeholderTextColor="#999"
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              editable={!loading}
+            />
+            {checkingUsername && (
+              <ActivityIndicator size="small" color="#f39c12" style={styles.inputIcon} />
+            )}
+            {!checkingUsername && usernameAvailable === true && username.length >= 3 && (
+              <Ionicons name="checkmark-circle" size={20} color="#4CAF50" style={styles.inputIcon} />
+            )}
+            {!checkingUsername && usernameAvailable === false && username.length >= 3 && (
+              <Ionicons name="close-circle" size={20} color="#f44336" style={styles.inputIcon} />
+            )}
+          </View>
+          {username.length >= 3 && usernameAvailable === false && (
+            <Text style={[styles.hint, { color: '#f44336' }]}>This username is not available</Text>
+          )}
+          {username.length >= 3 && usernameAvailable === true && (
+            <Text style={[styles.hint, { color: '#4CAF50' }]}>Username is available!</Text>
+          )}
+          {username.length > 0 && username.length < 3 && (
+            <Text style={styles.hint}>Username must be at least 3 characters</Text>
+          )}
         </View>
 
         {/* Name Input */}
@@ -128,11 +203,18 @@ export default function UsernameSignUpScreen() {
 
         {/* Next Button */}
         <CustomButton
-          title="Next"
+          title={loading ? 'Creating Account...' : 'Next'}
           onPress={handleNext}
           variant="primary"
           style={styles.nextButton}
+          disabled={loading || !username || usernameAvailable === false}
         />
+
+        {loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#f39c12" />
+          </View>
+        )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -224,17 +306,32 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontWeight: '600',
   },
+  inputWrapper: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   input: {
     backgroundColor: '#f5f5f5',
     borderRadius: 8,
     padding: 16,
     fontSize: 16,
     color: '#000',
+    flex: 1,
+    paddingRight: 45,
+  },
+  inputIcon: {
+    position: 'absolute',
+    right: 15,
   },
   hint: {
     fontSize: 12,
     color: '#f39c12',
     marginTop: 4,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    marginTop: 10,
   },
   nextButton: {
     marginTop: 10,

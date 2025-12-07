@@ -1,11 +1,11 @@
 // Agora.io Configuration
 // Keep these credentials secure and never commit to public repositories
 
+// Directly use config to avoid environment loading issues
 export const AGORA_CONFIG = {
   appId: '29320482381a43498eb8ca3e222b6e34',
   appCertificate: 'e8372567e0334d75add0ec3f597fb67b',
-  // Token server URL (optional - for production use)
-  tokenServerUrl: '', // If you have a token server, add URL here
+  tokenServerUrl: '',
 };
 
 // Generate a channel name for live streaming

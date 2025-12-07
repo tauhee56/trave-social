@@ -1,30 +1,63 @@
-import { Stack } from "expo-router";
+import { Ionicons } from '@expo/vector-icons';
+import * as Font from 'expo-font';
+import { Stack, useRouter, useSegments } from "expo-router";
 import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, LogBox, View } from "react-native";
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { auth } from "../config/firebase";
 import { UserProvider } from "./components/UserContext";
 
+// Suppress non-critical expo-keep-awake warning
+LogBox.ignoreLogs(['Unable to activate keep awake']);
+
 export default function RootLayout() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [fontsLoaded, setFontsLoaded] = useState(false);
+  const segments = useSegments();
+  const router = useRouter();
 
   useEffect(() => {
-    // Listen to auth state changes
+    async function loadFonts() {
+      try {
+        await Font.loadAsync({
+          ...Ionicons.font,
+        });
+        setFontsLoaded(true);
+      } catch (error) {
+        console.log('Font loading error:', error);
+        setFontsLoaded(true); // Continue anyway
+      }
+    }
+    loadFonts();
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
     });
-
     return unsubscribe;
   }, []);
 
-  if (loading) {
+  useEffect(() => {
+    if (loading || !fontsLoaded) return;
+
+    const inAuthGroup = segments[0] === 'auth';
+
+    if (!user && !inAuthGroup) {
+      router.replace('/auth/welcome');
+    } else if (user && inAuthGroup) {
+      router.replace('/(tabs)/home');
+    }
+  }, [user, segments, loading, fontsLoaded]);
+
+  if (loading || !fontsLoaded) {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
-          <ActivityIndicator size="large" color="#f39c12" />
+          <ActivityIndicator size="large" color="#667eea" />
         </View>
       </GestureHandlerRootView>
     );

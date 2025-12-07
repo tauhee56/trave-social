@@ -26,7 +26,22 @@ export default function LoginOptionsScreen() {
   };
 
   const handleTikTokSignIn = async () => {
-    await signInWithTikTok();
+    setLoading(true);
+    try {
+      console.log('Starting TikTok Sign-In...');
+      const result = await signInWithTikTok();
+      console.log('TikTok Sign-In Result:', JSON.stringify(result, null, 2));
+      
+      if (result.success) {
+        console.log('TikTok Sign-In Success! Navigating to home...');
+        await handleSocialAuthResult(result, router);
+      } else {
+        console.log('TikTok Sign-In Failed:', result.error);
+      }
+    } catch (error) {
+      console.error('TikTok sign-in error:', error);
+    }
+    setLoading(false);
   };
 
   const handleSnapchatSignIn = async () => {

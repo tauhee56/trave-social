@@ -1,15 +1,16 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { FlatList, Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { searchUsers } from "../lib/firebaseHelpers";
+import { getRegions, searchUsers } from "../lib/firebaseHelpers/index";
 
 // Type definitions
 type Region = {
   id: string;
   name: string;
   image: string;
+  order?: number;
 };
 
 type Suggestion = {
@@ -27,13 +28,15 @@ type User = {
 };
 
 const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
-const regions: Region[] = [
-  { id: 'world', name: 'World', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Equirectangular_projection_SW.jpg/320px-Equirectangular_projection_SW.jpg' },
-  { id: 'us', name: 'United States', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/USA_orthographic.svg/300px-USA_orthographic.svg.png' },
-  { id: 'italy', name: 'Italy', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Italy_on_the_globe_%28Europe_centered%29.svg/300px-Italy_on_the_globe_%28Europe_centered%29.svg.png' },
-  { id: 'japan', name: 'Japan', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Japan_on_the_globe_%28Japan_centered%29.svg/300px-Japan_on_the_globe_%28Japan_centered%29.svg.png' },
-  { id: 'sea', name: 'Southeast Asia', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/Southeast_Asia_%28orthographic_projection%29.svg/300px-Southeast_Asia_%28orthographic_projection%29.svg.png' },
-  { id: 'me', name: 'Middle East', image: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/Middle_East_%28orthographic_projection%29.svg/300px-Middle_East_%28orthographic_projection%29.svg.png' },
+
+// Default regions (fallback if Firebase fetch fails)
+const defaultRegions: Region[] = [
+  { id: 'world', name: 'World', image: 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/regions%2Fworld.png?alt=media' },
+  { id: 'us', name: 'United States', image: 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/regions%2Fus.png?alt=media&token=bf3e398e-ed7f-46c6-a714-303d84dce0b4' },
+  { id: 'eastasia', name: 'East Asia', image: 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/regions%2Feastasia.png?alt=media' },
+  { id: 'me', name: 'Middle East', image: 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/regions%2Fmiddleeast.png?alt=media' },
+  { id: 'sea', name: 'South Asia', image: 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/regions%2Fsoutheastasia.png?alt=media&token=974aa2c8-501c-4a8b-a602-6d56c768d245' },
+  { id: 'japan', name: 'Japan', image: 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/regions%2FJapan.png?alt=media&token=4071a57a-1e9f-469d-a02a-8c42a6f709ab' },
 ];
 
 export default function SearchModal() {
@@ -47,6 +50,29 @@ export default function SearchModal() {
   const [recommendations, setRecommendations] = useState<User[]>([]);
   const [loadingUsers, setLoadingUsers] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
+  const [regions, setRegions] = useState<Region[]>(defaultRegions);
+  const [loadingRegions, setLoadingRegions] = useState<boolean>(true);
+
+  // Fetch regions from Firebase on mount
+  useEffect(() => {
+    async function fetchRegions() {
+      setLoadingRegions(true);
+      try {
+        const result = await getRegions();
+        if (result.success && result.data && result.data.length > 0) {
+          setRegions(result.data);
+        } else {
+          // Use default regions if Firebase fetch fails
+          setRegions(defaultRegions);
+        }
+      } catch (error) {
+        console.error('Error loading regions:', error);
+        setRegions(defaultRegions);
+      }
+      setLoadingRegions(false);
+    }
+    fetchRegions();
+  }, []);
 
   // Reset data when tab changes
   useEffect(() => {
@@ -66,23 +92,20 @@ export default function SearchModal() {
     setLoadingSuggest(true);
     const timer = setTimeout(async () => {
       try {
-        const apiKey = 'AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c';
-        const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q)}&types=(cities)&key=${apiKey}`;
-        const res = await fetch(url);
-        if (!res.ok) { setSuggestions([]); return; }
-        const data = await res.json();
-        setSuggestions((data.predictions || []).map((r: any) => ({
-          id: r.place_id || String(Math.random()),
-          title: r.structured_formatting?.main_text || r.description || 'Location',
-          subtitle: r.structured_formatting?.secondary_text || r.description || '',
-          placeId: r.place_id,
+        const { mapService } = await import('../services');
+        const results = await mapService.getAutocompleteSuggestions(q);
+        setSuggestions(results.map((r: any) => ({
+          id: r.placeId || String(Math.random()),
+          title: r.description || r.mainText || 'Location',
+          subtitle: r.secondaryText || '',
+          placeId: r.placeId,
         })));
       } catch (err) {
         setSuggestions([]);
       } finally {
         setLoadingSuggest(false);
       }
-    }, 300);
+    }, 600); // Increased from 300ms to 600ms for better debouncing
     return () => clearTimeout(timer);
   }, [q, tab]);
 
@@ -184,25 +207,68 @@ export default function SearchModal() {
             </View>
             {/* Region Select Grid (background) */}
             {tab === 'place' && (
-              <View style={{ marginTop: 12 }}>
+              <View style={{ marginTop: 16 }}>
                 <Text style={styles.sectionTitle}>Or select a region</Text>
-                <View style={styles.regionGridWrap}>
-                  {Array.from({ length: 2 }).map((_, rowIdx) => (
-                    <View key={rowIdx} style={styles.regionGridRow}>
-                      {regions.slice(rowIdx * 3, rowIdx * 3 + 3).map(item => (
-                        <TouchableOpacity
-                          key={item.id}
-                          style={[styles.regionCard, selectedRegion === item.id && styles.regionCardActive]}
-                          onPress={() => { setSelectedRegion(item.id); setQ(item.name); }}
-                          accessibilityLabel={`Select region ${item.name}`}
-                        >
-                          <Image source={{ uri: item.image }} style={styles.regionImage} resizeMode="contain" />
-                          <Text style={styles.regionName}>{item.name}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  ))}
-                </View>
+                {loadingRegions ? (
+                  <View style={{ alignItems: 'center', justifyContent: 'center', height: 200 }}>
+                    <ActivityIndicator size="large" color="#f39c12" />
+                  </View>
+                ) : (
+                  <View style={styles.regionGridWrap}>
+                    {/* First row - independent scroll */}
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ paddingRight: 16 }}
+                    >
+                      <View style={styles.regionGridRow}>
+                        {regions.slice(0, 3).map(item => (
+                          <TouchableOpacity
+                            key={item.id}
+                            style={[styles.regionCard, selectedRegion === item.id && styles.regionCardActive]}
+                            onPress={() => { setSelectedRegion(item.id); setQ(item.name); }}
+                            accessibilityLabel={`Select region ${item.name}`}
+                          >
+                            <View style={styles.regionImageWrap}>
+                              <Image 
+                                source={{ uri: item.image }} 
+                                style={styles.regionImage} 
+                                resizeMode="cover"
+                              />
+                            </View>
+                            <Text style={styles.regionName}>{item.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+                    {/* Second row - independent scroll */}
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ paddingRight: 16 }}
+                    >
+                      <View style={styles.regionGridRow}>
+                        {regions.slice(3, 6).map(item => (
+                          <TouchableOpacity
+                            key={item.id}
+                            style={[styles.regionCard, selectedRegion === item.id && styles.regionCardActive]}
+                            onPress={() => { setSelectedRegion(item.id); setQ(item.name); }}
+                            accessibilityLabel={`Select region ${item.name}`}
+                          >
+                            <View style={styles.regionImageWrap}>
+                              <Image 
+                                source={{ uri: item.image }} 
+                                style={styles.regionImage} 
+                                resizeMode="cover"
+                              />
+                            </View>
+                            <Text style={styles.regionName}>{item.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  </View>
+                )}
               </View>
             )}
             {/* Place Tab Results (Google Maps suggestions) - overlay above region grid */}
@@ -216,19 +282,20 @@ export default function SearchModal() {
                     <TouchableOpacity
                       style={styles.suggestionCardList}
                       onPress={() => {
-                        // Navigate to location details page with placeId
-                        router.push({ pathname: '/location/[placeId]', params: { placeId: item.placeId, q: item.title } });
+                        router.push({ pathname: '/location/[placeId]', params: { placeId: item.placeId, locationName: item.title, locationAddress: item.subtitle } });
                       }}
                     >
                       <View style={styles.suggestionIconList}>
-                        <Feather name="map-pin" size={20} color="#222" />
+                        <Feather name="map-pin" size={28} color="#222" />
                       </View>
-                      <Text style={styles.suggestionTitleList}>{item.title}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.suggestionTitleList}>{item.title}</Text>
+                      </View>
                     </TouchableOpacity>
                   )}
                   ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12, textAlign: 'center' }}>No results</Text>}
                   style={{ marginTop: 0, maxHeight: 400 }}
-                  contentContainerStyle={{ paddingVertical: 4 }}
+                  contentContainerStyle={{ paddingVertical: 4, paddingBottom: 8 }}
                   showsVerticalScrollIndicator={false}
                 />
               </View>
@@ -278,7 +345,7 @@ export default function SearchModal() {
               if (tab === 'place' && suggestions.length > 0) {
                 // Use first suggestion always, navigate to location details
                 const selected = suggestions[0];
-                router.push({ pathname: '/location/[placeId]', params: { placeId: selected.placeId, q: selected.title } });
+                router.push({ pathname: '/location/[placeId]', params: { placeId: selected.placeId, locationName: selected.title, locationAddress: selected.subtitle } });
               } else if (tab === 'people' && q.length >= 2 && users.length > 0) {
                 // Open first user's profile
                 const user = users[0];
@@ -328,45 +395,49 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 16, color: '#999', fontWeight: '400', textAlign: 'center' },
   tabTextActive: { color: '#111', fontWeight: '700', textAlign: 'center' },
   tabUnderlineInline: { position: 'absolute', bottom: -2, left: '22%', right: '22%', height: 2, backgroundColor: '#111', borderRadius: 1 },
-  closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f5f5f5', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 16 },
+  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#e5e5e5' },
+  sectionTitle: { fontSize: 14, fontWeight: '600', color: '#222', marginBottom: 12 },
   regionGridWrap: {
     flexDirection: 'column',
     gap: 12,
-    marginTop: 8,
   },
   regionGridRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 0,
+    gap: 10,
+    marginBottom: 12,
   },
   regionCard: {
-    flex: 1,
-    minWidth: 0,
-    maxWidth: '32%',
-    aspectRatio: 1,
+    width: 110,
+    height: 130,
     borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#eee',
-    backgroundColor: '#f9f9f9',
+    borderWidth: 1.5,
+    borderColor: '#e8e8e8',
+    backgroundColor: '#fff',
     overflow: 'hidden',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 8,
-    marginHorizontal: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
+    justifyContent: 'flex-start',
+    paddingTop: 10,
+    paddingBottom: 8,
   },
   regionCardActive: {
-    borderColor: '#111',
-    borderWidth: 2.5,
-    borderRadius: 16,
+    borderColor: '#222',
+    borderWidth: 2,
   },
-  regionImage: { width: '100%', height: '70%', marginBottom: 4, borderRadius: 10 },
-  regionName: { fontSize: 13, color: '#333', textAlign: 'center', fontWeight: '500', marginTop: 2 },
+  regionImageWrap: {
+    width: 90,
+    height: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fafafa',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  regionImage: { 
+    width: '100%', 
+    height: '100%',
+    borderRadius: 10,
+  },
+  regionName: { fontSize: 12, color: '#222', textAlign: 'center', fontWeight: '500', marginTop: 8 },
   actionBtnBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -522,29 +593,29 @@ const styles = StyleSheet.create({
   suggestionCardList: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fafafa',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 8,
-    marginHorizontal: 12,
+    backgroundColor: '#f6f6f8',
+    borderRadius: 16,
+    paddingVertical: 22,
+    paddingHorizontal: 20,
+    marginBottom: 18,
+    marginHorizontal: 0,
     borderWidth: 0,
     shadowColor: '#000',
-    shadowOpacity: 0.02,
-    shadowRadius: 2,
+    shadowOpacity: 0.01,
+    shadowRadius: 1,
     elevation: 0,
   },
   suggestionIconList: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#f5f5f5',
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#f0f0f0',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginRight: 18,
   },
   suggestionTitleList: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '500',
     color: '#222',
   },

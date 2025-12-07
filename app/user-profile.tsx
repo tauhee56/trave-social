@@ -8,7 +8,7 @@ import Profile from './(tabs)/profile';
 // Also add safe-area and vertical spacing so content is not flush to edges.
 export default function UserProfileWrapper() {
   const params = useLocalSearchParams();
-  const userId = typeof params.uid === 'string' ? params.uid : undefined;
+  const userId = typeof params.id === 'string' ? params.id : (typeof params.uid === 'string' ? params.uid : undefined);
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.wrapper}>

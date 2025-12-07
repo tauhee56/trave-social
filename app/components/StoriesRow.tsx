@@ -1,11 +1,14 @@
 import { Feather } from "@expo/vector-icons";
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
-import { createStory, getAllStoriesForFeed, getCurrentUser, getUserProfile } from "../../lib/firebaseHelpers";
+import { ActivityIndicator, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+// import {} from "../../lib/firebaseHelpers";
+import { createStory, getAllStoriesForFeed, getCurrentUser, getUserProfile } from "../../lib/firebaseHelpers/index";
 import { useUser } from './UserContext';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface StoryUser {
   userId: string;
@@ -14,7 +17,7 @@ interface StoryUser {
   stories: any[];
 }
 
-export default function StoriesRow({ onStoryPress, refreshTrigger }: { onStoryPress?: (stories: any[], initialIndex: number) => void; refreshTrigger?: number }) {
+function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: (stories: any[], initialIndex: number) => void; refreshTrigger?: number }) {
   const [storyUsers, setStoryUsers] = useState<StoryUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -22,9 +25,13 @@ export default function StoriesRow({ onStoryPress, refreshTrigger }: { onStoryPr
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<any>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [locationQuery, setLocationQuery] = useState('');
+  const [locationSuggestions, setLocationSuggestions] = useState<any[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
   // Default avatar from Firebase Storage
   const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
   const currentUser = getCurrentUser();
+  const currentUserTyped = getCurrentUser() as { uid?: string } | null;
   const authUser = useUser();
 
   useEffect(() => {
@@ -32,12 +39,38 @@ export default function StoriesRow({ onStoryPress, refreshTrigger }: { onStoryPr
     loadCurrentUserAvatar();
   }, [refreshTrigger]);
 
+  // Fetch location suggestions from Google Places API
+  useEffect(() => {
+    if (locationQuery.length < 2) {
+      setLocationSuggestions([]);
+      return;
+    }
+    setLoadingLocations(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { mapService } = await import('../../services');
+        const suggestions = await mapService.getAutocompleteSuggestions(locationQuery);
+        const predictions = suggestions.map((s: any) => ({
+          placeId: s.placeId,
+          name: s.mainText || s.description || 'Location',
+          address: s.description || '',
+        }));
+        setLocationSuggestions(predictions);
+      } catch (err) {
+        setLocationSuggestions([]);
+      } finally {
+        setLoadingLocations(false);
+      }
+    }, 600); // Increased from 400ms to 600ms for better debouncing
+    return () => clearTimeout(timer);
+  }, [locationQuery]);
+
   const loadCurrentUserAvatar = async () => {
     if (authUser?.photoURL) {
       setCurrentUserAvatar(authUser.photoURL);
-    } else if (currentUser?.uid) {
-      const res = await getUserProfile(currentUser.uid);
-      if (res.success && 'data' in res && res.data) {
+    } else if (currentUserTyped && currentUserTyped.uid) {
+      const res = await getUserProfile(currentUserTyped.uid);
+      if (res && res.success && 'data' in res && res.data) {
         setCurrentUserAvatar(res.data.avatar);
       }
     }
@@ -46,38 +79,51 @@ export default function StoriesRow({ onStoryPress, refreshTrigger }: { onStoryPr
   const loadStories = async () => {
     try {
       const result = await getAllStoriesForFeed();
-      console.log('StoriesRow: getAllStoriesForFeed result:', result);
       if (result.success && result.data) {
         const now = Date.now();
         const users: StoryUser[] = [];
+        
+        // Collect all unique user IDs first
+        const userIdsToFetch: string[] = [];
+        const storyGroupsWithActiveStories: { firstStory: any; activeStories: any[] }[] = [];
+        
         for (const storyGroup of result.data) {
-          // Filter out expired stories in each group
           const activeStories = storyGroup.filter((story: any) => story.expiresAt > now);
           if (activeStories.length > 0) {
             const firstStory = activeStories[0];
-            // Always fetch from user profile to get latest avatar
-            let avatar = DEFAULT_AVATAR_URL;
-            try {
-              const profileRes = await getUserProfile(firstStory.userId);
-              console.log('StoriesRow: getUserProfile for', firstStory.userId, profileRes);
-              if (profileRes.success && 'data' in profileRes && profileRes.data) {
-                avatar = profileRes.data.avatar;
-              }
-            } catch (err) {
-              console.error('StoriesRow - Error fetching profile:', err);
-            }
-            users.push({
-              userId: firstStory.userId,
-              userName: firstStory.userName,
-              userAvatar: avatar,
-              stories: activeStories as any[]
-            });
+            userIdsToFetch.push(firstStory.userId);
+            storyGroupsWithActiveStories.push({ firstStory, activeStories });
           }
         }
-        console.log('StoriesRow - Loaded', users.length, 'users with stories:', users);
+        
+        // Batch fetch all user profiles at once
+        const avatarMap = new Map<string, string>();
+        const uniqueUserIds = [...new Set(userIdsToFetch)];
+        
+        const profilePromises = uniqueUserIds.map(async (userId) => {
+          try {
+            const profileRes = await getUserProfile(userId);
+            if (profileRes.success && 'data' in profileRes && profileRes.data) {
+              return { userId, avatar: profileRes.data.avatar };
+            }
+          } catch {}
+          return { userId, avatar: DEFAULT_AVATAR_URL };
+        });
+        
+        const profiles = await Promise.all(profilePromises);
+        profiles.forEach(({ userId, avatar }) => avatarMap.set(userId, avatar));
+        
+        // Build users array with cached avatars
+        for (const { firstStory, activeStories } of storyGroupsWithActiveStories) {
+          users.push({
+            userId: firstStory.userId,
+            userName: firstStory.userName,
+            userAvatar: avatarMap.get(firstStory.userId) || DEFAULT_AVATAR_URL,
+            stories: activeStories as any[]
+          });
+        }
+        
         setStoryUsers(users);
-      } else {
-        console.log('StoriesRow: getAllStoriesForFeed failed or returned no data');
       }
     } catch (error) {
       console.error('StoriesRow - Error loading stories:', error);
@@ -108,7 +154,7 @@ export default function StoriesRow({ onStoryPress, refreshTrigger }: { onStoryPr
   }
 
   // Check if current user has a story
-  const hasMyStory = storyUsers.some(u => u.userId === currentUser?.uid);
+  const hasMyStory = currentUserTyped && currentUserTyped.uid ? storyUsers.some(u => u.userId === currentUserTyped.uid) : false;
   return (
     <View style={styles.container}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12 }}>
@@ -119,7 +165,7 @@ export default function StoriesRow({ onStoryPress, refreshTrigger }: { onStoryPr
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => {
-                  const myUser = storyUsers.find(u => u.userId === currentUser?.uid);
+                  const myUser = storyUsers.find(u => u.userId === currentUserTyped?.uid);
                   if (myUser && onStoryPress) onStoryPress(myUser.stories, 0);
                 }}
               >
@@ -164,7 +210,7 @@ export default function StoriesRow({ onStoryPress, refreshTrigger }: { onStoryPr
           <Text style={styles.userName} numberOfLines={1}>{hasMyStory ? 'Your Story' : 'Add Story'}</Text>
         </View>
         {/* Other users' stories */}
-        {storyUsers.filter(u => u.userId !== currentUser?.uid).map((user, idx) => (
+        {currentUserTyped && currentUserTyped.uid ? storyUsers.filter(u => u.userId !== currentUserTyped.uid).map((user, idx) => (
           <View style={styles.storyWrapper} key={user.userId}>
             <TouchableOpacity
               style={styles.storyButton}
@@ -183,154 +229,264 @@ export default function StoriesRow({ onStoryPress, refreshTrigger }: { onStoryPr
             </TouchableOpacity>
             <Text style={styles.userName} numberOfLines={1}>{user.userName}</Text>
           </View>
-        ))}
+        )) : null}
       </ScrollView>
-      {/* Instagram-style story upload modal */}
+      {/* Simple & Clean Story Upload Modal */}
       <Modal
         visible={showUploadModal}
-        animationType="fade"
+        animationType="slide"
         transparent={true}
         onRequestClose={() => {
           setShowUploadModal(false);
           setSelectedMedia(null);
+          setLocationQuery('');
+          setLocationSuggestions([]);
         }}
       >
-        <View style={[styles.uploadModalOverlay, { justifyContent: 'center', alignItems: 'center' }]}> 
-          <View style={styles.uploadModalGlass} />
-          <View style={styles.uploadModalCard}>
-            <TouchableOpacity style={styles.closeButton} onPress={() => { setShowUploadModal(false); setSelectedMedia(null); }}>
-              <Feather name="x" size={22} color="#222" />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Create Story</Text>
-            <View style={styles.modalDivider} />
-            {selectedMedia ? (
-              <Image
-                source={{ uri: selectedMedia.uri }}
-                style={styles.modalImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <TouchableOpacity
-                style={styles.imagePickerArea}
-                onPress={async () => {
-                  const pickerResult = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.All, allowsEditing: true, aspect: [9, 16], quality: 0.8 });
-                  if (!pickerResult.canceled && pickerResult.assets && pickerResult.assets[0]?.uri) {
-                    setSelectedMedia(pickerResult.assets[0]);
-                  }
-                }}
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={0}
+        >
+          <View style={styles.uploadModalOverlay}>
+            {/* Background */}
+            <TouchableOpacity
+              style={styles.uploadModalBackdrop}
+              activeOpacity={1}
+              onPress={() => { 
+                setShowUploadModal(false); 
+                setSelectedMedia(null);
+                setLocationQuery('');
+                setLocationSuggestions([]);
+              }}
+            />
+
+            {/* Main content card */}
+            <View style={styles.uploadModalCard}>
+              {/* Header */}
+              <View style={styles.modalHeader}>
+                <TouchableOpacity
+                  onPress={() => { 
+                    setShowUploadModal(false); 
+                    setSelectedMedia(null);
+                    setLocationQuery('');
+                    setLocationSuggestions([]);
+                  }}
+                >
+                  <Feather name="x" size={24} color="#222" />
+                </TouchableOpacity>
+                <Text style={styles.modalTitle}>Create Story</Text>
+                <View style={{ width: 24 }} />
+              </View>
+
+              <ScrollView 
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
               >
-                <Feather name="image" size={48} color="#b8b8b8" />
-                <Text style={styles.imagePickerText}>Add Photo/Video</Text>
-              </TouchableOpacity>
-            )}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Caption</Text>
-              <TextInput
-                placeholder="Write a caption..."
-                value={selectedMedia?.caption || ''}
-                onChangeText={text => setSelectedMedia((prev: any) => prev ? { ...prev, caption: text } : prev)}
-                style={styles.inputField}
-                maxLength={120}
-                placeholderTextColor="#b8b8b8"
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: '#007aff' }]}>Location</Text>
-              <GooglePlacesAutocomplete
-                placeholder="Add location..."
-                onPress={(data, details = null) => {
-                  setSelectedMedia((prev: any) => prev ? { ...prev, location: data.description } : prev);
-                }}
-                query={{
-                  key: 'AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c',
-                  language: 'en',
-                }}
-                styles={{
-                  textInput: styles.inputField,
-                  listView: { backgroundColor: '#fff', borderRadius: 10, zIndex: 99, elevation: 99, position: 'absolute', top: 44 },
-                }}
-                fetchDetails={true}
-              />
-            </View>
-            {uploading ? (
-              <View style={styles.uploadingArea}>
-                <Text style={styles.uploadingText}>Uploading...</Text>
-                <View style={styles.uploadingBarBg}>
-                  <View style={[styles.uploadingBar, { width: `${uploadProgress}%` }]} />
+              {/* Media Preview */}
+              {selectedMedia ? (
+                <View style={styles.mediaPreviewContainer}>
+                  <Image
+                    source={{ uri: selectedMedia.uri }}
+                    style={styles.modalImage}
+                    resizeMode="cover"
+                  />
+                  <TouchableOpacity
+                    style={styles.changeMediaButton}
+                    onPress={async () => {
+                      const pickerResult = await ImagePicker.launchImageLibraryAsync({ 
+                        mediaTypes: ImagePicker.MediaTypeOptions.All, 
+                        allowsEditing: true, 
+                        aspect: [9, 16], 
+                        quality: 0.8 
+                      });
+                      if (!pickerResult.canceled && pickerResult.assets && pickerResult.assets[0]?.uri) {
+                        setSelectedMedia(pickerResult.assets[0]);
+                      }
+                    }}
+                  >
+                    <Feather name="edit-2" size={16} color="#007aff" />
+                    <Text style={styles.changeMediaText}>Change</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.imagePickerArea}
+                  onPress={async () => {
+                    const pickerResult = await ImagePicker.launchImageLibraryAsync({ 
+                      mediaTypes: ImagePicker.MediaTypeOptions.All, 
+                      allowsEditing: true, 
+                      aspect: [9, 16], 
+                      quality: 0.8 
+                    });
+                    if (!pickerResult.canceled && pickerResult.assets && pickerResult.assets[0]?.uri) {
+                      setSelectedMedia(pickerResult.assets[0]);
+                    }
+                  }}
+                >
+                  <Feather name="image" size={48} color="#007aff" />
+                  <Text style={styles.imagePickerText}>Select Photo or Video</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Caption Input */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Caption (Optional)</Text>
+                <TextInput
+                  placeholder="Write something..."
+                  value={selectedMedia?.caption || ''}
+                  onChangeText={text => setSelectedMedia((prev: any) => prev ? { ...prev, caption: text } : prev)}
+                  style={styles.inputField}
+                  maxLength={120}
+                  placeholderTextColor="#999"
+                  multiline
+                />
+              </View>
+
+              {/* Location Input */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Location (Optional)</Text>
+                <View style={{ position: 'relative', zIndex: 10 }}>
+                  <View style={styles.locationInputContainer}>
+                    <Feather name="map-pin" size={18} color="#666" />
+                    <TextInput
+                      placeholder="Add location..."
+                      value={locationQuery}
+                      onChangeText={setLocationQuery}
+                      style={styles.locationInput}
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+                  {locationSuggestions.length > 0 && (
+                    <View style={styles.locationDropdown}>
+                      {locationSuggestions.map((item) => (
+                        <TouchableOpacity
+                          key={item.placeId}
+                          style={styles.locationItem}
+                          onPress={() => {
+                            console.log('Location selected:', item);
+                            setSelectedMedia((prev: any) => prev ? { 
+                              ...prev, 
+                              locationData: {
+                                name: item.name,
+                                address: item.address,
+                                placeId: item.placeId,
+                              }
+                            } : prev);
+                            setLocationQuery(item.name);
+                            setLocationSuggestions([]);
+                          }}
+                        >
+                          <Feather name="map-pin" size={16} color="#007aff" style={{ marginRight: 8 }} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.locationName}>{item.name}</Text>
+                            <Text style={styles.locationAddress} numberOfLines={1}>{item.address}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                  {loadingLocations && (
+                    <View style={styles.locationLoading}>
+                      <ActivityIndicator size="small" color="#007aff" />
+                    </View>
+                  )}
                 </View>
               </View>
-            ) : null}
-            <View style={styles.buttonRow}>
+
+              {/* Upload Progress */}
+              {uploading && (
+                <View style={styles.uploadingArea}>
+                  <ActivityIndicator size="small" color="#007aff" style={{ marginBottom: 8 }} />
+                  <Text style={styles.uploadingText}>Uploading {uploadProgress}%</Text>
+                  <View style={styles.uploadingBarBg}>
+                    <View style={[styles.uploadingBar, { width: `${uploadProgress}%` }]} />
+                  </View>
+                </View>
+              )}
+
+              {/* Share Button */}
               <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => { setShowUploadModal(false); setSelectedMedia(null); }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.shareButton}
+                style={[styles.shareButton, !selectedMedia && styles.shareButtonDisabled]}
+                disabled={!selectedMedia || uploading}
                 onPress={async () => {
-                  if (!selectedMedia || !currentUser) return;
+                  if (!selectedMedia || !currentUser || uploading) return;
                   setUploading(true);
                   setUploadProgress(10);
+                  let uploadUri = selectedMedia.uri;
                   const mediaType = selectedMedia.type === 'video' ? 'video' : 'image';
+                  // Compress image before upload
+                  if (mediaType === 'image') {
+                    try {
+                      const manipResult = await ImageManipulator.manipulateAsync(
+                        selectedMedia.uri,
+                        [{ resize: { width: 1080 } }],
+                        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+                      );
+                      uploadUri = manipResult.uri;
+                    } catch (err) {
+                      // fallback to original
+                    }
+                  }
                   let progress = 10;
                   const interval = setInterval(() => {
                     progress += 20;
                     setUploadProgress(progress);
                   }, 400);
+
+                  // Pass location data to createStory
                   const storyRes = await createStory(
-                    currentUser.uid,
-                    selectedMedia.uri,
-                    mediaType
+                    typeof currentUserTyped?.uid === 'string' ? currentUserTyped.uid : '',
+                    uploadUri,
+                    mediaType,
+                    selectedMedia.locationData // Pass location data
                   );
+
                   clearInterval(interval);
                   setUploadProgress(100);
                   setTimeout(() => {
                     setUploading(false);
                     setShowUploadModal(false);
                     setSelectedMedia(null);
+                    setLocationQuery('');
+                    setLocationSuggestions([]);
                   }, 600);
                   if (storyRes.success) {
                     await loadStories();
                   }
                 }}
               >
-                <Text style={styles.shareButtonText}>Share</Text>
+                <Text style={styles.shareButtonText}>
+                  {uploading ? 'Sharing...' : 'Share Story'}
+                </Text>
               </TouchableOpacity>
+              </ScrollView>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
 }
+
+export default React.memo(StoriesRowComponent, (prevProps, nextProps) => {
+  return prevProps.refreshTrigger === nextProps.refreshTrigger;
+});
+
 const styles = StyleSheet.create({
     uploadModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    uploadModalBackdrop: {
       position: 'absolute',
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.18)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      zIndex: 9999,
-      elevation: 99,
-      width: '100%',
-      height: '100%',
-    },
-    uploadModalSheet: {
-      backgroundColor: '#fff',
-      borderRadius: 22,
-      padding: 24,
-      alignItems: 'center',
-      width: 240,
-      shadowColor: '#000',
-      shadowOpacity: 0.18,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 4 },
-      elevation: 16,
     },
   container: {
     paddingVertical: 12,
@@ -344,7 +500,7 @@ const styles = StyleSheet.create({
   addButton: {
     position: 'absolute',
     bottom: -4,
-    right: -4,   // moved to bottom right corner
+    right: -4,
     backgroundColor: '#007aff',
     borderRadius: 14,
     width: 28,
@@ -354,22 +510,17 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#fff',
   },
-    addButtonOnly: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
   storyWrapper: {
     alignItems: 'center',
-    marginRight: 20,
+    marginRight: 16,
   },
   storyButton: {
-    marginBottom: 8,
+    marginBottom: 6,
   },
   gradientBorder: {
-    width: 60,
-    height: 60,
-    borderRadius: 12,
+    width: 68,
+    height: 68,
+    borderRadius: 16,
     padding: 3,
     justifyContent: 'center',
     alignItems: 'center',
@@ -377,178 +528,210 @@ const styles = StyleSheet.create({
   storyAvatarWrapper: {
     width: '100%',
     height: '100%',
-    borderRadius: 9,
+    borderRadius: 13,
     overflow: 'hidden',
     backgroundColor: '#fff',
     position: 'relative',
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   storyAvatar: {
     width: '100%',
     height: '100%',
+    borderRadius: 11,
   },
   userName: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '500',
-    width: 70,
+    width: 72,
     textAlign: 'center',
     color: '#222',
   },
-  uploadModalGlass: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    zIndex: 1,
-  },
   uploadModalCard: {
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderRadius: 28,
-    padding: 28,
-    alignItems: 'center',
-    width: 360,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 24,
-    zIndex: 2,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    width: '100%',
+    height: SCREEN_HEIGHT * 0.98,
+    paddingTop: 0,
+    paddingHorizontal: 0,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
   },
-  closeButton: {
-    position: 'absolute',
-    top: 18,
-    right: 18,
-    backgroundColor: 'rgba(240,240,240,0.7)',
-    borderRadius: 16,
-    padding: 6,
-    zIndex: 3,
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '700',
     color: '#222',
-    marginTop: 8,
-    marginBottom: 8,
-    letterSpacing: 0.5,
   },
-  modalDivider: {
-    width: '80%',
-    height: 1.5,
-    backgroundColor: '#ececec',
-    borderRadius: 2,
-    marginVertical: 10,
+  mediaPreviewContainer: {
+    marginTop: 20,
+    marginBottom: 20,
   },
   modalImage: {
-    width: 220,
-    height: 380,
-    borderRadius: 18,
-    marginBottom: 18,
-    borderWidth: 1.5,
-    borderColor: '#ececec',
-    shadowColor: '#e0245e',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
+    width: '100%',
+    height: 340,
+    borderRadius: 16,
+    backgroundColor: '#f5f5f5',
+  },
+  changeMediaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  changeMediaText: {
+    color: '#007aff',
+    fontSize: 15,
+    fontWeight: '600',
   },
   imagePickerArea: {
-    width: 220,
-    height: 380,
-    borderRadius: 18,
+    width: '100%',
+    height: 340,
+    borderRadius: 16,
     borderWidth: 2,
-    borderColor: '#d6d6d6',
+    borderColor: '#e0e0e0',
     borderStyle: 'dashed',
-    backgroundColor: 'rgba(245,245,245,0.7)',
+    backgroundColor: '#fafafa',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 18,
+    marginTop: 20,
+    marginBottom: 20,
   },
   imagePickerText: {
-    color: '#b8b8b8',
-    marginTop: 10,
+    color: '#007aff',
+    marginTop: 12,
     fontWeight: '600',
-    fontSize: 16,
+    fontSize: 15,
   },
   inputGroup: {
     width: '100%',
-    marginBottom: 14,
+    marginBottom: 20,
   },
   inputLabel: {
-    fontWeight: '700',
-    fontSize: 15,
-    marginBottom: 4,
-    color: '#222',
+    fontWeight: '600',
+    fontSize: 14,
+    marginBottom: 8,
+    color: '#666',
   },
   inputField: {
-    height: 40,
+    minHeight: 48,
+    maxHeight: 100,
     fontSize: 15,
-    backgroundColor: '#f7f7f7',
-    borderRadius: 10,
-    paddingHorizontal: 12,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#ececec',
+    borderColor: '#e0e0e0',
     color: '#222',
-    fontWeight: '500',
+  },
+  locationInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    gap: 10,
+  },
+  locationInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#222',
+    padding: 0,
   },
   uploadingArea: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 20,
+    paddingVertical: 12,
   },
   uploadingText: {
-    marginBottom: 6,
-    color: '#e0245e',
-    fontWeight: 'bold',
+    marginBottom: 8,
+    color: '#666',
+    fontWeight: '600',
+    fontSize: 14,
   },
   uploadingBarBg: {
-    width: 160,
-    height: 8,
-    backgroundColor: '#eee',
-    borderRadius: 4,
+    width: '100%',
+    height: 6,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 3,
+    overflow: 'hidden',
   },
   uploadingBar: {
-    height: 8,
-    backgroundColor: '#f39c12',
-    borderRadius: 4,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: 24,
-  },
-  cancelButton: {
-    backgroundColor: '#fff',
-    borderWidth: 2,
-    borderColor: '#ececec',
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    borderRadius: 16,
-    marginRight: 8,
-    shadowColor: '#e0245e',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  cancelButtonText: {
-    color: '#222',
-    fontWeight: '700',
-    fontSize: 16,
+    height: 6,
+    backgroundColor: '#007aff',
+    borderRadius: 3,
   },
   shareButton: {
-    backgroundColor: '#e0245e',
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    borderRadius: 16,
-    shadowColor: '#e0245e',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 2,
+    width: '100%',
+    backgroundColor: '#007aff',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  shareButtonDisabled: {
+    backgroundColor: '#e0e0e0',
   },
   shareButtonText: {
     color: '#fff',
     fontWeight: '700',
     fontSize: 16,
-    letterSpacing: 0.5,
+  },
+  locationDropdown: {
+    position: 'absolute',
+    top: 56,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    maxHeight: 200,
+    overflow: 'hidden',
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  locationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  locationName: {
+    color: '#222',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  locationAddress: {
+    color: '#999',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  locationLoading: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
   },
 });
 

@@ -2,7 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Modal, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 
-export default function PrivacyModal({ visible, onClose, isPrivate, onToggle }) {
+interface PrivacyModalProps {
+  visible: boolean;
+  onClose: () => void;
+  isPrivate: boolean;
+  onToggle: () => void;
+}
+export default function PrivacyModal({ visible, onClose, isPrivate, onToggle }: PrivacyModalProps) {
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>

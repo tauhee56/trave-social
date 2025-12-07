@@ -5,24 +5,37 @@ import { useUserProfile } from '../hooks/useUserProfile';
 
 export default function InboxRow({ item, router, unread, formatTime, DEFAULT_AVATAR_URL }: any) {
   // Use the hook to fetch the other user's profile
-  const { username, avatar, loading } = useUserProfile(item.otherUser.id);
+  // Fallback for missing otherUser
+  // Guard against missing otherUser
+  let otherUserId = '';
+  if (item.otherUser && typeof item.otherUser.id === 'string') {
+    otherUserId = item.otherUser.id;
+  } else if (Array.isArray(item.participants) && item.currentUserId) {
+    otherUserId = item.participants.find((uid: string) => uid !== item.currentUserId) || '';
+  }
+  const { username, avatar, loading } = useUserProfile(otherUserId);
+  // Fallback for avatar
+  const safeAvatar = typeof avatar === 'string' && avatar.trim() !== '' ? avatar : DEFAULT_AVATAR_URL;
 
   return (
     <TouchableOpacity
       style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 }}
-      onPress={() => router.push({ 
-        pathname: '/dm', 
-        params: { 
-          conversationId: item.id,
-          otherUserId: item.otherUser.id,
-          user: username
-        } 
-      })}
+      onPress={() => {
+        if (!otherUserId) return;
+        router.push({ 
+          pathname: '/dm', 
+          params: { 
+            conversationId: item.id,
+            otherUserId: otherUserId,
+            user: username
+          } 
+        });
+      }}
     >
       <View style={[{ width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginRight: 12 }, unread > 0 && { borderWidth: 2, borderColor: '#f39c12' }]}>
         <Image 
-          key={avatar + username}
-          source={{ uri: avatar }} 
+          key={safeAvatar + username}
+          source={{ uri: safeAvatar }} 
           style={{ 
             width: 56, 
             height: 56, 
@@ -40,7 +53,7 @@ export default function InboxRow({ item, router, unread, formatTime, DEFAULT_AVA
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
           <Text style={[{ color: '#666', flex: 1 }, unread > 0 && { color: '#111', fontWeight: '600' }]} numberOfLines={1}>
-            {item.lastMessage || 'No messages yet'}
+            {typeof item.lastMessage === 'string' && item.lastMessage.trim() !== '' ? item.lastMessage : 'No messages yet'}
           </Text>
           {unread > 0 ? (
             <View style={{ backgroundColor: '#e0245e', minWidth: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}><Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{unread > 9 ? '9+' : unread}</Text></View>

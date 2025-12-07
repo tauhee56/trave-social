@@ -1,14 +1,18 @@
-import { Feather, MaterialIcons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import { ResizeMode, Video } from 'expo-av';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { createPost, DEFAULT_CATEGORIES, ensureDefaultCategories, getCategories, getCurrentUser, getPassportTickets, searchUsers } from '../lib/firebaseHelpers';
-
-const GOOGLE_MAP_API_KEY = 'AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c';
+import VerifiedBadge from './components/VerifiedBadge';
+// import {} from '../lib/firebaseHelpers';
+import { GOOGLE_MAPS_CONFIG } from '../config/environment';
+import { createPost, DEFAULT_CATEGORIES, ensureDefaultCategories, getCategories, getCurrentUser, getPassportTickets, searchUsers } from '../lib/firebaseHelpers/index';
+import { mapService } from '../services';
+import { getKeyboardOffset, getModalHeight } from '../utils/responsive';
 
 // Runtime import of ImagePicker with graceful fallback
 let ImagePicker: any = null;
@@ -59,7 +63,20 @@ export default function CreatePostScreen() {
   const [loadingGallery, setLoadingGallery] = useState<boolean>(false);
 
   // Category
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  // Map DEFAULT_CATEGORIES to objects for UI
+  const defaultCategoryObjects = Array.isArray(DEFAULT_CATEGORIES)
+    ? DEFAULT_CATEGORIES.map((cat: any) => {
+        if (typeof cat === 'string') {
+          return { name: cat, image: 'https://via.placeholder.com/80x80/FFB800/ffffff?text=' + encodeURIComponent(cat) };
+        }
+        let image = cat.image || 'https://via.placeholder.com/80x80/FFB800/ffffff?text=' + encodeURIComponent(cat.name);
+        if (!image.includes('?')) {
+          image += '?w=80&h=80&fit=crop';
+        }
+        return { name: cat.name, image };
+      })
+    : [];
+  const [categories, setCategories] = useState<{ name: string; image: string }[]>(defaultCategoryObjects);
   const [selectedCategories, setSelectedCategories] = useState<{ name: string; image: string }[]>([]);
   const [categorySearch, setCategorySearch] = useState<string>('');
 
@@ -70,14 +87,52 @@ export default function CreatePostScreen() {
     async function setupCategories() {
       await ensureDefaultCategories();
       const cats = await getCategories();
-      // Fix: filter categories to correct type
-      const validCategories = (Array.isArray(cats) 
-        ? cats.filter((c): c is { name: string; image: string } => c && typeof c.name === 'string' && typeof c.image === 'string') 
-        : DEFAULT_CATEGORIES) as { name: string; image: string }[];
-      setCategories(validCategories);
+      // Map each category to correct shape with image validation
+      const mappedCats = Array.isArray(cats)
+        ? cats.map((c: any) => {
+            let image = '';
+            let name = '';
+            
+            if (typeof c === 'string') {
+              name = c;
+              image = 'https://via.placeholder.com/80x80/FFB800/ffffff?text=' + encodeURIComponent(c);
+            } else if (c && typeof c === 'object') {
+              name = typeof c.name === 'string' ? c.name : '';
+              image = typeof c.image === 'string' ? c.image : 'https://via.placeholder.com/80x80/FFB800/ffffff?text=' + encodeURIComponent(c.name || 'Category');
+            }
+            
+            // Ensure image URL has proper query parameters
+            if (image && !image.includes('?')) {
+              image += '?w=80&h=80&fit=crop';
+            }
+            
+            return { name, image };
+          }).filter((c: any) => c.name && c.image)
+        : [];
+      setCategories(mappedCats.length > 0 ? mappedCats : defaultCategoryObjects);
     }
     setupCategories();
   }, []);
+
+  // Memoized category item renderer
+  const renderCategoryItem = useCallback(({ item }: { item: { name: string; image: string } }) => (
+    <TouchableOpacity
+      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}
+      onPress={() => {
+        setSelectedCategories([item]);
+        setShowCategoryModal(false);
+      }}
+    >
+      <Image 
+        source={{ uri: item.image }} 
+        style={{ width: 60, height: 60, borderRadius: 10, marginRight: 12, backgroundColor: '#f0f0f0' }}
+      />
+      <Text style={{ fontSize: 16, flex: 1 }}>{item.name}</Text>
+      {selectedCategories.some(c => c.name === item.name) && (
+        <Feather name="check" size={20} color="#FFB800" style={{ marginLeft: 8 }} />
+      )}
+    </TouchableOpacity>
+  ), [selectedCategories]);
 
   // Location modal
   const [locationSearch, setLocationSearch] = useState<string>('');
@@ -99,7 +154,7 @@ export default function CreatePostScreen() {
 
   useEffect(() => {
     async function fetchVerifiedOptions() {
-      const user = getCurrentUser();
+      const user = getCurrentUser() as { uid?: string } | null;
       if (!user) return;
       let options: LocationType[] = [];
       // Get current device location
@@ -107,9 +162,45 @@ export default function CreatePostScreen() {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
           const loc = await Location.getCurrentPositionAsync({});
+
+          // Reverse geocode to get actual location name
+          let locationName = 'Current Location';
+          let locationAddress = '';
+          try {
+            const reverseGeocode = await Location.reverseGeocodeAsync({
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude
+            });
+
+            if (reverseGeocode && reverseGeocode.length > 0) {
+              const place = reverseGeocode[0];
+              // Build location name from available data
+              const parts = [];
+              if (place.name) parts.push(place.name);
+              else if (place.street) parts.push(place.street);
+
+              if (place.city) parts.push(place.city);
+              else if (place.district) parts.push(place.district);
+
+              if (parts.length > 0) {
+                locationName = parts.join(', ');
+              }
+
+              // Build address
+              const addressParts = [];
+              if (place.street) addressParts.push(place.street);
+              if (place.city) addressParts.push(place.city);
+              if (place.region) addressParts.push(place.region);
+              if (place.country) addressParts.push(place.country);
+              locationAddress = addressParts.join(', ');
+            }
+          } catch (geoError) {
+            console.log('Reverse geocoding failed:', geoError);
+          }
+
           options.push({
-            name: 'Current Location',
-            address: '',
+            name: locationName,
+            address: locationAddress,
             lat: loc.coords.latitude,
             lon: loc.coords.longitude,
             verified: true
@@ -118,7 +209,7 @@ export default function CreatePostScreen() {
       } catch {}
       // Get passport tickets
       try {
-        const tickets = await getPassportTickets(user.uid);
+        const tickets = await getPassportTickets(typeof user?.uid === 'string' ? user.uid : '');
         // Debug: log ticket structure
         if (tickets && tickets.length > 0) {
           console.log('Sample passport ticket:', tickets[0]);
@@ -196,60 +287,124 @@ export default function CreatePostScreen() {
     try {
       const mediaType = selectedImages.length > 0 && (selectedImages[0].toLowerCase().endsWith('.mp4') || selectedImages[0].toLowerCase().endsWith('.mov') || selectedImages[0].toLowerCase().includes('video')) ? 'video' : 'image';
       let locationData: LocationType | null = null;
-      if (location && location.placeId) {
+
+      // Priority 1: If verifiedLocation exists (GPS or Passport), use it
+      if (verifiedLocation) {
+        if (verifiedLocation.placeId) {
+          // Verified location with placeId (from search)
+          const placeDetails = await getPlaceDetails(verifiedLocation.placeId);
+          if (placeDetails) {
+            locationData = {
+              name: verifiedLocation.name,
+              address: verifiedLocation.address || '',
+              lat: placeDetails.lat ?? 0,
+              lon: placeDetails.lon ?? 0,
+              verified: true
+            };
+          }
+        } else {
+          // Verified location without placeId (GPS or Passport)
+          locationData = {
+            name: verifiedLocation.name,
+            address: verifiedLocation.address || '',
+            lat: verifiedLocation.lat ?? 0,
+            lon: verifiedLocation.lon ?? 0,
+            verified: true
+          };
+        }
+      }
+      // Priority 2: If only location exists (not verified)
+      else if (location && location.placeId) {
         const placeDetails = await getPlaceDetails(location.placeId);
         if (placeDetails) {
           locationData = {
             name: location.name,
-            address: location.address,
+            address: location.address || '',
             lat: placeDetails.lat ?? 0,
             lon: placeDetails.lon ?? 0,
-            verified: false // manually added location, not verified
-          };
-        }
-      } else if (verifiedLocation && verifiedLocation.placeId) {
-        const placeDetails = await getPlaceDetails(verifiedLocation.placeId);
-        if (placeDetails) {
-          locationData = {
-            name: verifiedLocation.name,
-            address: verifiedLocation.address,
-            lat: placeDetails.lat ?? 0,
-            lon: placeDetails.lon ?? 0,
-            verified: true // verified location
+            verified: false
           };
         }
       }
-      const user = getCurrentUser();
+      const user = getCurrentUser() as { uid?: string } | null;
       if (!user) throw new Error('User not found');
       // Save selected category with post
       const selectedCategory = selectedCategories.length > 0 ? selectedCategories[0] : null;
-      const result = await createPost(
-        user.uid,
-        selectedImages,
-        caption,
-        location ? location.name : '',
+      // Compress images before upload
+      let uploadImages = selectedImages;
+      if (mediaType === 'image') {
+        const compressedImages: string[] = [];
+        for (const imgUri of selectedImages) {
+          try {
+            const manipResult = await ImageManipulator.manipulateAsync(
+              imgUri,
+              [{ resize: { width: 1080 } }],
+              { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+            );
+            compressedImages.push(manipResult.uri);
+          } catch {
+            compressedImages.push(imgUri);
+          }
+        }
+        uploadImages = compressedImages;
+      }
+      console.log('📤 Creating post with params:', {
+        userId: user?.uid,
+        imagesCount: uploadImages.length,
+        caption: caption.substring(0, 50),
         mediaType,
-        locationData ?? undefined,
-        undefined,
-        selectedCategory ? selectedCategory.name : ''
-      );
-      if (result.success) {
+        location: locationData?.name,
+        category: selectedCategory?.name
+      });
+
+      const result = await createPost(
+        typeof user?.uid === 'string' ? user.uid : '',
+        Array.isArray(uploadImages) ? uploadImages : [uploadImages], // Pass array of images
+        caption,
+        locationData?.name || '',
+        mediaType,
+        locationData || null,
+        taggedUsers.map(u => u.uid),
+        selectedCategory?.name || ''
+      ) as { success: boolean; postId?: string; error?: string };
+
+      console.log('📥 Post creation result:', result);
+
+      if (result && result.success) {
+        console.log('✅ Post created successfully! ID:', result.postId);
         Alert.alert('Success', 'Post created successfully!', [
           { text: 'OK', onPress: () => router.back() }
         ]);
       } else {
+        console.error('❌ Post creation failed:', result.error);
         Alert.alert('Error', result.error || 'Failed to create post');
       }
     } catch (error: any) {
+      console.error('❌ Exception during post creation:', error);
       Alert.alert('Error', error.message || 'Failed to create post');
     } finally {
       setLoading(false);
     }
   };
 
+  // Fetch real place details from Google Places API
   const getPlaceDetails = async (placeId: string): Promise<{ lat: number; lon: number } | null> => {
-    // Dummy implementation for demo
-    return { lat: 51.5074, lon: -0.1278 };
+    try {
+      const apiKey = GOOGLE_MAPS_CONFIG.apiKey;
+      const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry&key=${apiKey}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data.status === 'OK' && data.result && data.result.geometry && data.result.geometry.location) {
+        return {
+          lat: data.result.geometry.location.lat,
+          lon: data.result.geometry.location.lng
+        };
+      }
+      return null;
+    } catch (err) {
+      console.error('Google Places API error:', err);
+      return null;
+    }
   };
 
   // Helper to get video thumbnail
@@ -265,7 +420,11 @@ export default function CreatePostScreen() {
   // --- END OF COMPONENT ---
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={getKeyboardOffset()}
+        style={{ flex: 1 }}
+      >
         {step === 'picker' ? (
           <View style={{ flex: 1 }}>
             {/* Gallery header with picker button */}
@@ -327,29 +486,44 @@ export default function CreatePostScreen() {
               <View style={{ width: 50 }} />
             </View>
             {/* Image slider preview */}
-            <View style={{ width: width, height: width, backgroundColor: '#f8f8f8', alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: width, height: width, backgroundColor: '#f8f8f8', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
               {selectedImages.length > 1 ? (
-                <FlatList
-                  data={selectedImages}
-                  horizontal
-                  pagingEnabled
-                  keyExtractor={(uri, idx) => uri + idx}
-                  renderItem={({ item }) => (
-                    item.toLowerCase().endsWith('.mp4') || item.toLowerCase().endsWith('.mov') || item.toLowerCase().includes('video') ? (
-                      <Video
-                        source={{ uri: item }}
-                        style={{ width: width, height: width, backgroundColor: '#000' }}
-                        resizeMode={ResizeMode.COVER}
-                        shouldPlay={false}
-                        useNativeControls={true}
-                        isLooping={false}
-                      />
-                    ) : (
-                      <Image source={{ uri: item }} style={{ width: width, height: width }} />
-                    )
-                  )}
-                  showsHorizontalScrollIndicator={false}
-                />
+                <>
+                  <ScrollView
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    style={{ width: width, height: width }}
+                    onScroll={(e) => {
+                      const offsetX = e.nativeEvent.contentOffset.x;
+                      const currentIndex = Math.round(offsetX / width);
+                      // You can add state to track current index if needed
+                    }}
+                    scrollEventThrottle={16}
+                  >
+                    {selectedImages.map((item, idx) => (
+                      item.toLowerCase().endsWith('.mp4') || item.toLowerCase().endsWith('.mov') || item.toLowerCase().includes('video') ? (
+                        <Video
+                          key={item + idx}
+                          source={{ uri: item }}
+                          style={{ width: width, height: width, backgroundColor: '#000' }}
+                          resizeMode={ResizeMode.COVER}
+                          shouldPlay={false}
+                          useNativeControls={true}
+                          isLooping={false}
+                        />
+                      ) : (
+                        <Image key={item + idx} source={{ uri: item }} style={{ width: width, height: width }} />
+                      )
+                    ))}
+                  </ScrollView>
+                  {/* Page indicator */}
+                  <View style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
+                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                      1/{selectedImages.length}
+                    </Text>
+                  </View>
+                </>
               ) : selectedImages.length === 1 ? (
                 selectedImages[0].toLowerCase().endsWith('.mp4') || selectedImages[0].toLowerCase().endsWith('.mov') || selectedImages[0].toLowerCase().includes('video') ? (
                   <Video
@@ -391,14 +565,14 @@ export default function CreatePostScreen() {
             <View style={{ backgroundColor: '#fff', paddingHorizontal: 16 }}>
               <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }} onPress={() => setShowCategoryModal(true)}>
                 <Feather name="tag" size={20} color="#000" style={{ marginRight: 12 }} />
-                <Text style={{ color: '#111', fontSize: 16 }}>Add a category for the home feed</Text>
+                <Text style={{ color: '#111', fontSize: 16 }}>Add category</Text>
               </TouchableOpacity>
               <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }} onPress={() => setShowLocationModal(true)}>
                 <Feather name="map-pin" size={20} color="#000" style={{ marginRight: 12 }} />
                 <Text style={{ color: '#111', fontSize: 16 }}>Add a location</Text>
               </TouchableOpacity>
               <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }} onPress={() => setShowVerifiedModal(true)}>
-                <MaterialIcons name="verified" size={20} color="#000" style={{ marginRight: 12 }} />
+                <View style={{ marginRight: 12 }}><VerifiedBadge size={20} color="#000" /></View>
                 <Text style={{ color: '#111', fontSize: 16 }}>Add a verified location</Text>
               </TouchableOpacity>
               <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }} onPress={() => setShowTagModal(true)}>
@@ -441,29 +615,25 @@ export default function CreatePostScreen() {
         {/* Modals would go here, omitted for brevity */}
         {/* Category Modal */}
         <Modal visible={showCategoryModal} animationType="slide" transparent onRequestClose={() => setShowCategoryModal(false)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'flex-end' }}>
-            <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, minHeight: 320 }}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+            <View style={{
+              backgroundColor: '#fff',
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              padding: 32,
+              maxHeight: getModalHeight(0.85),
+              minHeight: getModalHeight(0.55) // Minimum 55% height
+            }}>
+              <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, alignSelf: 'center', marginBottom: 16 }} />
               <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 16 }}>Select Category</Text>
               <FlatList
                 data={categories}
                 keyExtractor={item => item.name}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}
-                    onPress={() => {
-                      setSelectedCategories([item]);
-                      setShowCategoryModal(false);
-                    }}
-                  >
-                    <Image source={{ uri: item.image }} style={{ width: 40, height: 40, borderRadius: 8, marginRight: 12 }} />
-                    <Text style={{ fontSize: 16 }}>{item.name}</Text>
-                    {selectedCategories.some(c => c.name === item.name) && (
-                      <Feather name="check" size={20} color="#FFB800" style={{ marginLeft: 8 }} />
-                    )}
-                  </TouchableOpacity>
-                )}
+                renderItem={renderCategoryItem}
+                scrollEnabled={true}
               />
               <TouchableOpacity onPress={() => setShowCategoryModal(false)} style={{ marginTop: 18, alignItems: 'center' }}>
+                <View style={{ height: 48 }} />
                 <Text style={{ color: '#FFB800', fontWeight: '600' }}>Close</Text>
               </TouchableOpacity>
             </View>
@@ -471,8 +641,19 @@ export default function CreatePostScreen() {
         </Modal>
         {/* Location Modal */}
         <Modal visible={showLocationModal} animationType="slide" transparent onRequestClose={() => setShowLocationModal(false)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'flex-end' }}>
-            <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, minHeight: 320 }}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{
+                backgroundColor: '#fff',
+                borderTopLeftRadius: 28,
+                borderTopRightRadius: 28,
+                padding: 32,
+                maxHeight: getModalHeight(0.9),
+                minHeight: getModalHeight(0.55) // Minimum 55% height
+              }}
+            >
+              <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, alignSelf: 'center', marginBottom: 16 }} />
               <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 16 }}>Add Location</Text>
               <TextInput
                 style={{ borderWidth: 1, borderColor: '#eee', borderRadius: 8, padding: 10, marginBottom: 12 }}
@@ -483,18 +664,14 @@ export default function CreatePostScreen() {
                   if (text.length > 2) {
                     setLoadingLocationResults(true);
                     try {
-                      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(text)}&key=${GOOGLE_MAP_API_KEY}`;
-                      const response = await fetch(url);
-                      const data = await response.json();
-                      if (data.predictions) {
-                        setLocationResults(data.predictions.map((p: any) => ({
-                          name: p.structured_formatting.main_text,
-                          address: p.description,
-                          placeId: p.place_id,
-                          lat: 0,
-                          lon: 0
-                        })));
-                      }
+                      const suggestions = await mapService.getAutocompleteSuggestions(text);
+                      setLocationResults(suggestions.map((s: any) => ({
+                        name: s.description.split(',')[0],
+                        address: s.description,
+                        placeId: s.placeId,
+                        lat: 0,
+                        lon: 0
+                      })));
                     } catch (e) {
                       setLocationResults([]);
                     }
@@ -526,15 +703,24 @@ export default function CreatePostScreen() {
                 />
               )}
               <TouchableOpacity onPress={() => setShowLocationModal(false)} style={{ marginTop: 18, alignItems: 'center' }}>
+                <View style={{ height: 48 }} />
                 <Text style={{ color: '#FFB800', fontWeight: '600' }}>Close</Text>
               </TouchableOpacity>
-            </View>
+            </KeyboardAvoidingView>
           </View>
         </Modal>
         {/* Verified Location Modal */}
         <Modal visible={showVerifiedModal} animationType="slide" transparent onRequestClose={() => setShowVerifiedModal(false)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'flex-end' }}>
-            <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, minHeight: 320 }}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+            <View style={{
+              backgroundColor: '#fff',
+              borderTopLeftRadius: 28,
+              borderTopRightRadius: 28,
+              padding: 32,
+              maxHeight: getModalHeight(0.85),
+              minHeight: getModalHeight(0.55) // Minimum 55% height
+            }}>
+              <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, alignSelf: 'center', marginBottom: 16 }} />
               <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 16 }}>Select Verified Location</Text>
               <Text style={{ color: '#888', marginBottom: 12 }}>
                 Only your current GPS location or passport ticket locations can be used as verified location.
@@ -558,6 +744,7 @@ export default function CreatePostScreen() {
                 ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No verified locations found</Text>}
               />
               <TouchableOpacity onPress={() => setShowVerifiedModal(false)} style={{ marginTop: 18, alignItems: 'center' }}>
+                <View style={{ height: 48 }} />
                 <Text style={{ color: '#FFB800', fontWeight: '600' }}>Close</Text>
               </TouchableOpacity>
             </View>
@@ -565,8 +752,19 @@ export default function CreatePostScreen() {
         </Modal>
         {/* Tag People Modal */}
         <Modal visible={showTagModal} animationType="slide" transparent onRequestClose={() => setShowTagModal(false)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'flex-end' }}>
-            <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, minHeight: 320 }}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{
+                backgroundColor: '#fff',
+                borderTopLeftRadius: 28,
+                borderTopRightRadius: 28,
+                padding: 32,
+                maxHeight: getModalHeight(0.9),
+                minHeight: getModalHeight(0.55) // Minimum 55% height
+              }}
+            >
+              <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, alignSelf: 'center', marginBottom: 16 }} />
               <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 16 }}>Tag People</Text>
               <TextInput
                 style={{ borderWidth: 1, borderColor: '#eee', borderRadius: 8, padding: 10, marginBottom: 12 }}
@@ -615,9 +813,10 @@ export default function CreatePostScreen() {
                 />
               )}
               <TouchableOpacity onPress={() => setShowTagModal(false)} style={{ marginTop: 18, alignItems: 'center' }}>
+                <View style={{ height: 48 }} />
                 <Text style={{ color: '#FFB800', fontWeight: '600' }}>Close</Text>
               </TouchableOpacity>
-            </View>
+            </KeyboardAvoidingView>
           </View>
         </Modal>
         {loading && (
