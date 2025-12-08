@@ -57,10 +57,9 @@
         "expo-build-properties",
         {
           "android": {
-            "manifestPlaceholders": {
-              "traveSocialScheme": "trave-social",
-              "appAuthRedirectScheme": "trave-social"
-            }
+              "manifestPlaceholders": {
+                "traveSocialScheme": "trave-social"
+              }
           }
         }
       ],
