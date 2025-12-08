@@ -5,10 +5,14 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2Ficon.png?alt=media&token=0b576d71-e1d3-47fd-8527-79293b4c3db1",
-    "scheme": "trave-social",
+    "scheme": [
+      "trave-social",
+      "travesocial",
+      "tiktokauth",
+      "google"
+    ],
     "userInterfaceStyle": "automatic",
     "android": {
-      "scheme": "trave-social",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2Ficon.png?alt=media&token=0b576d71-e1d3-47fd-8527-79293b4c3db1",
@@ -85,26 +89,11 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash.png",
-          "imageWidth": 250,
           "resizeMode": "contain",
-          "backgroundColor": "#667eea",
-          "dark": {
-            "image": "./assets/splash.png",
-            "backgroundColor": "#1a1a1a"
-          }
+          "backgroundColor": "#667eea"
         }
       ],
-      "expo-web-browser",
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "manifestPlaceholders": {
-              "appAuthRedirectScheme": "trave-social"
-            }
-          }
-        }
-      ]
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": false
@@ -124,10 +113,9 @@
       "AGORA_APP_ID": "29320482381a43498eb8ca3e222b6e34",
       "AGORA_APP_CERTIFICATE": "e8372567e0334d75add0ec3f597fb67b",
       "eas": {
-        "projectId": "8cec99b9-2035-4d00-a1e1-9708dbf1dfc5"
-      },
-      
+        "projectId": "326797bc-04c8-4673-8664-3f14e51c111e"
+      }
     },
-    "owner": "tauhee5"
+    "owner": "tauheed_56"
   }
 }
