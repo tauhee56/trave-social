@@ -54,6 +54,17 @@
       "./plugins/withCleartextTraffic.js",
       "./plugins/withNetworkSecurityConfig.js",
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "manifestPlaceholders": {
+              "traveSocialScheme": "trave-social",
+              "appAuthRedirectScheme": "trave-social"
+            }
+          }
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera for posting photos and live streaming.",
