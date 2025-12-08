@@ -40,7 +40,13 @@ app-example
 
 # generated native folders
 /ios
-/android
+/android/build
+/android/app/build
+/android/.gradle
+/android/local.properties
+/android/*.jks
+!android/gradlew
+!android/gradlew.bat
 
 # Ignore system and cache folders
 **/AppData/
