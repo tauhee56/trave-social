@@ -97,6 +97,13 @@ export default function Profile({ userIdProp }: any) {
     const POSTS_PER_PAGE = 12;
     const [loadingMorePosts, setLoadingMorePosts] = useState(false);
   // State and context
+  // Fix: Add missing handler for loading more posts
+  const handleLoadMorePosts = () => {
+    if (loadingMorePosts) return;
+    setLoadingMorePosts(true);
+    setPostsPage(prev => prev + 1);
+    setLoadingMorePosts(false);
+  };
   const [storiesViewerVisible, setStoriesViewerVisible] = useState(false);
   const [userStories, setUserStories] = useState<any[]>([]);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
@@ -418,23 +425,7 @@ export default function Profile({ userIdProp }: any) {
       } else {
         setPosts([]);
       }
-        // Load more posts handler
-        const handleLoadMorePosts = () => {
-          if (loadingMorePosts) return;
-          setLoadingMorePosts(true);
-          setPostsPage(prev => prev + 1);
-          setLoadingMorePosts(false);
-        };
-        // Skeleton loader for posts
-        const renderSkeletonPosts = () => (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 0 }}>
-            {Array.from({ length: POSTS_PER_PAGE }).map((_, idx) => (
-              <View key={idx} style={{ flexBasis: '25%', aspectRatio: 1, padding: 1 }}>
-                <View style={{ backgroundColor: '#eee', borderRadius: 8, width: '100%', height: '100%' }} />
-              </View>
-            ))}
-          </View>
-        );
+        // ...existing code...
       // Fetch tagged posts
       try {
         if (viewedUserId) {

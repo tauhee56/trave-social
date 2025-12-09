@@ -1,0 +1,62 @@
+{
+  "project_info": {
+    "project_number": "709095117662",
+    "project_id": "travel-app-3da72",
+    "storage_bucket": "travel-app-3da72.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:709095117662:android:b7caaab8bf36859817f5cf",
+        "android_client_info": {
+          "package_name": "com.tauhee56.travesocial"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "709095117662-1batvuovr6j923r350ahkqfs05b937ab.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tauhee56.travesocial",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "709095117662-2jtqjk8941lgf6n90csgk8u1mkm0a0jq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tauhee56.travesocial",
+            "certificate_hash": "2906b6a528cbad0f44408e8ee1e18d93470960b2"
+          }
+        },
+        {
+          "client_id": "709095117662-2l84b3ua08t9icu8tpqtpchrmtdciep0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB8nimZaka3PwCUrGpUgJkt7BtkiDSVKyg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "709095117662-2l84b3ua08t9icu8tpqtpchrmtdciep0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "709095117662-k35juagf7ihkae81tfm9si43jkg7g177.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.tauhee56.travesocial"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
