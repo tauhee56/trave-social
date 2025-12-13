@@ -8,23 +8,75 @@ interface CustomMapMarkerProps {
   isLive?: boolean;
 }
 
+const DEFAULT_AVATAR = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+
 export const CustomMapMarker: React.FC<CustomMapMarkerProps> = ({ imageUrl, imageUrls, userAvatar, isLive }) => {
-  // Fallback for image
-  const fallbackImg = require('../../assets/images/react-logo.png');
-  let markerImgSrc = fallbackImg;
-  if (imageUrl && typeof imageUrl === 'string' && imageUrl.startsWith('http') && imageUrl.trim() !== '') {
-    markerImgSrc = { uri: imageUrl };
-  } else if (imageUrls && imageUrls[0] && typeof imageUrls[0] === 'string' && imageUrls[0].startsWith('http') && imageUrls[0].trim() !== '') {
-    markerImgSrc = { uri: imageUrls[0] };
-  }
+  // Get post image
+  const postImage = imageUrl || imageUrls?.[0] || DEFAULT_AVATAR;
+  const avatarImage = userAvatar || DEFAULT_AVATAR;
+
   return (
-    <View style={{ width: 50, height: 50, borderRadius: 8, borderWidth: 2, borderColor: '#fff', overflow: 'hidden', backgroundColor: '#f0f0f0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5, alignItems: 'center', justifyContent: 'center' }}>
-      <Image source={markerImgSrc} style={{ width: 50, height: 50, borderRadius: 8 }} resizeMode="cover" />
-      {isLive && (
-        <View style={{ position: 'absolute', top: 4, right: 4, backgroundColor: '#fff', borderRadius: 6, paddingHorizontal: 4, paddingVertical: 1, zIndex: 2, borderWidth: 1, borderColor: '#e0245e' }}>
-          <Text style={{ color: '#e0245e', fontWeight: 'bold', fontSize: 10 }}>LIVE</Text>
-        </View>
-      )}
+    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+      {/* Post Image - Main marker */}
+      <View style={{
+        width: 48,
+        height: 48,
+        borderRadius: 8,
+        overflow: 'hidden',
+        borderWidth: 2,
+        borderColor: '#fff',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 5,
+      }}>
+        <Image
+          source={{ uri: postImage }}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="cover"
+        />
+
+        {/* LIVE badge */}
+        {isLive && (
+          <View style={{
+            position: 'absolute',
+            top: 2,
+            right: 2,
+            backgroundColor: '#FF0000',
+            borderRadius: 4,
+            paddingHorizontal: 4,
+            paddingVertical: 1,
+          }}>
+            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 8 }}>LIVE</Text>
+          </View>
+        )}
+      </View>
+
+      {/* User Avatar - Bottom right overlay */}
+      <View style={{
+        position: 'absolute',
+        bottom: -6,
+        right: -6,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: '#fff',
+        overflow: 'hidden',
+        backgroundColor: '#fff',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 2,
+        elevation: 3,
+      }}>
+        <Image
+          source={{ uri: avatarImage }}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="cover"
+        />
+      </View>
     </View>
   );
 };

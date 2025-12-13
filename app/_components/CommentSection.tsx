@@ -1,6 +1,6 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { getCurrentUser } from "../../lib/firebaseHelpers";
 import { addComment, addCommentReaction, addCommentReply, deleteComment, deleteCommentReply, editComment, editCommentReply, getPostComments } from "../../lib/firebaseHelpers/comments";
 import CommentAvatar from "./CommentAvatar";
@@ -309,7 +309,11 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
       {/* Comments List */}
       <ScrollView
         ref={scrollRef}
@@ -434,7 +438,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
           </TouchableOpacity>
         </Modal>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
