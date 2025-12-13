@@ -151,6 +151,10 @@ export default function SearchScreen() {
           ListEmptyComponent={<Text style={{ color: '#888', marginTop: 32, textAlign: 'center' }}>No users found</Text>}
           refreshing={loading}
           onRefresh={() => handleSearch(query)}
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews={true}
         />
       ) : (
         <FlatList
@@ -169,6 +173,10 @@ export default function SearchScreen() {
           ListEmptyComponent={<Text style={{ color: '#888', marginTop: 32, textAlign: 'center' }}>No posts found</Text>}
           refreshing={loading}
           onRefresh={() => handleSearch(query)}
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews={true}
         />
       )}
     </View>

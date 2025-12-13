@@ -4,8 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import PostCard from './components/PostCard';
+import { ErrorBoundary } from './_components/ErrorBoundary';
+import PostCard from './_components/PostCard';
 
 export default function PostScreen() {
   const router = useRouter();

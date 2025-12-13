@@ -4,8 +4,8 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { handleSocialAuthResult, signInWithApple, signInWithGoogle, signInWithSnapchat, signInWithTikTok } from '../../services/socialAuthService';
-import CustomButton from '../components/auth/CustomButton';
-import SocialButton from '../components/auth/SocialButton';
+import CustomButton from '../_components/auth/CustomButton';
+import SocialButton from '../_components/auth/SocialButton';
 
 export default function LoginOptionsScreen() {
   const router = useRouter();

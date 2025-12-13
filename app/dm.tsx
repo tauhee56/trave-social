@@ -16,7 +16,7 @@ import {
     sendMessage,
     subscribeToMessages
 } from '../lib/firebaseHelpers/index';
-import { useUserProfile } from './hooks/useUserProfile';
+import { useUserProfile } from './_hooks/useUserProfile';
 
 const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
 

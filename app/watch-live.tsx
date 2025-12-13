@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, PermissionsAndroid, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
+// @ts-ignore
 import { AGORA_CONFIG, getAgoraToken } from '../config/agora';
 import { db } from '../config/firebase';
 import { getCurrentUser, joinLiveStream, leaveLiveStream } from '../lib/firebaseHelpers';
@@ -325,7 +326,7 @@ export default function WatchLiveScreen() {
               zOrderMediaOverlay={false}
             />
           ) : (
-            <View style={[styles.pipImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#222' }]}> 
+            <View style={[styles.pipImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#222' }]}>
               <Text style={{ color: '#fff', fontSize: 12 }}>Live video not available</Text>
             </View>
           )}
@@ -409,7 +410,7 @@ export default function WatchLiveScreen() {
             zOrderMediaOverlay={false}
           />
         ) : (
-          <View style={[styles.videoBackground, { justifyContent: 'center', alignItems: 'center' }]}> 
+          <View style={[styles.videoBackground, { justifyContent: 'center', alignItems: 'center' }]}>
             <Text style={{ color: '#fff', fontSize: 16 }}>Waiting for live video...</Text>
           </View>
         )}

@@ -3,18 +3,23 @@ import * as Font from 'expo-font';
 import { Stack, useRouter, useSegments } from "expo-router";
 import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, LogBox, View } from "react-native";
+import { ActivityIndicator, LogBox, Text as RNText, View } from "react-native";
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { auth } from "../config/firebase";
-import { UserProvider } from "./components/UserContext";
-
-// Suppress non-critical expo-keep-awake warning
-LogBox.ignoreLogs(['Unable to activate keep awake']);
+import { UserProvider } from "./_components/UserContext";
+// Suppress non-critical warnings
+LogBox.ignoreLogs([
+  'Unable to activate keep awake',
+  'Sending `onAnimatedValueUpdate` with no listeners registered',
+  'ViewPropTypes will be removed',
+  'Native part of Reanimated doesn\'t seem to be initialized', // Suppress in Expo Go
+]);
 
 export default function RootLayout() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [fontsLoaded, setFontsLoaded] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
   const segments = useSegments();
   const router = useRouter();
 
@@ -34,11 +39,26 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+    try {
+      if (!auth) {
+        throw new Error('Firebase Auth not initialized');
+      }
+
+      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        setUser(currentUser);
+        setLoading(false);
+      }, (error) => {
+        console.error('Auth state change error:', error);
+        setInitError(error.message);
+        setLoading(false);
+      });
+
+      return unsubscribe;
+    } catch (error: any) {
+      console.error('Auth initialization error:', error);
+      setInitError(error.message);
       setLoading(false);
-    });
-    return unsubscribe;
+    }
   }, []);
 
   useEffect(() => {
@@ -58,6 +78,13 @@ export default function RootLayout() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
           <ActivityIndicator size="large" color="#667eea" />
+          {initError && (
+            <View style={{ marginTop: 20, padding: 20 }}>
+              <RNText style={{ color: 'red', textAlign: 'center' }}>
+                Initialization Error: {initError}
+              </RNText>
+            </View>
+          )}
         </View>
       </GestureHandlerRootView>
     );

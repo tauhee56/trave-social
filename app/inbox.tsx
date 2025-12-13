@@ -7,8 +7,9 @@ import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCurrentUser, getUserConversations, subscribeToConversations } from '../lib/firebaseHelpers/index';
 // import {} from '../lib/firebaseHelpers';
+// @ts-ignore
 import { archiveConversation } from '../lib/firebaseHelpers/archive';
-import InboxRow from './components/InboxRow';
+import InboxRow from './_components/InboxRow';
 
 export default function Inbox() {
     // Default avatar from Firebase Storage
@@ -133,7 +134,7 @@ export default function Inbox() {
     );
   }
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.headerRow}>
         <TouchableOpacity
           onPress={() => {
@@ -211,7 +212,6 @@ export default function Inbox() {
           maxToRenderPerBatch={10}
           removeClippedSubviews={true}
         />
-        // ...existing code...
       )}
     </SafeAreaView>
   );

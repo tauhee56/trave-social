@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import VerifiedBadge from './components/VerifiedBadge';
+import VerifiedBadge from './_components/VerifiedBadge';
 // import {} from '../lib/firebaseHelpers';
 import { GOOGLE_MAPS_CONFIG } from '../config/environment';
 import { createPost, DEFAULT_CATEGORIES, ensureDefaultCategories, getCategories, getCurrentUser, getPassportTickets, searchUsers } from '../lib/firebaseHelpers/index';
@@ -195,7 +195,7 @@ export default function CreatePostScreen() {
               locationAddress = addressParts.join(', ');
             }
           } catch (geoError) {
-            console.log('Reverse geocoding failed:', geoError);
+            logger.error('Reverse geocoding failed:', geoError);
           }
 
           options.push({
@@ -402,7 +402,7 @@ export default function CreatePostScreen() {
       }
       return null;
     } catch (err) {
-      console.error('Google Places API error:', err);
+      logger.error('Google Places API error:', err);
       return null;
     }
   };

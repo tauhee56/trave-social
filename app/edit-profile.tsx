@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { uploadImage } from '../lib/firebaseHelpers';
 import { getCurrentUser, getUserProfile, updateUserProfile } from '../lib/firebaseHelpers/index';
@@ -180,7 +180,11 @@ export default function EditProfile() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
         {/* Header */}
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
@@ -190,7 +194,7 @@ export default function EditProfile() {
           <View style={{ width: 40 }} />
         </View>
 
-        <View style={styles.content}>
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* Avatar */}
           <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
             <Image source={{ uri: avatar || DEFAULT_AVATAR_URL }} style={styles.avatar} />
@@ -265,7 +269,7 @@ export default function EditProfile() {
           </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
-        </View>
+        </ScrollView>
 
         {/* Bottom Buttons */}
         <View style={styles.bottomBar}>

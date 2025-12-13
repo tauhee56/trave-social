@@ -6,7 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { getCurrentUser } from '../../lib/firebaseHelpers';
 import { getUserConversations } from '../../lib/firebaseHelpers/conversation';
 import { getUserNotifications } from '../../lib/firebaseHelpers/notification';
-import { fetchLogoUrl } from '../services/brandingService';
+import { fetchLogoUrl } from '../_services/brandingService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isSmallDevice = SCREEN_WIDTH < 375;
@@ -178,33 +178,11 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, focused }) => (
               <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
             ),
-            tabBarLabel: ({ focused }) => (
-              <Text style={{ fontSize: 10, color: focused ? '#f39c12' : '#777', marginTop: 2 }}>Profile</Text>
-            ),
-            tabBarButton: (props) => <ProfileTabButton {...props} />,
           }}
         />
       </Tabs>
       </TabEventContext.Provider>
     </SafeAreaView>
-  );
-}
-
-function ProfileTabButton(props: any) {
-  const router = useRouter();
-  const { children, accessibilityState } = props;
-  const isSelected = accessibilityState && accessibilityState.selected;
-  return (
-    <TouchableOpacity
-      {...props}
-      onPress={() => {
-        // Always navigate to the base profile route (clears any ?user= param)
-        router.push('/(tabs)/profile');
-      }}
-      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-    >
-      {children}
-    </TouchableOpacity>
   );
 }
 
@@ -610,4 +588,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import React from 'react';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
-import { useUserProfile } from '../hooks/useUserProfile';
+import { useUserProfile } from '../_hooks/useUserProfile';
 
 export default function InboxRow({ item, router, unread, formatTime, DEFAULT_AVATAR_URL }: any) {
   // Use the hook to fetch the other user's profile

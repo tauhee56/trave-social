@@ -1,10 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCurrentUser } from '../lib/firebaseHelpers';
-import { getUserPosts } from '../lib/firebaseHelpers/user';
-import PostViewerModal from './components/PostViewerModal';
+import PostViewerModal from './_components/PostViewerModal';
 
 export default function PostDetailScreen() {
   const params = useLocalSearchParams();

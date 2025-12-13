@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { FlatList, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import CustomButton from '../components/auth/CustomButton';
+import CustomButton from '../_components/auth/CustomButton';
 
 // Popular countries list
 const COUNTRIES = [
@@ -56,6 +56,7 @@ const COUNTRIES = [
 export default function PhoneSignUpScreen() {
   const router = useRouter();
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[3]); // Default to Pakistan
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -70,14 +71,19 @@ export default function PhoneSignUpScreen() {
       return;
     }
 
+    if (!email || !email.includes('@')) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
     setLoading(true);
     
     try {
       const fullPhone = `${selectedCountry.code}${phoneNumber}`;
-      // Navigate directly to phone OTP screen - SMS will be sent via Firebase
+      // Navigate to email OTP screen - OTP will be sent via email
       router.push({
-        pathname: '/auth/phone-otp',
-        params: { phone: fullPhone, flow: 'signup' }
+        pathname: '/auth/email-otp',
+        params: { email: email, phone: fullPhone, flow: 'signup' }
       });
     } catch (err: any) {
       setError(err.message || 'Failed to send OTP');
@@ -128,6 +134,18 @@ export default function PhoneSignUpScreen() {
               keyboardType="phone-pad"
             />
           </View>
+
+          {/* Email Input */}
+          <Text style={[styles.label, { marginTop: 16 }]}>Email address</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter your email"
+            placeholderTextColor="#999"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
           
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -305,6 +323,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 15,
     color: '#000',
+  },
+  input: {
+    backgroundColor: '#f7f7f7',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    height: 50,
+    paddingHorizontal: 12,
+    fontSize: 15,
+    color: '#000',
+    marginBottom: 8,
   },
   errorText: {
     color: '#e74c3c',

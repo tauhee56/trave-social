@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 interface AddHighlightModalProps {
   visible: boolean;
@@ -11,24 +11,34 @@ export default function AddHighlightModal({ visible, onClose, onAdd }: AddHighli
   const [title, setTitle] = useState('');
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          <Text style={styles.header}>Add Highlight</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Highlight Title"
-            value={title}
-            onChangeText={setTitle}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.overlay}>
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={onClose}
           />
-          <TouchableOpacity style={styles.addBtn} onPress={() => { onAdd(title); setTitle(''); onClose(); }}>
-            <Ionicons name="add-circle" size={24} color="#FF6B00" />
-            <Text style={styles.addText}>Add</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Ionicons name="close" size={24} color="#222" />
-          </TouchableOpacity>
+          <View style={styles.container}>
+            <Text style={styles.header}>Add Highlight</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Highlight Title"
+              value={title}
+              onChangeText={setTitle}
+            />
+            <TouchableOpacity style={styles.addBtn} onPress={() => { onAdd(title); setTitle(''); onClose(); }}>
+              <Ionicons name="add-circle" size={24} color="#FF6B00" />
+              <Text style={styles.addText}>Add</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+              <Ionicons name="close" size={24} color="#222" />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

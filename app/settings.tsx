@@ -6,7 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
-import { useUser } from './components/UserContext';
+import { useUser } from './_components/UserContext';
 
 interface BlockedUser {
   id: string;

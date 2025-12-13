@@ -2,8 +2,8 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import SaveButton from '../app/components/SaveButton';
-import { useUser } from '../app/components/UserContext';
+import SaveButton from '../app/_components/SaveButton';
+import { useUser } from '../app/_components/UserContext';
 import { likePost, unlikePost } from '../lib/firebaseHelpers';
 // Move context to top-level
 const PostLocationModalContext = React.createContext<{ onImagePress?: (post: PostType) => void }>({});

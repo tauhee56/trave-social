@@ -11,4 +11,33 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
+# Firebase
+-keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.gms.**
+
+# Agora RTC
+-keep class io.agora.** { *; }
+-dontwarn io.agora.**
+
+# React Native
+-keep class com.facebook.react.** { *; }
+-keep class com.facebook.hermes.** { *; }
+-dontwarn com.facebook.react.**
+
+# Expo
+-keep class expo.modules.** { *; }
+-keep class versioned.host.exp.exponent.** { *; }
+-dontwarn expo.modules.**
+
+# AsyncStorage
+-keep class com.reactnativecommunity.asyncstorage.** { *; }
+
+# Google Sign In
+-keep class com.google.android.gms.auth.** { *; }
+
+# React Native Maps
+-keep class com.google.android.gms.maps.** { *; }
+
 # Add any project specific keep options here:

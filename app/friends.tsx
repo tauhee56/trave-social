@@ -7,7 +7,7 @@ import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TextInput, Toucha
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { followUser, unfollowUser } from '../lib/firebaseHelpers/follow';
-import { useUser } from './components/UserContext';
+import { useUser } from './_components/UserContext';
 
 const DEFAULT_AVATAR = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
 

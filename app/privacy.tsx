@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserProfile, updateUserProfile } from '../lib/firebaseHelpers/index';
-import { useUser } from './components/UserContext';
+import { useUser } from './_components/UserContext';
 
 
 export default function PrivacyScreen() {

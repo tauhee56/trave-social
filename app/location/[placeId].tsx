@@ -5,9 +5,9 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Dimensions, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../config/firebase';
-import PostCard from '../components/PostCard';
-import StoriesViewer from '../components/StoriesViewer';
-import VerifiedBadge from '../components/VerifiedBadge';
+import PostCard from '../_components/PostCard';
+import StoriesViewer from '../_components/StoriesViewer';
+import VerifiedBadge from '../_components/VerifiedBadge';
 
 const { width } = Dimensions.get('window');
 const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';

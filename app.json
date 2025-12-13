@@ -5,12 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2Ficon.png?alt=media&token=0b576d71-e1d3-47fd-8527-79293b4c3db1",
-    "scheme": [
-      "trave-social",
-      "travesocial",
-      "tiktokauth",
-      "google"
-    ],
+    "scheme": "trave-social",
     "userInterfaceStyle": "automatic",
     "android": {
       "adaptiveIcon": {
@@ -53,11 +48,14 @@
       "expo-router",
       "./plugins/withCleartextTraffic.js",
       "./plugins/withNetworkSecurityConfig.js",
+      "./plugins/withAppAuthRedirectScheme.js",
+      "./plugins/withAndroidManifestFix.js",
       [
         "expo-build-properties",
         {
           "android": {
               "manifestPlaceholders": {
+                "appAuthRedirectScheme": "trave-social",
                 "traveSocialScheme": "trave-social"
               }
           }
@@ -123,9 +121,9 @@
       "AGORA_APP_ID": "29320482381a43498eb8ca3e222b6e34",
       "AGORA_APP_CERTIFICATE": "e8372567e0334d75add0ec3f597fb67b",
       "eas": {
-        "projectId": "c9012f88-d2d1-4c28-b446-4512d88fccf6"
+        "projectId": "70506856-740f-458c-809a-bce827cd3c1b"
       }
     },
-    "owner": "tauheeddev_56"
+    "owner": "martin06000"
   }
 }

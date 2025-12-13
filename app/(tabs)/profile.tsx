@@ -8,22 +8,21 @@ import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform,
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../config/firebase';
-import { fetchBlockedUserIds, filterOutBlocked } from '../../services/moderation';
-import { useCurrentLocation } from '../hooks/useCurrentLocation';
-// import { getUserProfile } from '../../lib/firebaseHelpers';
+import { useCurrentLocation } from '../../hooks/useCurrentLocation';
 import { followUser, sendFollowRequest, unfollowUser } from '../../lib/firebaseHelpers/follow';
 import { getUserSectionsSorted } from '../../lib/firebaseHelpers/getUserSectionsSorted';
 import { likePost, unlikePost } from '../../lib/firebaseHelpers/post';
 import { getUserHighlights, getUserPosts, getUserProfile, getUserStories } from '../../lib/firebaseHelpers/user';
+import { fetchBlockedUserIds, filterOutBlocked } from '../../services/moderation';
 import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
-import { CommentSection } from '../components/CommentSection';
-import CreateHighlightModal from '../components/CreateHighlightModal';
-import EditSectionsModal from '../components/EditSectionsModal';
-import HighlightCarousel from '../components/HighlightCarousel';
-import HighlightViewer from '../components/HighlightViewer';
-import PostViewerModal from '../components/PostViewerModal';
-import StoriesViewer from '../components/StoriesViewer';
-import { useUser } from '../components/UserContext';
+import { CommentSection } from '../_components/CommentSection';
+import CreateHighlightModal from '../_components/CreateHighlightModal';
+import HighlightCarousel from '../_components/HighlightCarousel';
+import HighlightViewer from '../_components/HighlightViewer';
+import PostViewerModal from '../_components/PostViewerModal';
+import StoriesViewer from '../_components/StoriesViewer';
+import { useUser } from '../_components/UserContext';
+import EditSectionsModal from '../_components/EditSectionsModal';
 
 // Default avatar URL
 const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
@@ -747,51 +746,33 @@ export default function Profile({ userIdProp }: any) {
                 const imageUrl = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls[0] : DEFAULT_IMAGE_URL);
                 const avatarUrl = post.userAvatar || profile?.avatar || authUser?.photoURL || DEFAULT_AVATAR_URL;
                 
-                // Use default marker on Android, custom on iOS
-                if (Platform.OS === 'android') {
-                  return (
-                    <Marker
-                      key={`post-${post.id}`}
-                      coordinate={{ latitude: lat, longitude: lon }}
-                      pinColor="#ffa726"
-                      onPress={() => {
-                        setTimeout(() => {
-                          const postIndex = posts.findIndex(p => p.id === post.id);
-                          setSelectedPostIndex(postIndex);
-                          setPostViewerVisible(true);
-                        }, 0);
-                      }}
-                    />
-                  );
-                } else {
-                  // iOS - Custom marker style
-                  return (
-                    <Marker
-                      key={`post-${post.id}`}
-                      coordinate={{ latitude: lat, longitude: lon }}
-                      tracksViewChanges={false}
-                      onPress={() => {
-                        setTimeout(() => {
-                          const postIndex = posts.findIndex(p => p.id === post.id);
-                          setSelectedPostIndex(postIndex);
-                          setPostViewerVisible(true);
-                        }, 0);
-                      }}
-                    >
-                      <TouchableOpacity activeOpacity={0.9} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent' }} onPress={() => {
-                        setSelectedPostIndex(posts.findIndex(p => p.id === post.id));
+                // Custom marker for both Android and iOS
+                return (
+                  <Marker
+                    key={`post-${post.id}`}
+                    coordinate={{ latitude: lat, longitude: lon }}
+                    tracksViewChanges={false}
+                    onPress={() => {
+                      setTimeout(() => {
+                        const postIndex = posts.findIndex(p => p.id === post.id);
+                        setSelectedPostIndex(postIndex);
                         setPostViewerVisible(true);
-                      }}>
-                        <View style={{ width: 48, height: 48, borderRadius: 12, borderWidth: 3, borderColor: '#ffa726', overflow: 'hidden', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 }}>
-                          <Image source={{ uri: imageUrl }} style={{ width: 44, height: 44, borderRadius: 10 }} />
-                        </View>
-                        <View style={{ marginLeft: 4, marginRight: 0, width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: '#fff', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 }}>
-                          <Image source={{ uri: avatarUrl }} style={{ width: 34, height: 34, borderRadius: 17 }} />
-                        </View>
-                      </TouchableOpacity>
-                    </Marker>
-                  );
-                }
+                      }, 0);
+                    }}
+                  >
+                    <TouchableOpacity activeOpacity={0.9} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent' }} onPress={() => {
+                      setSelectedPostIndex(posts.findIndex(p => p.id === post.id));
+                      setPostViewerVisible(true);
+                    }}>
+                      <View style={{ width: 48, height: 48, borderRadius: 12, borderWidth: 3, borderColor: '#ffa726', overflow: 'hidden', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 }}>
+                        <Image source={{ uri: imageUrl }} style={{ width: 44, height: 44, borderRadius: 10 }} />
+                      </View>
+                      <View style={{ marginLeft: 4, marginRight: 0, width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: '#fff', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 }}>
+                        <Image source={{ uri: avatarUrl }} style={{ width: 34, height: 34, borderRadius: 17 }} />
+                      </View>
+                    </TouchableOpacity>
+                  </Marker>
+                );
               })}
             </MapView>
           </View>

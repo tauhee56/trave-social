@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createPost, getCurrentUser, searchUsers } from '../../lib/firebaseHelpers/index';
-import VerifiedBadge from '../components/VerifiedBadge';
+import VerifiedBadge from '../_components/VerifiedBadge';
 
 // Runtime import of ImagePicker with graceful fallback
 let ImagePicker: any = null;
@@ -298,22 +298,31 @@ export default function PostScreen() {
 
       {/* Location Modal */}
       <Modal visible={showLocationModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Choose a location to tag</Text>
-            <Text style={styles.modalSubtitle}>
-              Here are the locations around you. We use it to make sure people share the place they tag.
-            </Text>
-            <View style={styles.searchContainer}>
-              <Feather name="search" size={18} color="#999" style={{ marginRight: 8 }} />
-              <TextInput
-                placeholder="Search location..."
-                style={styles.searchInputField}
-                placeholderTextColor="#999"
-                value={locationInput}
-                onChangeText={setLocationInput}
-              />
-            </View>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              activeOpacity={1}
+              onPress={() => setShowLocationModal(false)}
+            />
+            <View style={styles.modalBox}>
+              <Text style={styles.modalTitle}>Choose a location to tag</Text>
+              <Text style={styles.modalSubtitle}>
+                Here are the locations around you. We use it to make sure people share the place they tag.
+              </Text>
+              <View style={styles.searchContainer}>
+                <Feather name="search" size={18} color="#999" style={{ marginRight: 8 }} />
+                <TextInput
+                  placeholder="Search location..."
+                  style={styles.searchInputField}
+                  placeholderTextColor="#999"
+                  value={locationInput}
+                  onChangeText={setLocationInput}
+                />
+              </View>
             <FlatList
               data={MOCK_LOCATIONS}
               keyExtractor={(item: any) => item.id}
@@ -343,12 +352,22 @@ export default function PostScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Verified Location Modal */}
       <Modal visible={showVerifiedModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              activeOpacity={1}
+              onPress={() => setShowVerifiedModal(false)}
+            />
+            <View style={styles.modalBox}>
             <View style={styles.verifiedHeader}>
               <VerifiedBadge size={24} color="#000" />
               <Text style={styles.modalTitle}>Add a verified location</Text>
@@ -396,12 +415,22 @@ export default function PostScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Tag People Modal */}
       <Modal visible={showTagModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              activeOpacity={1}
+              onPress={() => setShowTagModal(false)}
+            />
+            <View style={styles.modalBox}>
             <Text style={styles.modalTitle}>Tag someone</Text>
             <View style={styles.searchContainer}>
               <Feather name="search" size={18} color="#999" style={{ marginRight: 8 }} />
@@ -447,6 +476,7 @@ export default function PostScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

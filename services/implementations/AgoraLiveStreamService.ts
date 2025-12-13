@@ -21,7 +21,7 @@ import {
 } from '../interfaces/ILiveStreamService';
 
 export class AgoraLiveStreamService implements ILiveStreamService {
-  private engine: IRtcEngine | null = null;
+  private engine: typeof IRtcEngine | null = null;
   private appId: string = '';
   private currentChannel: string = '';
   private currentUid: number = 0;
@@ -176,7 +176,7 @@ export class AgoraLiveStreamService implements ILiveStreamService {
     if (!this.engine) return;
 
     this.engine.registerEventHandler({
-      onUserJoined: (connection: RtcConnection, remoteUid: number, elapsed: number) => {
+      onUserJoined: (connection: typeof RtcConnection, remoteUid: number, elapsed: number) => {
         if (this.viewerJoinedCallback) {
           this.viewerJoinedCallback({
             uid: remoteUid.toString(),
@@ -185,7 +185,7 @@ export class AgoraLiveStreamService implements ILiveStreamService {
           });
         }
       },
-      onUserOffline: (connection: RtcConnection, remoteUid: number, reason: UserOfflineReasonType) => {
+      onUserOffline: (connection: typeof RtcConnection, remoteUid: number, reason: typeof UserOfflineReasonType) => {
         if (this.viewerLeftCallback) {
           this.viewerLeftCallback(remoteUid.toString());
         }
@@ -207,7 +207,7 @@ export class AgoraLiveStreamService implements ILiveStreamService {
     return '';
   }
 
-  getEngine(): IRtcEngine | null {
+  getEngine(): typeof IRtcEngine | null {
     return this.engine;
   }
 

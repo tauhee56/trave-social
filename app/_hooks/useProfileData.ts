@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getUserPosts, getUserProfile, getUserSections, getUserStories, sendFollowRequest, unfollowUser } from '../services/firebaseService';
+import { getUserPosts, getUserProfile, getUserSections, getUserStories, sendFollowRequest, unfollowUser } from '../_services/firebaseService';
 
 export function useProfileData(userId: string) {
   const [profile, setProfile] = useState<ProfileData | null>(null);

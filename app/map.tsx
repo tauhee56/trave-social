@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Dimensions, Image, PermissionsAndroid, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 // import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import { collection, query as firestoreQuery, onSnapshot, where } from 'firebase/firestore';
-import MapView, { Marker, Region } from 'react-native-maps';
+import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PostLocationModal } from '../components/PostLocationModal';
 import { db } from '../config/firebase';
@@ -367,7 +367,7 @@ export default function MapScreen() {
             )}
             {/* Route polyline */}
             {routeCoords.length === 2 && (
-              <MapView.Polyline
+              <Polyline
                 coordinates={routeCoords}
                 strokeColor="#e0245e"
                 strokeWidth={4}
@@ -393,33 +393,24 @@ export default function MapScreen() {
                       console.warn('Invalid marker coordinates, cannot open modal');
                     }
                   };
-                  if (Platform.OS === 'android') {
-                    return (
-                      <Marker
-                        key={`post-${key}`}
-                        coordinate={{ latitude: Number(post.lat), longitude: Number(post.lon) }}
-                        pinColor="#ffa726"
-                        onPress={handleMarkerPress}
-                      />
-                    );
-                  } else {
-                    return (
-                      <Marker
-                        key={`post-${key}`}
-                        coordinate={{ latitude: Number(post.lat), longitude: Number(post.lon) }}
-                        onPress={handleMarkerPress}
-                      >
-                        <TouchableOpacity activeOpacity={0.9} style={styles.markerContainer} onPress={handleMarkerPress}>
-                          <View style={styles.postImageWrapper}>
-                            <Image source={{ uri: post.imageUrl }} style={styles.postImage} />
-                          </View>
-                          <View style={styles.postAvatarOutside}>
-                            <Image source={{ uri: post.userAvatar || DEFAULT_AVATAR_URL }} style={styles.postAvatarImgFixed} />
-                          </View>
-                        </TouchableOpacity>
-                      </Marker>
-                    );
-                  }
+                  // Custom marker for both Android and iOS
+                  return (
+                    <Marker
+                      key={`post-${key}`}
+                      coordinate={{ latitude: Number(post.lat), longitude: Number(post.lon) }}
+                      tracksViewChanges={false}
+                      onPress={handleMarkerPress}
+                    >
+                      <TouchableOpacity activeOpacity={0.9} style={styles.markerContainer} onPress={handleMarkerPress}>
+                        <View style={styles.postImageWrapper}>
+                          <Image source={{ uri: post.imageUrl }} style={styles.postImage} />
+                        </View>
+                        <View style={styles.postAvatarOutside}>
+                          <Image source={{ uri: post.userAvatar || DEFAULT_AVATAR_URL }} style={styles.postAvatarImgFixed} />
+                        </View>
+                      </TouchableOpacity>
+                    </Marker>
+                  );
                 }
               } catch (err) {
                 console.error('Error rendering marker:', err, key, postsAtLocation);

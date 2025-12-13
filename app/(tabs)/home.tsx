@@ -14,17 +14,17 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    UIManager,
     View
 } from "react-native";
 import { db } from '../../config/firebase';
 import { DEFAULT_CATEGORIES, getCategories, getCurrentUser, getUserNotifications } from "../../lib/firebaseHelpers/index";
 import { fetchBlockedUserIds, filterOutBlocked } from '../../services/moderation';
+import { logger } from '../../utils/logger';
 import { getResponsivePadding, scaleFontSize } from '../../utils/responsive';
-import LiveStreamsRow from "../components/LiveStreamsRow";
-import PostCard from "../components/PostCard";
-import StoriesRow from "../components/StoriesRow";
-import StoriesViewer from "../components/StoriesViewer";
+import LiveStreamsRow from "../_components/LiveStreamsRow";
+import PostCard from "../_components/PostCard";
+import StoriesRow from "../_components/StoriesRow";
+import StoriesViewer from "../_components/StoriesViewer";
 import { useTabEvent } from './_layout';
 
 const { width } = Dimensions.get("window");
@@ -195,7 +195,7 @@ export default function Home() {
       setLastVisible(querySnapshot.docs[querySnapshot.docs.length - 1]);
       setLoading(false);
     }, (error) => {
-      console.error('Feed listener error:', error);
+      logger.error('Feed listener error:', error);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -217,7 +217,7 @@ export default function Home() {
       setPosts(prev => [...prev, ...reshuffled]);
       setLoopCount(prev => prev + 1);
     } catch (error) {
-      console.error('Loop posts error:', error);
+      logger.error('Loop posts error:', error);
     }
     
     setLoadingMore(false);
@@ -277,7 +277,7 @@ export default function Home() {
       
       setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
     } catch (error) {
-      console.error('Refresh error:', error);
+      logger.error('Refresh error:', error);
     }
     
     setRefreshing(false);
@@ -441,7 +441,7 @@ let filteredPosts = privacyFiltered;
       setFeedReloadKey(prev => prev + 1);
       setLoading(false);
     } catch (error) {
-      console.error('Reset feed error:', error);
+      logger.error('Reset feed error:', error);
       setLoading(false);
     }
   };

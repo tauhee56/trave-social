@@ -3,9 +3,9 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { handleSocialAuthResult, signInWithApple, signInWithGoogle, signInWithSnapchat, signInWithTikTok } from '../../services/socialAuthService';
-import CustomButton from '../components/auth/CustomButton';
-import SocialButton from '../components/auth/SocialButton';
-import { fetchLogoUrl } from '../services/brandingService';
+import CustomButton from '../_components/auth/CustomButton';
+import SocialButton from '../_components/auth/SocialButton';
+import { fetchLogoUrl } from '../_services/brandingService';
 
 export default function WelcomeScreen() {
   const router = useRouter();

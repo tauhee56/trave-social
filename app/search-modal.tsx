@@ -297,6 +297,10 @@ export default function SearchModal() {
                   style={{ marginTop: 0, maxHeight: 400 }}
                   contentContainerStyle={{ paddingVertical: 4, paddingBottom: 8 }}
                   showsVerticalScrollIndicator={false}
+                  initialNumToRender={10}
+                  maxToRenderPerBatch={10}
+                  windowSize={5}
+                  removeClippedSubviews={true}
                 />
               </View>
             )}
@@ -320,6 +324,10 @@ export default function SearchModal() {
                 )}
                 ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No travelers found</Text>}
                 style={{ marginTop: 16, maxHeight: 120 }}
+                initialNumToRender={15}
+                maxToRenderPerBatch={10}
+                windowSize={7}
+                removeClippedSubviews={true}
               />
             )}
           </View>

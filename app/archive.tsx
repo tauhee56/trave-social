@@ -18,8 +18,9 @@ export default function Archive() {
       return;
     }
     setLoading(true);
-    import('../lib/firebaseHelpers/archive').then(({ getArchivedConversations }) => {
-      getArchivedConversations(user.uid).then(result => {
+    // @ts-ignore
+    import('../lib/firebaseHelpers/archive').then((mod: { getArchivedConversations: (uid: string) => Promise<{ success: boolean; data?: any[] }> }) => {
+      mod.getArchivedConversations(user.uid).then((result: { success: boolean; data?: any[] }) => {
         if (result.success) {
           setArchived(result.data || []);
         }
@@ -58,8 +59,9 @@ export default function Archive() {
                   onPress={async () => {
                     const user = getCurrentUser();
                     if (!user) return;
-                    const { unarchiveConversation } = await import('../lib/firebaseHelpers/archive');
-                    await unarchiveConversation(item.id, user.uid);
+                    // @ts-ignore
+                    const mod: { unarchiveConversation: (id: string, uid: string) => Promise<any> } = await import('../lib/firebaseHelpers/archive');
+                    await mod.unarchiveConversation(item.id, user.uid);
                     setArchived(archived.filter(c => c.id !== item.id));
                   }}
                 >

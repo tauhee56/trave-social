@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import CustomButton from '../components/auth/CustomButton';
+import CustomButton from '../_components/auth/CustomButton';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();

@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { Alert, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-// import { updateUserSectionsOrder } from '../../lib/firebaseHelpers';
 import { getUserSectionsSorted } from '../../lib/firebaseHelpers/getUserSectionsSorted';
 import { addUserSection, deleteUserSection, updateUserSection } from '../../lib/firebaseHelpers/index';
 import { updateUserSectionsOrder } from '../../lib/firebaseHelpers/updateUserSectionsOrder';
@@ -179,44 +178,44 @@ export default function EditSectionsModal({
           >
             <Ionicons name="menu" size={24} color="#999" />
           </TouchableOpacity>
-          {isSelected ? (
-            <View style={styles.selectedSectionCard}>
-              <TouchableOpacity
-                activeOpacity={1}
-                onLongPress={() => setEditing(true)}
-                style={styles.selectedSectionInputWrap}
-              >
-                <TextInput
-                  style={styles.selectedSectionInput}
-                  value={sectionName}
-                  editable={editing}
-                  onChangeText={setSectionName}
-                  onBlur={handleNameUpdate}
-                  onSubmitEditing={handleNameUpdate}
-                  selectTextOnFocus={editing}
-                />
-              </TouchableOpacity>
-              <View style={styles.selectedSectionActions}>
-                <View style={styles.selectedSectionActionRow}>
-                  <Ionicons name="albums-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.selectedSectionActionText}>{item.postIds?.length || 0} Posts</Text>
-                </View>
-                <TouchableOpacity style={styles.selectedSectionActionRow} onPress={() => handleDeleteSection(item.name)}>
-                  <Ionicons name="trash-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.selectedSectionActionText}>Delete this section</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
+        {isSelected ? (
+          <View style={styles.selectedSectionCard}>
             <TouchableOpacity
-              style={styles.sectionRowSimple}
-              onPress={() => handleSelectSection(item.name)}
+              activeOpacity={1}
+              onLongPress={() => setEditing(true)}
+              style={styles.selectedSectionInputWrap}
             >
-              <Text style={styles.sectionRowTitle}>{item.name}</Text>
-              <Text style={styles.sectionRowCount}>{item.postIds?.length || 0} Posts</Text>
+              <TextInput
+                style={styles.selectedSectionInput}
+                value={sectionName}
+                editable={editing}
+                onChangeText={setSectionName}
+                onBlur={handleNameUpdate}
+                onSubmitEditing={handleNameUpdate}
+                selectTextOnFocus={editing}
+              />
             </TouchableOpacity>
-          )}
-        </View>
+            <View style={styles.selectedSectionActions}>
+              <View style={styles.selectedSectionActionRow}>
+                <Ionicons name="albums-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.selectedSectionActionText}>{item.postIds?.length || 0} Posts</Text>
+              </View>
+              <TouchableOpacity style={styles.selectedSectionActionRow} onPress={() => handleDeleteSection(item.name)}>
+                <Ionicons name="trash-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.selectedSectionActionText}>Delete this section</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.sectionRowSimple}
+            onPress={() => handleSelectSection(item.name)}
+          >
+            <Text style={styles.sectionRowTitle}>{item.name}</Text>
+            <Text style={styles.sectionRowCount}>{item.postIds?.length || 0} Posts</Text>
+          </TouchableOpacity>
+        )}
+      </View>
       </ScaleDecorator>
     );
   };

@@ -5,24 +5,27 @@ import { useRouter } from 'expo-router';
 import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  BackHandler,
-  Dimensions,
-  FlatList,
-  Image,
-  PermissionsAndroid,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    BackHandler,
+    Dimensions,
+    FlatList,
+    Image,
+    PermissionsAndroid,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
+// @ts-ignore
 import { AGORA_CONFIG } from '../config/agora';
+// @ts-ignore
 import { auth, db } from '../config/firebase';
+import { logger } from '../utils/logger';
 
 
   // Utility: sanitize coordinates for MapView/Marker
@@ -170,7 +173,7 @@ export default function GoLiveScreen() {
           longitude: loc.coords.longitude,
         });
       } catch (error) {
-        console.log('Error getting location:', error);
+        logger.error('Error getting location:', error);
       }
     };
     getLocation();
@@ -218,12 +221,12 @@ export default function GoLiveScreen() {
   // Initialize Agora engine
   const initAgoraEngine = useCallback(async () => {
     if (!AGORA_AVAILABLE || !RtcEngine) {
-      console.log('Agora SDK not available');
+      logger.error('Agora SDK not available');
       return null;
     }
     
     try {
-      console.log('Initializing Agora engine...');
+      logger.log('Initializing Agora engine...');
       
       // Request permissions first (Android)
       if (Platform.OS === 'android') {
@@ -236,7 +239,7 @@ export default function GoLiveScreen() {
           granted['android.permission.CAMERA'] !== PermissionsAndroid.RESULTS.GRANTED ||
           granted['android.permission.RECORD_AUDIO'] !== PermissionsAndroid.RESULTS.GRANTED
         ) {
-          console.log('Camera/Audio permissions denied');
+          logger.warn('Camera/Audio permissions denied');
           Alert.alert('Permission Required', 'Camera and microphone permissions are required for live streaming.');
           return null;
         }
@@ -263,12 +266,12 @@ export default function GoLiveScreen() {
       // Enable video
       await engine.enableVideo();
       
-      // Set video encoder configuration for higher quality and larger stream
+      // Set video encoder configuration for full screen without stretching
       await engine.setVideoEncoderConfiguration({
-        dimensions: { width: 1280, height: 720 }, // Landscape HD
+        dimensions: { width: 1080, height: 1920 }, // Portrait Full HD (9:16 aspect ratio)
         frameRate: 30,
-        bitrate: 2200,
-        orientationMode: 1, // Adaptive
+        bitrate: 2500,
+        orientationMode: 0, // Portrait mode
       });
       
       // Enable local video
@@ -393,7 +396,7 @@ export default function GoLiveScreen() {
       };
 
     } catch (error) {
-      console.error('Error starting stream:', error);
+      logger.error('Error starting stream:', error);
       // Fallback to demo mode
       setIsStreaming(true);
       setIsInitializing(false);
@@ -425,7 +428,7 @@ export default function GoLiveScreen() {
               setIsStreaming(false);
               router.back();
             } catch (error) {
-              console.error('Error ending stream:', error);
+              logger.error('Error ending stream:', error);
               router.back();
             }
           },
@@ -473,7 +476,7 @@ export default function GoLiveScreen() {
           timestamp: serverTimestamp(),
         });
       } catch (error) {
-        console.error('Error sending comment:', error);
+        logger.error('Error sending comment:', error);
       }
     }
     setNewComment('');
@@ -501,7 +504,7 @@ export default function GoLiveScreen() {
               canvas={{
                 uid: 0,
                 sourceType: VideoSourceType?.VideoSourceCamera,
-                renderMode: RenderModeType?.RenderModeFit,
+                renderMode: RenderModeType?.RenderModeHidden, // Full screen, crops to fill
               }}
             />
           ) : (
@@ -704,7 +707,7 @@ export default function GoLiveScreen() {
             canvas={{
               uid: 0,
               sourceType: VideoSourceType?.VideoSourceCamera,
-              renderMode: RenderModeType?.RenderModeFit,
+              renderMode: RenderModeType?.RenderModeHidden, // Full screen, crops to fill
             }}
             zOrderMediaOverlay={true}
           />

@@ -7,7 +7,7 @@ import { getCurrentUser } from '../lib/firebaseHelpers';
 // import { getCurrentUser } from '../lib/firebaseHelpers';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import AcceptDeclineButtons from './components/AcceptDeclineButtons';
+import AcceptDeclineButtons from './_components/AcceptDeclineButtons';
 
 export default function NotificationsScreen() {
     // Default avatar from Firebase Storage
@@ -221,6 +221,10 @@ export default function NotificationsScreen() {
         <FlatList
           data={notifications}
           keyExtractor={n => n.id}
+          initialNumToRender={15}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          removeClippedSubviews={true}
           renderItem={({ item }) => (
             <View>
               <TouchableOpacity 

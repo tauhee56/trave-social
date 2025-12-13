@@ -5,79 +5,61 @@ import React, { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../../config/firebase';
-import CustomButton from '../components/auth/CustomButton';
+import CustomButton from '../_components/auth/CustomButton';
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
-  const [resetMethod, setResetMethod] = useState<'email' | 'phone'>('email');
-  const [phone, setPhone] = useState('');
+  const [emailSent, setEmailSent] = useState(false);
 
-  const handleSendOTP = async () => {
-    if (resetMethod === 'email') {
-      if (!email.trim()) {
-        Alert.alert('Error', 'Please enter your email address');
-        return;
+  const handleSendResetEmail = async () => {
+    // Validate email
+    if (!email.trim()) {
+      Alert.alert('Error', 'Please enter your email address');
+      return;
+    }
+
+    // Email validation regex
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Send password reset email using Firebase Auth
+      await sendPasswordResetEmail(auth, email.trim());
+
+      setEmailSent(true);
+      Alert.alert(
+        'Email Sent',
+        `A password reset link has been sent to ${email.trim()}. Please check your inbox and spam folder.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => router.back()
+          }
+        ]
+      );
+    } catch (error: any) {
+      console.error('Password reset error:', error);
+      let errorMessage = 'Failed to send reset email. Please try again.';
+
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = 'No account found with this email address. Please check your email or sign up.';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Invalid email address format.';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'Too many reset attempts. Please wait a few minutes and try again.';
+      } else if (error.code === 'auth/network-request-failed') {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
       }
 
-      // Basic email validation
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        Alert.alert('Error', 'Please enter a valid email address');
-        return;
-      }
-
-      setLoading(true);
-      try {
-        await sendPasswordResetEmail(auth, email.trim());
-        // Navigate to OTP sent confirmation screen
-        router.push({
-          pathname: '/auth/otp-sent',
-          params: { contact: email, method: 'email', flow: 'reset' }
-        });
-      } catch (error: any) {
-        console.error('Password reset error:', error);
-        let errorMessage = 'Failed to send reset email';
-
-        if (error.code === 'auth/user-not-found') {
-          errorMessage = 'No account found with this email. Please check your email or sign up.';
-        } else if (error.code === 'auth/invalid-email') {
-          errorMessage = 'Invalid email address';
-        } else if (error.code === 'auth/too-many-requests') {
-          errorMessage = 'Too many attempts. Please wait a few minutes and try again.';
-        } else if (error.code === 'auth/network-request-failed') {
-          errorMessage = 'Network error. Please check your internet connection.';
-        }
-
-        Alert.alert('Error', errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      // Phone - we'll send OTP to email associated with phone
-      if (!phone.trim()) {
-        Alert.alert('Error', 'Please enter your phone number');
-        return;
-      }
-
-      if (phone.length < 10) {
-        Alert.alert('Error', 'Please enter a valid phone number');
-        return;
-      }
-
-      setLoading(true);
-      try {
-        // For phone reset, navigate to OTP sent screen
-        router.push({
-          pathname: '/auth/otp-sent',
-          params: { contact: phone, method: 'phone', flow: 'reset' }
-        });
-      } catch (error: any) {
-        Alert.alert('Error', 'Failed to send OTP. Please try again.');
-      } finally {
-        setLoading(false);
-      }
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -107,32 +89,15 @@ export default function ForgotPasswordScreen() {
             <View style={styles.titleSection}>
               <Text style={styles.title}>Forgot password?</Text>
               <Text style={styles.subtitle}>
-                Enter your email or phone number and we'll send you a verification code to reset your password.
+                Enter your email address and we'll send you a link to reset your password.
               </Text>
             </View>
 
-            {/* Method Toggle */}
-            <View style={styles.methodToggle}>
-              <TouchableOpacity 
-                style={[styles.methodButton, resetMethod === 'email' && styles.methodButtonActive]}
-                onPress={() => setResetMethod('email')}
-              >
-                <Ionicons name="mail-outline" size={20} color={resetMethod === 'email' ? '#fff' : '#666'} />
-                <Text style={[styles.methodText, resetMethod === 'email' && styles.methodTextActive]}>Email</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.methodButton, resetMethod === 'phone' && styles.methodButtonActive]}
-                onPress={() => setResetMethod('phone')}
-              >
-                <Ionicons name="call-outline" size={20} color={resetMethod === 'phone' ? '#fff' : '#666'} />
-                <Text style={[styles.methodText, resetMethod === 'phone' && styles.methodTextActive]}>Phone</Text>
-              </TouchableOpacity>
-            </View>
-
             {/* Email Input */}
-            {resetMethod === 'email' && (
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Email address</Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Email address</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter your email"
@@ -141,38 +106,35 @@ export default function ForgotPasswordScreen() {
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
-                  editable={!loading}
+                  autoCorrect={false}
+                  editable={!loading && !emailSent}
                 />
               </View>
-            )}
+              {emailSent && (
+                <View style={styles.successBanner}>
+                  <Ionicons name="checkmark-circle" size={20} color="#27ae60" />
+                  <Text style={styles.successText}>Reset email sent! Check your inbox.</Text>
+                </View>
+              )}
+            </View>
 
-            {/* Phone Input */}
-            {resetMethod === 'phone' && (
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Phone number</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your phone number"
-                  placeholderTextColor="#999"
-                  value={phone}
-                  onChangeText={setPhone}
-                  keyboardType="phone-pad"
-                  editable={!loading}
-                />
-                <Text style={styles.helperText}>
-                  OTP will be sent to the email linked with this phone number
-                </Text>
-              </View>
-            )}
-
-            {/* Send OTP Button */}
+            {/* Send Reset Email Button */}
             <CustomButton
-              title={loading ? "Sending..." : "Send OTP"}
-              onPress={handleSendOTP}
+              title={loading ? "Sending..." : emailSent ? "Resend Email" : "Send Reset Link"}
+              onPress={handleSendResetEmail}
               variant="primary"
               style={styles.nextButton}
               disabled={loading}
             />
+
+            {/* Back to Login */}
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backToLoginButton}
+              disabled={loading}
+            >
+              <Text style={styles.backToLoginText}>Back to Login</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -216,54 +178,58 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 20,
   },
-  methodToggle: {
-    flexDirection: 'row',
-    marginBottom: 24,
-    gap: 12,
-  },
-  methodButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#f5f5f5',
-    gap: 8,
-  },
-  methodButtonActive: {
-    backgroundColor: '#f39c12',
-  },
-  methodText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#666',
-  },
-  methodTextActive: {
-    color: '#fff',
-  },
   inputContainer: {
-    marginBottom: 16,
+    marginBottom: 24,
   },
   label: {
     fontSize: 14,
-    color: '#666',
+    fontWeight: '600',
+    color: '#333',
     marginBottom: 8,
   },
-  input: {
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#f5f5f5',
-    borderRadius: 8,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  inputIcon: {
+    marginRight: 12,
+  },
+  input: {
+    flex: 1,
     padding: 16,
     fontSize: 16,
     color: '#000',
   },
-  helperText: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 8,
-    fontStyle: 'italic',
+  successBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#d4edda',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+    gap: 8,
+  },
+  successText: {
+    fontSize: 14,
+    color: '#27ae60',
+    fontWeight: '600',
   },
   nextButton: {
     marginTop: 10,
+  },
+  backToLoginButton: {
+    marginTop: 20,
+    alignItems: 'center',
+    padding: 12,
+  },
+  backToLoginText: {
+    fontSize: 15,
+    color: '#f39c12',
+    fontWeight: '600',
   },
 });

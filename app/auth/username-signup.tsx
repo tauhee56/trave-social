@@ -6,7 +6,7 @@ import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Scroll
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { uploadImage } from '../../lib/firebaseHelpers';
 import { checkUsernameAvailability, signUpWithUsername } from '../../services/usernameAuthService';
-import CustomButton from '../components/auth/CustomButton';
+import CustomButton from '../_components/auth/CustomButton';
 
 export default function UsernameSignUpScreen() {
   const router = useRouter();

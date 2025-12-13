@@ -12,19 +12,28 @@
         "gradleCommand": ":app:assembleDebug"
       },
       "env": {
-        "GOOGLE_MAP_API_KEY": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c"
+        "GOOGLE_MAP_API_KEY": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c",
+        "appAuthRedirectScheme": "trave-social"
       }
     },
     "preview": {
       "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
-        "GOOGLE_MAP_API_KEY": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c"
+        "GOOGLE_MAP_API_KEY": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c",
+        "appAuthRedirectScheme": "trave-social"
       }
     },
     "production": {
       "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
-        "GOOGLE_MAP_API_KEY": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c"
+        "GOOGLE_MAP_API_KEY": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c",
+        "appAuthRedirectScheme": "trave-social"
       }
     }
   },
