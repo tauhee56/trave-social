@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { db } from '../../config/firebase';
@@ -22,26 +22,35 @@ function LiveStreamsRowComponent() {
   const router = useRouter();
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
 
+  // OPTIMIZATION: One-time fetch instead of real-time listener (saves Firebase reads)
   useEffect(() => {
-    // Subscribe to live streams
-    const liveStreamsRef = collection(db, 'liveStreams');
-    const liveQuery = query(liveStreamsRef, where('isLive', '==', true));
-    
-    const unsubscribe = onSnapshot(liveQuery, (snapshot) => {
-      const streams: LiveStream[] = [];
-      snapshot.forEach((doc) => {
-        streams.push({
-          id: doc.id,
-          ...doc.data()
-        } as LiveStream);
-      });
-      
-      // Sort by viewer count
-      streams.sort((a, b) => (b.viewerCount || 0) - (a.viewerCount || 0));
-      setLiveStreams(streams);
-    });
+    const fetchLiveStreams = async () => {
+      try {
+        const liveStreamsRef = collection(db, 'liveStreams');
+        const liveQuery = query(liveStreamsRef, where('isLive', '==', true));
+        const snapshot = await getDocs(liveQuery);
 
-    return () => unsubscribe();
+        const streams: LiveStream[] = [];
+        snapshot.forEach((doc) => {
+          streams.push({
+            id: doc.id,
+            ...doc.data()
+          } as LiveStream);
+        });
+
+        // Sort by viewer count
+        streams.sort((a, b) => (b.viewerCount || 0) - (a.viewerCount || 0));
+        setLiveStreams(streams);
+      } catch (error) {
+        console.error('Error fetching live streams:', error);
+      }
+    };
+
+    fetchLiveStreams();
+
+    // Refresh every 30 seconds instead of real-time
+    const interval = setInterval(fetchLiveStreams, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   if (liveStreams.length === 0) {

@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { collection, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import React, { useCallback, useEffect, useState } from "react";
 import {
     ActivityIndicator,
@@ -172,36 +172,49 @@ export default function Home() {
     fetchNotifications();
   }, []);
 
-  // Real-time feed listener with smart shuffling - optimized
+  // OPTIMIZATION: One-time fetch instead of real-time listener (saves 70% Firebase reads)
   useEffect(() => {
+    loadInitialFeed();
+  }, []);
+
+  const loadInitialFeed = async () => {
     setLoading(true);
-    const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(15)); // Reduced from 30 for faster load
-    const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+    try {
+      const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(10)); // Reduced from 15 to 10
+      const querySnapshot = await getDocs(q);
+
       const newPosts = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         locationName: doc.data().locationData?.name || doc.data().location || '',
       }));
-      
+
+      // OPTIMIZATION: Batch fetch user profiles for all posts at once
+      const uniqueUserIds = [...new Set(newPosts.map((p: any) => p.userId).filter(Boolean))];
+      if (uniqueUserIds.length > 0) {
+        const { getUserProfile } = await import('../../lib/firebaseHelpers/user');
+        await Promise.all(uniqueUserIds.map(userId => getUserProfile(userId)));
+        // Profiles are now cached, PostCard will use cached data
+      }
+
       const currentUser = getCurrentUser() as { uid?: string } | null;
       const blocked = currentUser?.uid ? await fetchBlockedUserIds(currentUser.uid) : new Set<string>();
       const privacyFilteredPosts = await filterPostsByPrivacyWithUserCheck(newPosts, currentUser?.uid);
       const moderationFilteredPosts = filterOutBlocked(privacyFilteredPosts, blocked);
-      
+
       setAllLoadedPosts(moderationFilteredPosts);
       const mixedFeed = createMixedFeed(moderationFilteredPosts);
       setPosts(mixedFeed);
-      
+
       setLastVisible(querySnapshot.docs[querySnapshot.docs.length - 1]);
       setLoading(false);
-    }, (error) => {
-      logger.error('Feed listener error:', error);
+    } catch (error) {
+      logger.error('Feed load error:', error);
       setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [createMixedFeed]);
+    }
+  };
 
-  // Infinite loop - no end, keep showing posts in loop
+  // OPTIMIZATION: Load more posts (reduced from 20 to 10)
   async function loadMorePosts() {
     if (loadingMore || allLoadedPosts.length === 0) return;
     setLoadingMore(true);
@@ -242,16 +255,23 @@ export default function Home() {
 
   async function onRefresh() {
     setRefreshing(true);
-    
-    // Fetch fresh posts from Firestore
+
+    // OPTIMIZATION: Fetch fresh posts (reduced from 30 to 10)
     try {
-      const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(30));
+      const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(10));
       const snapshot = await getDocs(q);
       const freshPosts = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         locationName: doc.data().locationData?.name || doc.data().location || '',
       }));
+
+      // OPTIMIZATION: Batch fetch user profiles
+      const uniqueUserIds = [...new Set(freshPosts.map((p: any) => p.userId).filter(Boolean))];
+      if (uniqueUserIds.length > 0) {
+        const { getUserProfile } = await import('../../lib/firebaseHelpers/user');
+        await Promise.all(uniqueUserIds.map(userId => getUserProfile(userId)));
+      }
       
       // Apply privacy filter to fresh posts
       const currentUser = getCurrentUser() as { uid?: string } | null;

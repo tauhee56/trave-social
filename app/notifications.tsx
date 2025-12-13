@@ -1,12 +1,11 @@
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { collection, getDocs, query } from 'firebase/firestore';
 import React from 'react';
 import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCurrentUser } from '../lib/firebaseHelpers';
-// import { getCurrentUser } from '../lib/firebaseHelpers';
-import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { getCurrentUser } from '../lib/firebaseHelpers';
 import AcceptDeclineButtons from './_components/AcceptDeclineButtons';
 
 export default function NotificationsScreen() {
@@ -17,46 +16,49 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = React.useState(true);
   // Removed legacy globalThis/firebase usage
 
-  React.useEffect(() => {
+  // OPTIMIZATION: One-time fetch instead of real-time listener (saves Firebase reads)
+  const fetchNotifications = async () => {
     const user = getCurrentUser();
     if (!user) {
       setLoading(false);
       setNotifications([]);
       return;
     }
-    // Removed legacy one-time fetch block. Use only modular SDK (db) for Firestore.
+
     setLoading(true);
-    // Modular SDK: Real-time listener for notifications (subcollection)
-    const notifRef = collection(db, 'users', user.uid, 'notifications');
-    const q = query(notifRef);
-    const unsub = onSnapshot(q,
-      (snapshot) => {
-        const notifs = snapshot.docs.map((doc: any) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt || null,
-          };
-        });
-        setNotifications(notifs);
-        setLoading(false);
-      },
-      (error) => {
-        console.log('Notification fetch error:', error);
-        setNotifications([]);
-        setLoading(false);
-      }
-    );
-    // Safety: always set loading to false after 3 seconds if still loading
-    const timeout = setTimeout(() => {
+    try {
+      const notifRef = collection(db, 'users', user.uid, 'notifications');
+      const q = query(notifRef);
+      const snapshot = await getDocs(q);
+
+      const notifs = snapshot.docs.map((doc: any) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt || null,
+        };
+      });
+
+      setNotifications(notifs);
       setLoading(false);
-    }, 3000);
-    return () => {
-      unsub && unsub();
-      clearTimeout(timeout);
-    };
+    } catch (error) {
+      console.log('Notification fetch error:', error);
+      setNotifications([]);
+      setLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchNotifications();
   }, []);
+
+  // Refresh notifications when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchNotifications();
+    }, [])
+  );
 
   function getNotificationIcon(type: string) {
     switch (type) {

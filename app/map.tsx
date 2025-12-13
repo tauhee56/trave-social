@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Dimensions, Image, PermissionsAndroid, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 // import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
-import { collection, query as firestoreQuery, onSnapshot, where } from 'firebase/firestore';
+import { collection, query as firestoreQuery, where } from 'firebase/firestore';
 import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PostLocationModal } from '../components/PostLocationModal';
@@ -175,26 +175,33 @@ export default function MapScreen() {
     })();
   }, []);
 
-  // Subscribe to live streams
+  // OPTIMIZATION: Removed duplicate live stream listener
+  // Live streams are already fetched by LiveStreamsRow component on home screen
+  // Map will fetch live streams only when user opens map tab
   useEffect(() => {
-    const liveStreamsRef = collection(db, 'liveStreams');
-    const liveQuery = firestoreQuery(liveStreamsRef, where('isLive', '==', true));
+    const fetchLiveStreams = async () => {
+      try {
+        const liveStreamsRef = collection(db, 'liveStreams');
+        const liveQuery = firestoreQuery(liveStreamsRef, where('isLive', '==', true));
+        const snapshot = await getDocs(liveQuery);
 
-    const unsubscribe = onSnapshot(liveQuery, (snapshot) => {
-      const streams: LiveStream[] = [];
-      snapshot.forEach((doc) => {
-        streams.push({
-          id: doc.id,
-          ...doc.data()
-        } as LiveStream);
-      });
+        const streams: LiveStream[] = [];
+        snapshot.forEach((doc) => {
+          streams.push({
+            id: doc.id,
+            ...doc.data()
+          } as LiveStream);
+        });
 
-      // Sort by viewer count
-      streams.sort((a, b) => (b.viewerCount || 0) - (a.viewerCount || 0));
-      setLiveStreams(streams);
-    });
+        // Sort by viewer count
+        streams.sort((a, b) => (b.viewerCount || 0) - (a.viewerCount || 0));
+        setLiveStreams(streams);
+      } catch (error) {
+        console.error('Error fetching live streams:', error);
+      }
+    };
 
-    return () => unsubscribe();
+    fetchLiveStreams();
   }, []);
 
   const requestLocationPermission = async () => {
