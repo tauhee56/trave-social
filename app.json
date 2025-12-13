@@ -2,7 +2,7 @@
   "expo": {
     "name": "trave-social",
     "slug": "trave-social",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2Ficon.png?alt=media&token=0b576d71-e1d3-47fd-8527-79293b4c3db1",
     "scheme": "trave-social",
