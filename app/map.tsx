@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Dimensions, Image, PermissionsAndroid, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 // import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
-import { collection, query as firestoreQuery, where } from 'firebase/firestore';
+import { collection, query as firestoreQuery, getDocs, where } from 'firebase/firestore';
 import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PostLocationModal } from '../components/PostLocationModal';
