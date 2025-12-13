@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signUpUser } from '../../lib/firebaseHelpers';
 import CustomButton from '../_components/auth/CustomButton';
@@ -35,28 +35,37 @@ export default function EmailSignUpScreen() {
 
   const handleNext = async () => {
     setError('');
-    
+
     // Validation
     if (!email || !email.includes('@')) {
       setError('Please enter a valid email');
       return;
     }
-    
+
     if (!password || password.length < 6) {
       setError('Password must be at least 6 characters');
       return;
     }
 
     setLoading(true);
-    
+
     try {
       // Use email username as name for now
       const username = email.split('@')[0];
       const result = await signUpUser(email, password, username);
-      
+
       if (result.success) {
-        // Successfully signed up - navigate to home
-        router.replace('/(tabs)/home');
+        // Show email verification alert
+        Alert.alert(
+          'Verify Your Email ✉️',
+          `A verification email has been sent to ${email}. Please check your inbox and verify your email to continue.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/(tabs)/home')
+            }
+          ]
+        );
       } else {
         setError(result.error || 'Sign up failed');
       }

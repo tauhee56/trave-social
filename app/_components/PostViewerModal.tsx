@@ -94,9 +94,9 @@ export default function PostViewerModal({
   return (
     <>
       <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }} edges={['top', 'bottom']}>
         {/* Header */}
-        <SafeAreaView style={styles.postViewerHeader} edges={['top']}>
+        <View style={styles.postViewerHeader}>
           <View style={styles.postViewerHeaderContent}>
             <TouchableOpacity onPress={onClose} style={styles.postViewerCloseBtn}>
               <Ionicons name="close" size={32} color="#fff" />
@@ -118,7 +118,7 @@ export default function PostViewerModal({
               </TouchableOpacity>
             )}
           </View>
-        </SafeAreaView>
+        </View>
 
         {/* Fullscreen vertical FlatList for posts */}
         <FlatList
@@ -138,9 +138,9 @@ export default function PostViewerModal({
           })}
           keyExtractor={(item) => item.id}
           renderItem={({ item: post }) => (
-            <View style={[styles.postViewerSlide, { height: SCREEN_HEIGHT }]}> 
+            <View style={styles.postViewerSlide}>
               {/* Unified Post Media Carousel (images + videos) */}
-              <View style={[styles.postImageContainer, { height: SCREEN_HEIGHT * 0.88 }]}> 
+              <View style={styles.postImageContainer}>
                 {(() => {
                   // Build unified media list (images + videos)
                   const images = Array.isArray(post?.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls : (post?.imageUrl ? [post.imageUrl] : []);
@@ -161,15 +161,15 @@ export default function PostViewerModal({
                         item.type === 'image' ? (
                           <ExpoImage
                             source={{ uri: String(item.url) }}
-                            style={[styles.postViewerImage, { height: SCREEN_HEIGHT * 0.88, width: SCREEN_WIDTH }]}
-                            contentFit="cover"
+                            style={styles.postViewerImage}
+                            contentFit="contain"
                           />
                         ) : (
-                          <View style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.88 }}>
+                          <View style={styles.postViewerImage}>
                             <ExpoImage
                               source={{ uri: String(item.url) }}
-                              style={[styles.postViewerImage, { height: SCREEN_HEIGHT * 0.88, width: SCREEN_WIDTH }]}
-                              contentFit="cover"
+                              style={{ width: '100%', height: '100%' }}
+                              contentFit="contain"
                             />
                           </View>
                         )
@@ -178,8 +178,8 @@ export default function PostViewerModal({
                   ) : (
                     <ExpoImage
                       source={{ uri: String(images[0] || videos[0] || '') }}
-                      style={[styles.postViewerImage, { height: SCREEN_HEIGHT * 0.88, width: SCREEN_WIDTH }]}
-                      contentFit="cover"
+                      style={styles.postViewerImage}
+                      contentFit="contain"
                     />
                   );
                 })()}
@@ -220,7 +220,7 @@ export default function PostViewerModal({
             </View>
           )}
         />
-      </View>
+      </SafeAreaView>
     </Modal>
     <Modal visible={showMenu} transparent animationType="fade" onRequestClose={() => setShowMenu(false)}>
       <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }} activeOpacity={1} onPress={() => setShowMenu(false)}>
@@ -314,20 +314,54 @@ export default function PostViewerModal({
 }
 
 const styles = StyleSheet.create({
-  postViewerHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, backgroundColor: 'rgba(0,0,0,0.5)' },
-  postViewerHeaderContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12 },
+  postViewerHeader: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)'
+  },
+  postViewerHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
   postViewerCloseBtn: { padding: 4 },
   postViewerUserInfo: { flexDirection: 'row', alignItems: 'center' },
   postViewerAvatar: { width: 32, height: 32, borderRadius: 16, marginRight: 8 },
   postViewerUsername: { color: '#fff', fontWeight: '700', fontSize: 15 },
   menuBtn: { padding: 4 },
-  postViewerSlide: { flex: 1, backgroundColor: '#000', justifyContent: 'flex-start' },
-  postImageContainer: { width: '100%', backgroundColor: '#000' },
-  postViewerImage: { width: '100%', height: '100%', borderRadius: 0 },
-  postActionsBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
+  postViewerSlide: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'flex-start'
+  },
+  postImageContainer: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  postViewerImage: {
+    width: SCREEN_WIDTH,
+    height: '100%'
+  },
+  postActionsBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0,0,0,0.3)'
+  },
   postActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   actionBtn: { padding: 8 },
-  captionContainer: { paddingHorizontal: 16, paddingVertical: 8 },
+  captionContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(0,0,0,0.3)'
+  },
   captionText: { color: '#fff', fontSize: 15 },
   captionUsername: { fontWeight: '700', color: '#fff' },
 });

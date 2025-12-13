@@ -241,6 +241,10 @@ export async function signUpUser(email: string, password: string, name: string) 
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
+    // Send email verification
+    const { sendEmailVerification } = await import('firebase/auth');
+    await sendEmailVerification(user);
+
     // Default avatar URL
     const defaultAvatar = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
 
@@ -257,6 +261,7 @@ export async function signUpUser(email: string, password: string, name: string) 
       website: '',
       avatar: defaultAvatar,
       photoURL: defaultAvatar,
+      emailVerified: false, // Track verification status
       createdAt: serverTimestamp(),
       followers: [],
       following: [],
@@ -265,7 +270,7 @@ export async function signUpUser(email: string, password: string, name: string) 
       followingCount: 0
     });
 
-    return { success: true, user };
+    return { success: true, user, emailSent: true };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
