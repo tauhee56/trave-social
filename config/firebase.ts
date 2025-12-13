@@ -1,5 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApps, initializeApp } from 'firebase/app';
-import { Auth, initializeAuth } from 'firebase/auth';
+import { Auth, getAuth, initializeAuth } from 'firebase/auth';
 import { Firestore, getFirestore } from 'firebase/firestore';
 import { FirebaseStorage, getStorage } from 'firebase/storage';
 
@@ -17,9 +18,27 @@ const firebaseConfig = {
 // Initialize Firebase (prevent duplicate)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
-// Initialize Firebase Auth (no persistence config for Expo)
-export const auth: Auth = initializeAuth(app);
+// Initialize Firebase Auth with AsyncStorage persistence
+// This ensures user stays logged in even after app restart
+// For React Native, we use a custom persistence implementation
+let auth: Auth;
+try {
+  // Try to initialize with custom persistence using AsyncStorage
+  auth = initializeAuth(app, {
+    persistence: {
+      _isAvailable: () => Promise.resolve(true),
+      _set: (key: string, value: any) => AsyncStorage.setItem(key, JSON.stringify(value)),
+      _get: (key: string) => AsyncStorage.getItem(key).then(value => value ? JSON.parse(value) : null),
+      _remove: (key: string) => AsyncStorage.removeItem(key),
+      type: 'LOCAL'
+    } as any
+  });
+} catch (error) {
+  // If already initialized, get existing instance
+  auth = getAuth(app);
+}
 
+export { auth };
 export const db: Firestore = getFirestore(app);
 export const storage: FirebaseStorage = getStorage(app);
 
