@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import * as Location from 'expo-location';
+import { useEffect, useState } from 'react';
 
 export function useCurrentLocation() {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);

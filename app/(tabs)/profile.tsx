@@ -17,12 +17,12 @@ import { fetchBlockedUserIds, filterOutBlocked } from '../../services/moderation
 import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
 import { CommentSection } from '../_components/CommentSection';
 import CreateHighlightModal from '../_components/CreateHighlightModal';
+import EditSectionsModal from '../_components/EditSectionsModal';
 import HighlightCarousel from '../_components/HighlightCarousel';
 import HighlightViewer from '../_components/HighlightViewer';
 import PostViewerModal from '../_components/PostViewerModal';
 import StoriesViewer from '../_components/StoriesViewer';
 import { useUser } from '../_components/UserContext';
-import EditSectionsModal from '../_components/EditSectionsModal';
 
 // Default avatar URL
 const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';

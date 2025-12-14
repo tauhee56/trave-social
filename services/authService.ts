@@ -1,32 +1,31 @@
-import { 
-  getAuth, 
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  sendPasswordResetEmail,
-  PhoneAuthProvider,
-  signInWithCredential,
-  RecaptchaVerifier,
-  signInWithPhoneNumber,
-  ConfirmationResult,
-  GoogleAuthProvider,
-  OAuthProvider,
-  signInWithPopup,
-  User
+import {
+    ConfirmationResult,
+    createUserWithEmailAndPassword,
+    GoogleAuthProvider,
+    OAuthProvider,
+    RecaptchaVerifier,
+    sendPasswordResetEmail,
+    signInWithEmailAndPassword,
+    signInWithPhoneNumber,
+    signInWithPopup,
+    signOut,
+    User
 } from 'firebase/auth';
-import { 
-  getFirestore, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  query, 
-  collection, 
-  where, 
-  getDocs 
+import {
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    getFirestore,
+    query,
+    setDoc,
+    where
 } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getDownloadURL, getStorage, ref, uploadBytes } from 'firebase/storage';
 
-const auth = getAuth();
+// IMPORTANT: Import auth from config/firebase.ts to use the same instance with AsyncStorage persistence
+import { auth } from '../config/firebase';
+
 const db = getFirestore();
 const storage = getStorage();
 

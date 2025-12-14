@@ -3,7 +3,7 @@ import type { Video as VideoType } from 'expo-av';
 import { ResizeMode, Video } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Dimensions, Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View, ScrollView } from "react-native";
+import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, PanResponder, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { getLocationVisitCount, likePost, unlikePost } from "../../lib/firebaseHelpers";
 import { CommentSection } from "./CommentSection";
 import SaveButton from "./SaveButton";
@@ -1010,71 +1010,77 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
         transparent={true}
         onRequestClose={() => setShowCommentsModal(false)}
       >
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            activeOpacity={1}
-            onPress={() => setShowCommentsModal(false)}
-          />
-          <View
-            style={{
-              backgroundColor: '#fff',
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-              height: '90%',
-              shadowColor: '#000',
-              shadowOpacity: 0.1,
-              shadowRadius: 12,
-              elevation: 10,
-              transform: [{ translateY: modalTranslateY }],
-            }}
-          >
-            {/* Swipe Handle */}
-            <View 
-              style={{ 
-                alignItems: 'center', 
-                paddingTop: 12, 
-                paddingBottom: 8,
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        >
+          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <TouchableOpacity
+              style={{ flex: 1 }}
+              activeOpacity={1}
+              onPress={() => setShowCommentsModal(false)}
+            />
+            <View
+              style={{
+                backgroundColor: '#fff',
                 borderTopLeftRadius: 20,
                 borderTopRightRadius: 20,
+                height: '90%',
+                shadowColor: '#000',
+                shadowOpacity: 0.1,
+                shadowRadius: 12,
+                elevation: 10,
+                transform: [{ translateY: modalTranslateY }],
               }}
-              {...panResponder.panHandlers}
             >
-              <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2 }} />
-            </View>
-
-            {/* Header */}
-            <View style={{ 
-              paddingHorizontal: 16, 
-              paddingBottom: 12, 
-              borderBottomWidth: 1, 
-              borderBottomColor: '#f0f0f0',
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}>
-              <Text style={{ fontWeight: '700', fontSize: 18, color: '#222' }}>Comments</Text>
-              <TouchableOpacity 
-                onPress={() => setShowCommentsModal(false)}
-                style={{ padding: 4 }}
+              {/* Swipe Handle */}
+              <View
+                style={{
+                  alignItems: 'center',
+                  paddingTop: 12,
+                  paddingBottom: 8,
+                  borderTopLeftRadius: 20,
+                  borderTopRightRadius: 20,
+                }}
+                {...panResponder.panHandlers}
               >
-                <Feather name="x" size={24} color="#666" />
-              </TouchableOpacity>
-            </View>
+                <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2 }} />
+              </View>
 
-            {/* Comments Section */}
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
-              <CommentSection
-                postId={post.id}
-                postOwnerId={post.userId}
-                currentAvatar={user?.photoURL || "https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d"}
-                maxHeight={undefined}
-                showInput={true}
-                highlightedCommentId={highlightedCommentId}
-              />
-            </ScrollView>
+              {/* Header */}
+              <View style={{
+                paddingHorizontal: 16,
+                paddingBottom: 12,
+                borderBottomWidth: 1,
+                borderBottomColor: '#f0f0f0',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <Text style={{ fontWeight: '700', fontSize: 18, color: '#222' }}>Comments</Text>
+                <TouchableOpacity
+                  onPress={() => setShowCommentsModal(false)}
+                  style={{ padding: 4 }}
+                >
+                  <Feather name="x" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Comments Section */}
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
+                <CommentSection
+                  postId={post.id}
+                  postOwnerId={post.userId}
+                  currentAvatar={user?.photoURL || "https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d"}
+                  maxHeight={undefined}
+                  showInput={true}
+                  highlightedCommentId={highlightedCommentId}
+                />
+              </ScrollView>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
