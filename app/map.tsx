@@ -580,9 +580,9 @@ const styles = StyleSheet.create({
   postAvatarOutside: {
     marginLeft: 4,
     marginRight: 0,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     borderWidth: 2,
     borderColor: '#fff',
     backgroundColor: '#fff',
@@ -595,9 +595,9 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   postAvatarImgFixed: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
 
   /* Live stream marker styles */

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApps, initializeApp } from 'firebase/app';
-import { Auth, getAuth, initializeAuth } from 'firebase/auth';
+import { Auth, getAuth, initializeAuth, Persistence } from 'firebase/auth';
 import { Firestore, getFirestore } from 'firebase/firestore';
 import { FirebaseStorage, getStorage } from 'firebase/storage';
 
@@ -18,23 +18,57 @@ const firebaseConfig = {
 // Initialize Firebase (prevent duplicate)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
-// Initialize Firebase Auth with AsyncStorage persistence
+// Custom AsyncStorage persistence for React Native
 // This ensures user stays logged in even after app restart
-// For React Native, we use a custom persistence implementation
+const customPersistence = {
+  type: 'LOCAL',
+  _isAvailable: async () => {
+    try {
+      await AsyncStorage.setItem('__test__', 'test');
+      await AsyncStorage.removeItem('__test__');
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  _set: async (key: string, value: any) => {
+    try {
+      await AsyncStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.error('AsyncStorage _set error:', error);
+      throw error;
+    }
+  },
+  _get: async (key: string) => {
+    try {
+      const value = await AsyncStorage.getItem(key);
+      return value ? JSON.parse(value) : null;
+    } catch (error) {
+      console.error('AsyncStorage _get error:', error);
+      return null;
+    }
+  },
+  _remove: async (key: string) => {
+    try {
+      await AsyncStorage.removeItem(key);
+    } catch (error) {
+      console.error('AsyncStorage _remove error:', error);
+      throw error;
+    }
+  }
+} as Persistence;
+
+// Initialize Firebase Auth with AsyncStorage persistence
 let auth: Auth;
 try {
   // Try to initialize with custom persistence using AsyncStorage
   auth = initializeAuth(app, {
-    persistence: {
-      _isAvailable: () => Promise.resolve(true),
-      _set: (key: string, value: any) => AsyncStorage.setItem(key, JSON.stringify(value)),
-      _get: (key: string) => AsyncStorage.getItem(key).then(value => value ? JSON.parse(value) : null),
-      _remove: (key: string) => AsyncStorage.removeItem(key),
-      type: 'LOCAL'
-    } as any
+    persistence: customPersistence
   });
-} catch (error) {
+  console.log('✅ Firebase Auth initialized with AsyncStorage persistence');
+} catch (error: any) {
   // If already initialized, get existing instance
+  console.log('⚠️ Auth already initialized, using existing instance:', error.message);
   auth = getAuth(app);
 }
 

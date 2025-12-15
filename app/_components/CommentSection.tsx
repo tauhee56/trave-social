@@ -309,11 +309,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+    <View style={styles.container}>
       {/* Comments List */}
       <ScrollView
         ref={scrollRef}
