@@ -3,7 +3,7 @@ import { Camera } from 'expo-camera';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from "react";
-import { Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, PermissionsAndroid, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, PermissionsAndroid, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // @ts-ignore
@@ -139,7 +139,7 @@ export default function WatchLiveScreen() {
       if (!AGORA_AVAILABLE) return;
 
       setIsInitializing(true);
-      
+
       // Request audio permissions for viewer (mic optional, but needed if they want to speak)
       if (Platform.OS === 'android') {
         const granted = await PermissionsAndroid.requestMultiple([
@@ -150,7 +150,7 @@ export default function WatchLiveScreen() {
       } else {
         await Camera.requestCameraPermissionsAsync();
       }
-      
+
       await joinLiveStream(streamId as string, currentUser!.uid);
 
       const engine = RtcEngine();
@@ -164,14 +164,23 @@ export default function WatchLiveScreen() {
       await engine.enableVideo();
       await engine.setClientRole(ClientRoleType.ClientRoleAudience);
 
-      engine.addListener('onUserJoined', (_connection: any, uid: number) => {
-        console.log('Remote user joined:', uid);
-        setRemoteUid(uid);
-      });
-
-      engine.addListener('onUserOffline', (_connection: any, uid: number) => {
-        console.log('Remote user left:', uid);
-        setRemoteUid(null);
+      // CRITICAL FIX: Register event handlers BEFORE joining channel
+      engine.registerEventHandler({
+        onUserJoined: (_connection: any, uid: number) => {
+          console.log('✅ Remote broadcaster joined:', uid);
+          setRemoteUid(uid);
+        },
+        onUserOffline: (_connection: any, uid: number) => {
+          console.log('❌ Remote broadcaster left:', uid);
+          setRemoteUid(null);
+        },
+        onJoinChannelSuccess: (_connection: any, elapsed: number) => {
+          console.log('✅ Successfully joined channel as viewer');
+          setIsJoined(true);
+        },
+        onError: (err: number, msg: string) => {
+          console.error('❌ Agora error:', err, msg);
+        }
       });
 
       const token = await getAgoraToken(channelName as string, uidRef.current);
@@ -180,6 +189,7 @@ export default function WatchLiveScreen() {
         clientRoleType: ClientRoleType.ClientRoleAudience,
       });
 
+      // Set joined immediately (will be confirmed by onJoinChannelSuccess)
       setIsJoined(true);
       setIsInitializing(false);
     } catch (error: any) {
@@ -410,11 +420,30 @@ export default function WatchLiveScreen() {
             zOrderMediaOverlay={false}
           />
         ) : (
-          <View style={[styles.videoBackground, { justifyContent: 'center', alignItems: 'center' }]}>
-            <Text style={{ color: '#fff', fontSize: 16 }}>Waiting for live video...</Text>
+          <View style={[styles.videoBackground, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
+            <ActivityIndicator size="large" color="#fff" style={{ marginBottom: 10 }} />
+            <Text style={{ color: '#fff', fontSize: 16 }}>Connecting to live stream...</Text>
+            <Text style={{ color: '#aaa', fontSize: 12, marginTop: 5 }}>Please wait</Text>
           </View>
         )}
       </View>
+
+      {/* Self Camera PiP - Show viewer's own camera when enabled */}
+      {showSelfCamera && AGORA_AVAILABLE && RtcSurfaceView && (
+        <View style={styles.selfCameraPip}>
+          <RtcSurfaceView
+            style={styles.pipImage}
+            canvas={{ uid: 0, sourceType: 1, renderMode: 2 }}
+            zOrderMediaOverlay={true}
+          />
+          <TouchableOpacity
+            style={styles.pipCloseBtn}
+            onPress={() => setShowSelfCamera(false)}
+          >
+            <Ionicons name="close-circle" size={24} color="rgba(255,255,255,0.8)" />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Comments Section - Always show comments */}
       <View style={styles.commentsContainer}>
@@ -458,23 +487,23 @@ export default function WatchLiveScreen() {
       <SafeAreaView style={styles.bottomOverlay} edges={['bottom']}>
         <View style={styles.bottomControlsRow}>
           {/* Camera/Selfie Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.controlBtn, showSelfCamera && styles.controlBtnActive]}
             onPress={() => setShowSelfCamera(!showSelfCamera)}
           >
             <Ionicons name="camera-outline" size={22} color={showSelfCamera ? "#fff" : "#333"} />
           </TouchableOpacity>
-          
+
           {/* Location Button - Green only when map is open */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.controlBtn, showMap && styles.controlBtnGreen]}
             onPress={() => setShowMap(!showMap)}
           >
             <Ionicons name="location" size={24} color={showMap ? "#fff" : "#333"} />
           </TouchableOpacity>
-          
+
           {/* Chat Button - Reddish when off, white bg when on */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.controlBtn, showComments ? styles.controlBtnActive : styles.controlBtnOff]}
             onPress={() => setShowComments(!showComments)}
           >
@@ -682,6 +711,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     zIndex: 15,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   pipImage: {
     width: '100%',
@@ -697,6 +728,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.8)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  pipCloseBtn: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    zIndex: 20,
   },
 
   // Bottom Controls
