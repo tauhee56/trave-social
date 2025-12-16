@@ -45,7 +45,10 @@ export default function LoginOptionsScreen() {
   };
 
   const handleSnapchatSignIn = async () => {
-    await signInWithSnapchat();
+    setLoading(true);
+    const result = await signInWithSnapchat();
+    await handleSocialAuthResult(result, router);
+    setLoading(false);
   };
 
   return (

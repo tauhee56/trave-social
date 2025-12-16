@@ -39,11 +39,17 @@ export default function WelcomeScreen() {
   };
 
   const handleTikTokSignIn = async () => {
-    await signInWithTikTok();
+    setLoading(true);
+    const result = await signInWithTikTok();
+    await handleSocialAuthResult(result, router);
+    setLoading(false);
   };
 
   const handleSnapchatSignIn = async () => {
-    await signInWithSnapchat();
+    setLoading(true);
+    const result = await signInWithSnapchat();
+    await handleSocialAuthResult(result, router);
+    setLoading(false);
   };
 
   return (
