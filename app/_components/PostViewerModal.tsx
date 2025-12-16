@@ -94,32 +94,7 @@ export default function PostViewerModal({
   return (
     <>
       <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }} edges={['top', 'bottom']}>
-        {/* Header */}
-        <View style={styles.postViewerHeader}>
-          <View style={styles.postViewerHeaderContent}>
-            <TouchableOpacity onPress={onClose} style={styles.postViewerCloseBtn}>
-              <Ionicons name="close" size={32} color="#fff" />
-            </TouchableOpacity>
-            <View style={{ flex: 1, alignItems: 'center' }}>
-              <View style={styles.postViewerUserInfo}>
-                <ExpoImage
-                  source={{ uri: String(profile?.avatar || 'https://via.placeholder.com/40') }}
-                  style={styles.postViewerAvatar}
-                />
-                <Text style={styles.postViewerUsername}>
-                  {String(profile?.username || profile?.name || '')}
-                </Text>
-              </View>
-            </View>
-            {authUser?.uid === posts[currentPostIndex]?.userId && (
-              <TouchableOpacity onPress={() => setShowMenu(true)} style={styles.menuBtn}>
-                <Ionicons name="ellipsis-vertical" size={24} color="#fff" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         {/* Fullscreen vertical FlatList for posts */}
         <FlatList
           data={posts}
@@ -184,39 +159,88 @@ export default function PostViewerModal({
                   );
                 })()}
               </View>
-              {/* Post Info & Actions */}
-              <View style={styles.postActionsBar}>
-                  <View style={styles.postActions}>
-                    <TouchableOpacity style={styles.actionBtn} onPress={() => handleLikePostAndRefresh(post.id)}>
-                      <Ionicons name={likedPosts[post.id] ? 'heart' : 'heart-outline'} size={28} color={likedPosts[post.id] ? '#e74c3c' : '#fff'} />
+
+              {/* Floating Header - Top */}
+              <View style={styles.floatingHeader}>
+                <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+                  <View style={styles.iconCircle}>
+                    <Ionicons name="arrow-back" size={24} color="#fff" />
+                  </View>
+                </TouchableOpacity>
+
+                <View style={styles.userInfoHeader}>
+                  <ExpoImage
+                    source={{ uri: String(profile?.avatar || 'https://via.placeholder.com/40') }}
+                    style={styles.headerAvatar}
+                  />
+                  <Text style={styles.headerUsername}>
+                    {String(profile?.username || profile?.name || '')}
+                  </Text>
+                </View>
+
+                {authUser?.uid === post?.userId && (
+                  <TouchableOpacity onPress={() => setShowMenu(true)} style={styles.menuBtn}>
+                    <View style={styles.iconCircle}>
+                      <Ionicons name="ellipsis-vertical" size={24} color="#fff" />
+                    </View>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Floating Actions & Info - Bottom */}
+              <View style={styles.floatingBottom}>
+                {/* Action Buttons */}
+                <View style={styles.actionsRow}>
+                  <View style={styles.leftActions}>
+                    <TouchableOpacity style={styles.actionButton} onPress={() => handleLikePostAndRefresh(post.id)}>
+                      <Ionicons
+                        name={likedPosts[post.id] ? 'heart' : 'heart-outline'}
+                        size={32}
+                        color={likedPosts[post.id] ? '#ff3b5c' : '#fff'}
+                      />
+                      <Text style={styles.actionCount}>
+                        {Array.isArray(post?.likes) ? post.likes.length : 0}
+                      </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionBtn} onPress={() => {
+
+                    <TouchableOpacity style={styles.actionButton} onPress={() => {
                       setCommentModalPostId(post.id);
                       setCommentModalAvatar(String(profile?.avatar || ''));
                       setCommentModalVisible(true);
                     }}>
-                      <Ionicons name="chatbubble-outline" size={26} color="#fff" />
+                      <Ionicons name="chatbubble-outline" size={30} color="#fff" />
+                      <Text style={styles.actionCount}>
+                        {typeof post?.commentsCount === 'number' ? post.commentsCount : (Array.isArray(post?.comments) ? post.comments.length : 0)}
+                      </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionBtn} onPress={() => handleSharePost(post)}>
-                      <Ionicons name="paper-plane-outline" size={26} color="#fff" />
+
+                    <TouchableOpacity style={styles.actionButton} onPress={() => handleSharePost(post)}>
+                      <Ionicons name="paper-plane-outline" size={28} color="#fff" />
                     </TouchableOpacity>
                   </View>
-                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleSavePost(post)}>
-                    <Ionicons name={savedPosts[post.id] ? 'bookmark' : 'bookmark-outline'} size={26} color="#fff" />
+
+                  <TouchableOpacity style={styles.actionButton} onPress={() => handleSavePost(post)}>
+                    <Ionicons
+                      name={savedPosts[post.id] ? 'bookmark' : 'bookmark-outline'}
+                      size={30}
+                      color={savedPosts[post.id] ? '#ffd700' : '#fff'}
+                    />
                   </TouchableOpacity>
-              </View>
-              {/* Caption */}
-              {post?.caption && typeof post.caption === 'string' && post.caption.trim() && (
-                <View style={styles.captionContainer}>
-                  <Text style={styles.captionText}>
-                    <Text style={styles.captionUsername}>
-                      {String(profile?.username || profile?.name || '')}
-                    </Text>
-                    {' '}
-                    {post.caption}
-                  </Text>
                 </View>
-              )}
+
+                {/* Caption */}
+                {post?.caption && typeof post.caption === 'string' && post.caption.trim() && (
+                  <View style={styles.captionBox}>
+                    <Text style={styles.captionText} numberOfLines={3}>
+                      <Text style={styles.captionUsername}>
+                        {String(profile?.username || profile?.name || '')}
+                      </Text>
+                      {' '}
+                      {post.caption}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
           )}
         />
@@ -314,54 +338,134 @@ export default function PostViewerModal({
 }
 
 const styles = StyleSheet.create({
-  postViewerHeader: {
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)'
-  },
-  postViewerHeaderContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8
-  },
-  postViewerCloseBtn: { padding: 4 },
-  postViewerUserInfo: { flexDirection: 'row', alignItems: 'center' },
-  postViewerAvatar: { width: 32, height: 32, borderRadius: 16, marginRight: 8 },
-  postViewerUsername: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  menuBtn: { padding: 4 },
-  postViewerSlide: {
+  container: {
     flex: 1,
+    backgroundColor: '#000'
+  },
+  postViewerSlide: {
+    height: SCREEN_HEIGHT,
+    width: SCREEN_WIDTH,
     backgroundColor: '#000',
-    justifyContent: 'flex-start'
+    position: 'relative'
   },
   postImageContainer: {
-    flex: 1,
-    width: '100%',
-    backgroundColor: '#000',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    backgroundColor: '#000'
   },
   postViewerImage: {
     width: SCREEN_WIDTH,
     height: '100%'
   },
-  postActionsBar: {
+
+  // Floating Header
+  floatingHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: 'rgba(0,0,0,0.3)'
+    backgroundColor: 'linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 100%)',
+    zIndex: 10
   },
-  postActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  actionBtn: { padding: 8 },
-  captionContainer: {
+  closeBtn: {
+    padding: 4
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)'
+  },
+  userInfoHeader: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 12
+  },
+  headerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#fff',
+    marginRight: 10
+  },
+  headerUsername: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4
+  },
+  menuBtn: {
+    padding: 4
+  },
+
+  // Floating Bottom
+  floatingBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: 'rgba(0,0,0,0.3)'
+    paddingBottom: 20,
+    paddingTop: 16,
+    backgroundColor: 'linear-gradient(0deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 100%)',
+    zIndex: 10
   },
-  captionText: { color: '#fff', fontSize: 15 },
-  captionUsername: { fontWeight: '700', color: '#fff' },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12
+  },
+  leftActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20
+  },
+  actionButton: {
+    alignItems: 'center',
+    gap: 4
+  },
+  actionCount: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3
+  },
+  captionBox: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)'
+  },
+  captionText: {
+    color: '#fff',
+    fontSize: 15,
+    lineHeight: 20
+  },
+  captionUsername: {
+    fontWeight: '700',
+    color: '#fff'
+  }
 });
