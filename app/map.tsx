@@ -410,10 +410,10 @@ export default function MapScreen() {
                     >
                       <TouchableOpacity activeOpacity={0.9} style={styles.markerContainer} onPress={handleMarkerPress}>
                         <View style={styles.postImageWrapper}>
-                          <Image source={{ uri: post.imageUrl }} style={styles.postImage} />
+                          <Image source={{ uri: post.imageUrl }} style={styles.postImage} resizeMode="cover" />
                         </View>
                         <View style={styles.postAvatarOutside}>
-                          <Image source={{ uri: post.userAvatar || DEFAULT_AVATAR_URL }} style={styles.postAvatarImgFixed} />
+                          <Image source={{ uri: post.userAvatar || DEFAULT_AVATAR_URL }} style={styles.postAvatarImgFixed} resizeMode="cover" />
                         </View>
                       </TouchableOpacity>
                     </Marker>
