@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCurrentUser } from '../lib/firebaseHelpers';
-import { getPassportTickets } from '../lib/firebaseHelpers/passport';
+import { addPassportTicket, getPassportTickets } from '../lib/firebaseHelpers/passport';
 
 // Conditionally import location service
 let getCurrentLocation: any = null;
@@ -119,9 +119,36 @@ export default function PassportScreen() {
     }
   };
 
-  const handleAddToPassport = () => {
-    // TODO: Add stamp to database
-    setShowAddModal(false);
+  const handleAddToPassport = async () => {
+    if (!userId || !currentLocation?.city || !currentLocation?.country) {
+      alert('Location information is missing');
+      return;
+    }
+
+    try {
+      const ticket = {
+        city: currentLocation.city,
+        country: currentLocation.country,
+        countryCode: currentLocation.countryCode || '',
+        visitDate: Date.now(),
+        imageUrl: `https://source.unsplash.com/800x600/?${currentLocation.city},${currentLocation.country}`,
+        notes: `Visited on ${new Date().toLocaleDateString()}`
+      };
+
+      const result = await addPassportTicket(userId, ticket);
+
+      if (result.success) {
+        alert('Passport stamp added successfully! 🎉');
+        setShowAddModal(false);
+        // Reload stamps
+        await loadPassportData();
+      } else {
+        alert(result.error || 'Failed to add passport stamp');
+      }
+    } catch (error: any) {
+      console.error('Error adding passport stamp:', error);
+      alert(error.message || 'Failed to add passport stamp');
+    }
   };
 
   const handleStampPress = (stamp: PassportStamp, index: number) => {

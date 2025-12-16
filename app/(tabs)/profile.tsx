@@ -466,7 +466,7 @@ export default function Profile({ userIdProp }: any) {
 
   // UI
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Header for other users' profiles with back button and 3-dots menu */}
       {!isOwnProfile && (
         <View style={styles.profileHeader}>
