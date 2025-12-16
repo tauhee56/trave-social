@@ -1,5 +1,5 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { Tabs, useRouter, useSegments } from "expo-router";
+import { Tabs, useRouter, useSegments, useFocusEffect } from "expo-router";
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -207,25 +207,28 @@ function TopMenu() {
     return () => { isMounted = false; };
   }, []);
 
-  React.useEffect(() => {
-    async function fetchCounts() {
-      const user = getCurrentUser() as { uid: string } | null;
-      if (!user || !user.uid) return;
-      // Notifications
-        const notifRes = await getUserNotifications(user.uid);
-        if (Array.isArray(notifRes)) {
-          const unread = notifRes.filter((n: any) => n && typeof n.read === 'boolean' ? n.read === false : false);
-          setUnreadNotif(unread.length);
-        }
-      // Messages
-        const msgRes = await getUserConversations(user.uid);
-        if (Array.isArray(msgRes)) {
-          const unreadMsgs = msgRes.reduce((sum: number, convo: any) => sum + (convo.unread || 0), 0);
-          setUnreadMsg(unreadMsgs);
-        }
-    }
-    fetchCounts();
-  }, []);
+  // Refresh badge counts when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      async function fetchCounts() {
+        const user = getCurrentUser() as { uid: string } | null;
+        if (!user || !user.uid) return;
+        // Notifications
+          const notifRes = await getUserNotifications(user.uid);
+          if (Array.isArray(notifRes)) {
+            const unread = notifRes.filter((n: any) => n && typeof n.read === 'boolean' ? n.read === false : false);
+            setUnreadNotif(unread.length);
+          }
+        // Messages
+          const msgRes = await getUserConversations(user.uid);
+          if (Array.isArray(msgRes)) {
+            const unreadMsgs = msgRes.reduce((sum: number, convo: any) => sum + (convo.unread || 0), 0);
+            setUnreadMsg(unreadMsgs);
+          }
+      }
+      fetchCounts();
+    }, [])
+  );
 
   return (
     <View style={[styles.topMenu, { justifyContent: 'flex-start' }]}> 

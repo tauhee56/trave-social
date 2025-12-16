@@ -2,6 +2,7 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import type { Video as VideoType } from 'expo-av';
 import { ResizeMode, Video } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, PanResponder, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { getLocationVisitCount, likePost, unlikePost } from "../../lib/firebaseHelpers";
@@ -618,13 +619,26 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
     }
   };
 
+  const router = useRouter();
+
   return (
     <View style={{ flex: 1, backgroundColor: appColors.background }}>
-      <View style={[styles.card, { backgroundColor: appColors.background }]}> 
+      <View style={[styles.card, { backgroundColor: appColors.background }]}>
         {/* Top section: Location/Visits (left), Avatar (right) */}
         <View style={styles.topRow}>
-          {/* Location and Visits (left) */}
-          <View style={styles.locationInfo}>
+          {/* Location and Visits (left) - CLICKABLE */}
+          <TouchableOpacity
+            style={styles.locationInfo}
+            activeOpacity={0.7}
+            onPress={() => {
+              // Navigate to location screen if placeId exists
+              if (post?.locationData?.placeId) {
+                router.push(`/location/${post.locationData.placeId}` as any);
+              } else {
+                console.log('No placeId available for this post');
+              }
+            }}
+          >
             <View style={styles.locationRow}>
               {/* Show verified badge if location is verified, otherwise show map pin */}
               {post?.locationData?.verified ? (
@@ -633,7 +647,6 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 </View>
               ) : (
                 <View style={styles.locationIconBox}>
-                  {/* Map marker is now non-clickable */}
                   <Feather name="map-pin" size={20} color="#111" />
                 </View>
               )}
@@ -644,15 +657,25 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 <Text style={styles.visits}>{visitCount.toLocaleString()} Visits</Text>
               </View>
             </View>
-          </View>
-          {/* Avatar (right) */}
-          <View>
+          </TouchableOpacity>
+          {/* Avatar (right) - CLICKABLE */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              // Navigate to user profile
+              if (post?.userId) {
+                router.push(`/user-profile/${post.userId}` as any);
+              } else {
+                console.log('No userId available for this post');
+              }
+            }}
+          >
             <ExpoImage
               source={{ uri: currentAvatar }}
               style={styles.avatar}
               contentFit="cover"
             />
-          </View>
+          </TouchableOpacity>
         </View>
         {/* Media content: Image/Video */}
         {/* Image carousel if images exist */}
