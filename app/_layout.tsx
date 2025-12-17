@@ -15,6 +15,20 @@ LogBox.ignoreLogs([
   'Native part of Reanimated doesn\'t seem to be initialized', // Suppress in Expo Go
 ]);
 
+// Silence noisy logs in production for performance
+if (!__DEV__) {
+  const noop = () => {};
+  // Keep warn/error visible
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  console.debug = noop as any;
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  console.log = noop as any;
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  console.time = noop as any;
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  console.timeEnd = noop as any;
+}
+
 export default function RootLayout() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);

@@ -18,21 +18,22 @@ const firebaseConfig = {
 // Initialize Firebase (prevent duplicate)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
+// Initialize Firestore with settings for better performance
+const db: Firestore = getFirestore(app);
+
 // Initialize Firebase Auth with React Native persistence
 let auth: Auth;
 try {
   auth = initializeAuth(app, {
     persistence: getReactNativePersistence(AsyncStorage),
   });
-  console.log('✅ Firebase Auth initialized with React Native persistence');
+  console.log('✅ Firebase Auth initialized');
 } catch (error: any) {
   // If already initialized, get existing instance
-  console.log('⚠️ Auth already initialized, using existing instance:', error?.message ?? error);
   auth = getAuth(app);
 }
 
-export { auth };
-export const db: Firestore = getFirestore(app);
+export { auth, db };
 export const storage: FirebaseStorage = getStorage(app);
 
 export default app;

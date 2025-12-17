@@ -60,6 +60,37 @@ type Highlight = {
   stories: { id: string; image: string }[];
 };
 
+// Marker component to keep map re-rendering until images load (or timeout)
+const ProfilePostMarker: React.FC<{ lat: number; lon: number; imageUrl: string; avatarUrl: string; onPress: () => void }> = ({ lat, lon, imageUrl, avatarUrl, onPress }) => {
+  const [tracks, setTracks] = useState(true);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [avatarLoaded, setAvatarLoaded] = useState(false);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setTracks(false), 1500);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    if (imgLoaded && avatarLoaded) setTracks(false);
+  }, [imgLoaded, avatarLoaded]);
+
+  return (
+    <Marker coordinate={{ latitude: lat, longitude: lon }} tracksViewChanges={tracks} onPress={onPress}>
+      <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={{ backgroundColor: 'transparent' }}>
+        <View style={{ position: 'relative', width: 48, height: 48 }}>
+          <View style={{ width: 48, height: 48, borderRadius: 12, borderWidth: 2, borderColor: '#ffa726', overflow: 'hidden', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 }}>
+            <ExpoImage source={{ uri: imageUrl }} style={{ width: 44, height: 44, borderRadius: 10 }} contentFit="cover" cachePolicy="memory-disk" priority="high" transition={150} onLoad={() => setImgLoaded(true)} />
+          </View>
+          <View style={{ position: 'absolute', top: -2, right: -2, width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#fff', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 4 }}>
+            <ExpoImage source={{ uri: avatarUrl }} style={{ width: 16, height: 16, borderRadius: 8 }} contentFit="cover" cachePolicy="memory-disk" priority="high" onLoad={() => setAvatarLoaded(true)} />
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Marker>
+  );
+};
+
 type ProfileData = {
   id: string;
   uid: string;
@@ -81,28 +112,10 @@ type ProfileData = {
 };
 
 export default function Profile({ userIdProp }: any) {
-      // Skeleton loader for posts
-      const renderSkeletonPosts = () => (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 0 }}>
-          {Array.from({ length: POSTS_PER_PAGE }).map((_, idx) => (
-            <View key={idx} style={{ flexBasis: '25%', aspectRatio: 1, padding: 1 }}>
-              <View style={{ backgroundColor: '#eee', borderRadius: 8, width: '100%', height: '100%' }} />
-            </View>
-          ))}
-        </View>
-      );
-    // Pagination state for posts
-    const [postsPage, setPostsPage] = useState(1);
-    const POSTS_PER_PAGE = 12;
-    const [loadingMorePosts, setLoadingMorePosts] = useState(false);
+  // Constants
+  const POSTS_PER_PAGE = 12;
+
   // State and context
-  // Fix: Add missing handler for loading more posts
-  const handleLoadMorePosts = () => {
-    if (loadingMorePosts) return;
-    setLoadingMorePosts(true);
-    setPostsPage(prev => prev + 1);
-    setLoadingMorePosts(false);
-  };
   const [storiesViewerVisible, setStoriesViewerVisible] = useState(false);
   const [userStories, setUserStories] = useState<any[]>([]);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
@@ -464,6 +477,17 @@ export default function Profile({ userIdProp }: any) {
     loadData();
   }, [viewedUserId]);
 
+  // Render helpers
+  const renderSkeletonPosts = () => (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 0 }}>
+      {Array.from({ length: POSTS_PER_PAGE }).map((_, idx) => (
+        <View key={idx} style={{ flexBasis: '25%', aspectRatio: 1, padding: 1 }}>
+          <View style={{ backgroundColor: '#eee', borderRadius: 8, width: '100%', height: '100%' }} />
+        </View>
+      ))}
+    </View>
+  );
+
   // UI
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -746,32 +770,20 @@ export default function Profile({ userIdProp }: any) {
                 const imageUrl = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls[0] : DEFAULT_IMAGE_URL);
                 const avatarUrl = post.userAvatar || profile?.avatar || authUser?.photoURL || DEFAULT_AVATAR_URL;
                 
-                // Custom marker for both Android and iOS
+                // Marker with tracksViewChanges true until images are loaded
                 return (
-                  <Marker
+                  <ProfilePostMarker
                     key={`post-${post.id}`}
-                    coordinate={{ latitude: lat, longitude: lon }}
-                    tracksViewChanges={false}
+                    lat={lat}
+                    lon={lon}
+                    imageUrl={imageUrl}
+                    avatarUrl={avatarUrl}
                     onPress={() => {
-                      setTimeout(() => {
-                        const postIndex = posts.findIndex(p => p.id === post.id);
-                        setSelectedPostIndex(postIndex);
-                        setPostViewerVisible(true);
-                      }, 0);
-                    }}
-                  >
-                    <TouchableOpacity activeOpacity={0.9} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent' }} onPress={() => {
-                      setSelectedPostIndex(posts.findIndex(p => p.id === post.id));
+                      const postIndex = posts.findIndex(p => p.id === post.id);
+                      setSelectedPostIndex(postIndex);
                       setPostViewerVisible(true);
-                    }}>
-                      <View style={{ width: 48, height: 48, borderRadius: 12, borderWidth: 3, borderColor: '#ffa726', overflow: 'hidden', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 }}>
-                        <ExpoImage source={{ uri: imageUrl }} style={{ width: 44, height: 44, borderRadius: 10 }} contentFit="cover" cachePolicy="memory-disk" />
-                      </View>
-                      <View style={{ marginLeft: 4, marginRight: 0, width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: '#fff', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 }}>
-                        <ExpoImage source={{ uri: avatarUrl }} style={{ width: 34, height: 34, borderRadius: 17 }} contentFit="cover" cachePolicy="memory-disk" />
-                      </View>
-                    </TouchableOpacity>
-                  </Marker>
+                    }}
+                  />
                 );
               })}
             </MapView>

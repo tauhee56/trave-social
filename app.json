@@ -57,7 +57,9 @@
               "manifestPlaceholders": {
                 "appAuthRedirectScheme": "trave-social",
                 "traveSocialScheme": "trave-social"
-              }
+              },
+              "enableProguardInReleaseBuilds": true,
+              "enableShrinkResourcesInReleaseBuilds": true
           }
         }
       ],
@@ -121,9 +123,9 @@
       "AGORA_APP_ID": "29320482381a43498eb8ca3e222b6e34",
       "AGORA_APP_CERTIFICATE": "e8372567e0334d75add0ec3f597fb67b",
       "eas": {
-        "projectId": "70506856-740f-458c-809a-bce827cd3c1b"
+        "projectId": "e4252e97-9a55-4b25-8090-837a8546f612"
       }
     },
-    "owner": "martin06000"
+    "owner": "tuhee"
   }
 }

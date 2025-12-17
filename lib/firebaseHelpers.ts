@@ -42,6 +42,7 @@ export function subscribeToConversations(userId: string, callback: (conversation
     callback(conversations);
   });
 }
+import * as FileSystem from 'expo-file-system';
 import {
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
@@ -70,10 +71,10 @@ import {
     deleteObject,
     getDownloadURL,
     ref,
-    uploadBytes
+    uploadBytes,
+    uploadString
 } from 'firebase/storage';
 import { auth, db, storage } from '../config/firebase';
-import * as FileSystem from 'expo-file-system';
 
 // Runtime guard for Firestore instance
 if (!db) {
@@ -325,21 +326,36 @@ export async function updateUserProfile(uid: string, data: any) {
 
 export async function uploadImage(uri: string, path: string): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
-    let sourceUri = uri;
+    let sourceUri = uri || '';
 
-    // Some Android devices return content:// URIs which fetch() cannot read.
-    // Copy to a temporary file path first to ensure a file:// URI.
+    if (!sourceUri) {
+      throw new Error('Invalid image URI');
+    }
+
+    // If Android returns a content URI, copy to cache to get a file path
     if (sourceUri.startsWith('content://')) {
       const tempPath = `${FileSystem.cacheDirectory}upload-${Date.now()}.jpg`;
       await FileSystem.copyAsync({ from: sourceUri, to: tempPath });
       sourceUri = tempPath;
     }
 
-    const response = await fetch(sourceUri);
-    const blob = await response.blob();
-
     const storageRef = ref(storage, path);
-    await uploadBytes(storageRef, blob);
+
+    // Remote HTTP(S) URL → fetch blob and upload
+    if (sourceUri.startsWith('http://') || sourceUri.startsWith('https://')) {
+      const response = await fetch(sourceUri);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status}`);
+      }
+      const blob = await response.blob();
+      await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+    } else {
+      // Local file path (file:// or plain path) → read as base64 and upload
+      const base64 = await FileSystem.readAsStringAsync(sourceUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      await uploadString(storageRef, base64, 'base64', { contentType: 'image/jpeg' });
+    }
 
     const downloadURL = await getDownloadURL(storageRef);
     return { success: true, url: downloadURL };
@@ -448,7 +464,7 @@ export async function getLocationVisitCount(location: string): Promise<number> {
     return 0;
   }
 }
-export async function getAllPosts(limitCount: number = 100) {
+export async function getAllPosts(limitCount: number = 50) {
   try {
     const q = query(
       collection(db, 'posts'), 
@@ -462,6 +478,7 @@ export async function getAllPosts(limitCount: number = 100) {
     }));
     return { success: true, posts, data: posts };
   } catch (error: any) {
+    console.error('getAllPosts error:', error);
     return { success: false, error: error.message };
   }
 }

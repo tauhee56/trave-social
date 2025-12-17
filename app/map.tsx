@@ -93,15 +93,16 @@ export default function MapScreen() {
 
       useEffect(() => {
         setLoading(true);
-        // Fetch posts with cache (avoid refetching within 30 seconds)
+        // Fetch posts with cache (avoid refetching within 60 seconds)
         const now = Date.now();
-        if (postsCache.current.length > 0 && (now - lastFetchTime.current) < 30000) {
+        if (postsCache.current.length > 0 && (now - lastFetchTime.current) < 60000) {
           setPosts(postsCache.current);
           setLoading(false);
           return;
         }
 
-        getAllPosts(100).then(res => { // Reduced from 150 to 100 for faster loading
+        // Reduced limit to 50 for much faster loading
+        getAllPosts(50).then(res => {
           if (res.success) {
             const postsArray = Array.isArray(res.posts) ? res.posts : [];
             setPosts(postsArray);
@@ -335,6 +336,64 @@ export default function MapScreen() {
   });
   console.log('Map: validRegion:', validRegion, 'hasValidMarkers:', hasValidMarkers);
 
+  // Marker component that keeps tracksViewChanges true until images load (or timeout)
+  const PostMarker: React.FC<{ post: PostType; postsAtLocation: PostType[] }> = ({ post, postsAtLocation }) => {
+    const [tracks, setTracks] = useState(true);
+    const [imgLoaded, setImgLoaded] = useState(false);
+    const [avatarLoaded, setAvatarLoaded] = useState(false);
+
+    useEffect(() => {
+      const timeout = setTimeout(() => setTracks(false), 1500);
+      return () => clearTimeout(timeout);
+    }, []);
+
+    useEffect(() => {
+      if (imgLoaded && avatarLoaded) setTracks(false);
+    }, [imgLoaded, avatarLoaded]);
+
+    const handleMarkerPress = () => {
+      if (isValidLatLon(Number(post.lat), Number(post.lon))) {
+        setSelectedPosts(postsAtLocation);
+      }
+    };
+
+    return (
+      <Marker
+        key={`post-${post.id}`}
+        coordinate={{ latitude: Number(post.lat), longitude: Number(post.lon) }}
+        tracksViewChanges={tracks}
+        onPress={handleMarkerPress}
+        anchor={{ x: 0.5, y: 0.5 }}
+      >
+        <View style={styles.markerContainer}>
+          <View style={styles.postImageWrapper}>
+            {post.imageUrl && (
+              <ExpoImage
+                source={{ uri: post.imageUrl }}
+                style={styles.postImage}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={150}
+                onLoad={() => setImgLoaded(true)}
+              />
+            )}
+          </View>
+          <View style={styles.postAvatarOutside}>
+            {(post.userAvatar || DEFAULT_AVATAR_URL) && (
+              <ExpoImage
+                source={{ uri: post.userAvatar || DEFAULT_AVATAR_URL }}
+                style={styles.postAvatarImgFixed}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                onLoad={() => setAvatarLoaded(true)}
+              />
+            )}
+          </View>
+        </View>
+      </Marker>
+    );
+  };
+
   // UI render
   // Helper: get streamer location from liveStreams (first live stream)
   const streamer = safeLiveStreams.length > 0 ? safeLiveStreams[0] : null;
@@ -406,47 +465,7 @@ export default function MapScreen() {
                   typeof post.imageUrl === 'string' && post.imageUrl &&
                   isFinite(Number(post.lat)) && isFinite(Number(post.lon))
                 ) {
-                  const handleMarkerPress = () => {
-                    if (isValidLatLon(post.lat, post.lon)) {
-                      setSelectedPosts(safePostsAtLocation);
-                    } else {
-                      console.warn('Invalid marker coordinates, cannot open modal');
-                    }
-                  };
-                  // Optimized marker without TouchableOpacity wrapper
-                  return (
-                    <Marker
-                      key={`post-${key}`}
-                      coordinate={{ latitude: Number(post.lat), longitude: Number(post.lon) }}
-                      tracksViewChanges={false}
-                      onPress={handleMarkerPress}
-                      anchor={{ x: 0.5, y: 0.5 }}
-                    >
-                      <View style={styles.markerContainer}>
-                        <View style={styles.postImageWrapper}>
-                          {post.imageUrl && (
-                            <ExpoImage
-                              source={{ uri: post.imageUrl }}
-                              style={styles.postImage}
-                              contentFit="cover"
-                              cachePolicy="memory-disk"
-                              transition={200}
-                            />
-                          )}
-                        </View>
-                        <View style={styles.postAvatarOutside}>
-                          {(post.userAvatar || DEFAULT_AVATAR_URL) && (
-                            <ExpoImage
-                              source={{ uri: post.userAvatar || DEFAULT_AVATAR_URL }}
-                              style={styles.postAvatarImgFixed}
-                              contentFit="cover"
-                              cachePolicy="memory-disk"
-                            />
-                          )}
-                        </View>
-                      </View>
-                    </Marker>
-                  );
+                  return <PostMarker key={`post-${key}`} post={post as any} postsAtLocation={safePostsAtLocation as any} />;
                 }
               } catch (err) {
                 console.error('Error rendering marker:', err, key, postsAtLocation);
@@ -608,8 +627,8 @@ const styles = StyleSheet.create({
   },
   postAvatarOutside: {
     position: 'absolute',
-    top: -8,
-    right: -8,
+    top: -2,
+    right: -4,
     width: 22,
     height: 22,
     borderRadius: 11,

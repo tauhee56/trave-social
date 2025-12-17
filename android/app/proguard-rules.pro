@@ -20,6 +20,8 @@
 # Agora RTC
 -keep class io.agora.** { *; }
 -dontwarn io.agora.**
+-keep class com.google.devtools.build.android.desugar.runtime.** { *; }
+-dontwarn com.google.devtools.build.android.desugar.runtime.**
 
 # React Native
 -keep class com.facebook.react.** { *; }

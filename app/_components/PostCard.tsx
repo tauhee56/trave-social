@@ -4,7 +4,7 @@ import { ResizeMode, Video } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, PanResponder, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { getLocationVisitCount, likePost, unlikePost } from "../../lib/firebaseHelpers";
 import { CommentSection } from "./CommentSection";
 import SaveButton from "./SaveButton";
@@ -631,11 +631,34 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
             style={styles.locationInfo}
             activeOpacity={0.7}
             onPress={() => {
-              // Navigate to location screen if placeId exists
-              if (post?.locationData?.placeId) {
-                router.push(`/location/${post.locationData.placeId}` as any);
+              // Navigate to location screen with location details
+              const locationToUse = post?.locationData?.name || post?.locationName || post?.location;
+              const addressToUse = post?.locationData?.address || locationToUse;
+              
+              if (locationToUse) {
+                // Use placeId if available, otherwise use location name
+                if (post?.locationData?.placeId) {
+                  router.push({
+                    pathname: `/location/[placeId]`,
+                    params: {
+                      placeId: post.locationData.placeId,
+                      locationName: locationToUse,
+                      locationAddress: addressToUse
+                    }
+                  } as any);
+                } else {
+                  // Navigate with location name even without placeId
+                  router.push({
+                    pathname: `/location/[placeId]`,
+                    params: {
+                      placeId: 'custom',
+                      locationName: locationToUse,
+                      locationAddress: addressToUse
+                    }
+                  } as any);
+                }
               } else {
-                console.log('No placeId available for this post');
+                console.log('No location available for this post');
               }
             }}
           >
@@ -1034,9 +1057,9 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
         onRequestClose={() => setShowCommentsModal(false)}
       >
         <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+           style={{ flex: 1 }}
+           behavior='padding'
+           keyboardVerticalOffset={0}
         >
           <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <TouchableOpacity
@@ -1054,7 +1077,6 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 shadowOpacity: 0.1,
                 shadowRadius: 12,
                 elevation: 10,
-                transform: [{ translateY: modalTranslateY }],
               }}
             >
               {/* Swipe Handle */}

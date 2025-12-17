@@ -224,6 +224,8 @@ export async function signInWithTikTok() {
   try {
     const { makeRedirectUri } = await import('expo-auth-session');
     const ExpoCrypto = await import('expo-crypto');
+    // Warm up browser to reduce first-open latency
+    try { await WebBrowser.warmUpAsync(); } catch {}
     
     // TikTok OAuth configuration from developer console
     const TIKTOK_CLIENT_KEY = 'awel823341vepyyl';
@@ -238,7 +240,9 @@ export async function signInWithTikTok() {
     // Redirect URI - must match TikTok Developer Console
     const redirectUri = makeRedirectUri({
       scheme: 'trave-social',
-      path: 'oauth/redirect'
+      path: 'oauth/redirect',
+      preferLocalhost: false,
+      isTripleSlashed: true,
     });
     
     // Generate random state for CSRF protection (required by TikTok)
@@ -251,7 +255,7 @@ export async function signInWithTikTok() {
     console.log('TikTok State:', state);
     
     // Open TikTok authorization URL with required state parameter
-    const authUrl = `${discovery.authorizationEndpoint}?client_key=${TIKTOK_CLIENT_KEY}&scope=user.info.basic&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+    const authUrl = `${discovery.authorizationEndpoint}?client_key=${TIKTOK_CLIENT_KEY}&scope=user.info.basic&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&prompt=consent`;
     
     console.log('TikTok Auth URL:', authUrl);
     
@@ -278,6 +282,9 @@ export async function signInWithTikTok() {
       }
       
       // Exchange code for access token
+      // Add timeout to token exchange
+      const tokenAbort = new AbortController();
+      const tokenTimeout = setTimeout(() => tokenAbort.abort(), 12000);
       const tokenResponse = await fetch(discovery.tokenEndpoint, {
         method: 'POST',
         headers: {
@@ -290,7 +297,9 @@ export async function signInWithTikTok() {
           grant_type: 'authorization_code',
           redirect_uri: redirectUri,
         }).toString(),
+        signal: tokenAbort.signal,
       });
+      clearTimeout(tokenTimeout);
       
       const tokenData = await tokenResponse.json();
       
@@ -299,13 +308,18 @@ export async function signInWithTikTok() {
       }
       
       // Get user info from TikTok
+      // Add timeout to user info fetch
+      const userAbort = new AbortController();
+      const userTimeout = setTimeout(() => userAbort.abort(), 12000);
       const userResponse = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`,
           'Content-Type': 'application/json',
         },
+        signal: userAbort.signal,
       });
+      clearTimeout(userTimeout);
       
       const userData = await userResponse.json();
       
@@ -388,6 +402,8 @@ export async function signInWithTikTok() {
       success: false,
       error: error.message || 'TikTok Sign-In failed',
     };
+  } finally {
+    try { await WebBrowser.coolDownAsync(); } catch {}
   }
 }
 
@@ -398,6 +414,8 @@ export async function signInWithTikTok() {
 export async function signInWithSnapchat() {
   try {
     const { makeRedirectUri } = await import('expo-auth-session');
+    // Warm up browser to reduce first-open latency
+    try { await WebBrowser.warmUpAsync(); } catch {}
     
     // Snapchat OAuth configuration
     const discovery = {
@@ -413,6 +431,10 @@ export async function signInWithSnapchat() {
     // TODO: Replace with your Snapchat client_id and client_secret
     const SNAPCHAT_CLIENT_ID = 'YOUR_SNAPCHAT_CLIENT_ID';
     const SNAPCHAT_CLIENT_SECRET = 'YOUR_SNAPCHAT_CLIENT_SECRET';
+    // Fast-fail if placeholders to avoid long waiting screens
+    if (!SNAPCHAT_CLIENT_ID || SNAPCHAT_CLIENT_ID.startsWith('YOUR_')) {
+      return { success: false, error: 'Snapchat credentials not configured' };
+    }
     const { makeRedirectUri: makeSnapRedirectUri } = await import('expo-auth-session');
     const snapRedirectUri = makeSnapRedirectUri({
       scheme: 'trave-social',
@@ -423,7 +445,7 @@ export async function signInWithSnapchat() {
       tokenEndpoint: 'https://accounts.snapchat.com/accounts/oauth2/token',
     };
     // Build Snapchat OAuth URL
-    const snapAuthUrl = `${snapDiscovery.authorizationEndpoint}?client_id=${SNAPCHAT_CLIENT_ID}&redirect_uri=${encodeURIComponent(snapRedirectUri)}&response_type=code&scope=snapchat-marketing-api%20user.display_name%20user.bitmoji.avatar`;
+    const snapAuthUrl = `${snapDiscovery.authorizationEndpoint}?client_id=${SNAPCHAT_CLIENT_ID}&redirect_uri=${encodeURIComponent(snapRedirectUri)}&response_type=code&scope=user.display_name%20user.bitmoji.avatar&prompt=consent`;
     // Open browser for authentication
     const snapResult = await WebBrowser.openAuthSessionAsync(snapAuthUrl, snapRedirectUri);
     if (snapResult.type === 'success' && snapResult.url) {
@@ -434,6 +456,9 @@ export async function signInWithSnapchat() {
         throw new Error('No authorization code received');
       }
       // Exchange code for access token
+      // Add timeout to token exchange
+      const tokenAbort = new AbortController();
+      const tokenTimeout = setTimeout(() => tokenAbort.abort(), 12000);
       const tokenResponse = await fetch(snapDiscovery.tokenEndpoint, {
         method: 'POST',
         headers: {
@@ -446,19 +471,26 @@ export async function signInWithSnapchat() {
           grant_type: 'authorization_code',
           redirect_uri: snapRedirectUri,
         }).toString(),
+        signal: tokenAbort.signal,
       });
+      clearTimeout(tokenTimeout);
       const tokenData = await tokenResponse.json();
       if (!tokenData.access_token) {
         throw new Error('Failed to get access token');
       }
       // Get user info from Snapchat (Bitmoji, display name)
+      // Add timeout to user info fetch
+      const userAbort = new AbortController();
+      const userTimeout = setTimeout(() => userAbort.abort(), 12000);
       const userResponse = await fetch('https://kit.snapchat.com/v1/me', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`,
           'Content-Type': 'application/json',
         },
+        signal: userAbort.signal,
       });
+      clearTimeout(userTimeout);
       const userData = await userResponse.json();
       if (!userData.data) {
         throw new Error('Failed to get user info');
@@ -517,6 +549,8 @@ export async function signInWithSnapchat() {
       success: false,
       error: error.message || 'Snapchat Sign-In failed',
     };
+  } finally {
+    try { await WebBrowser.coolDownAsync(); } catch {}
   }
 }
 
