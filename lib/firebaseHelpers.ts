@@ -73,6 +73,7 @@ import {
     uploadBytes
 } from 'firebase/storage';
 import { auth, db, storage } from '../config/firebase';
+import * as FileSystem from 'expo-file-system';
 
 // Runtime guard for Firestore instance
 if (!db) {
@@ -324,16 +325,27 @@ export async function updateUserProfile(uid: string, data: any) {
 
 export async function uploadImage(uri: string, path: string): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
-    const response = await fetch(uri);
+    let sourceUri = uri;
+
+    // Some Android devices return content:// URIs which fetch() cannot read.
+    // Copy to a temporary file path first to ensure a file:// URI.
+    if (sourceUri.startsWith('content://')) {
+      const tempPath = `${FileSystem.cacheDirectory}upload-${Date.now()}.jpg`;
+      await FileSystem.copyAsync({ from: sourceUri, to: tempPath });
+      sourceUri = tempPath;
+    }
+
+    const response = await fetch(sourceUri);
     const blob = await response.blob();
-    
+
     const storageRef = ref(storage, path);
     await uploadBytes(storageRef, blob);
-    
+
     const downloadURL = await getDownloadURL(storageRef);
     return { success: true, url: downloadURL };
   } catch (error: any) {
-    return { success: false, error: error.message };
+    console.error('uploadImage error:', error);
+    return { success: false, error: error?.message ?? String(error) };
   }
 }
 

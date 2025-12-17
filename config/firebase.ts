@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApps, initializeApp } from 'firebase/app';
-import { Auth, getAuth, initializeAuth, Persistence } from 'firebase/auth';
+import { Auth, getAuth, initializeAuth } from 'firebase/auth';
 import { Firestore, getFirestore } from 'firebase/firestore';
 import { FirebaseStorage, getStorage } from 'firebase/storage';
 
@@ -18,8 +18,7 @@ const firebaseConfig = {
 // Initialize Firebase (prevent duplicate)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
-// Custom AsyncStorage persistence for React Native
-// This ensures user stays logged in even after app restart
+// Fallback custom persistence (if RN helper not available)
 const customPersistence = {
   type: 'LOCAL',
   _isAvailable: async () => {
@@ -55,20 +54,32 @@ const customPersistence = {
       console.error('AsyncStorage _remove error:', error);
       throw error;
     }
-  }
-} as Persistence;
+  },
+} as any;
 
-// Initialize Firebase Auth with AsyncStorage persistence
+// Initialize Firebase Auth with React Native AsyncStorage persistence (robust)
 let auth: Auth;
 try {
-  // Try to initialize with custom persistence using AsyncStorage
+  let persistenceOption: any | undefined;
+  try {
+    // Prefer official RN persistence helper if available
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const rnAuth = require('firebase/auth/react-native');
+    if (rnAuth?.getReactNativePersistence) {
+      persistenceOption = rnAuth.getReactNativePersistence(AsyncStorage);
+      console.log('🔧 Using getReactNativePersistence for Firebase Auth');
+    }
+  } catch (rnErr) {
+    // Module may not be resolvable in some TS environments; fallback below
+  }
+
   auth = initializeAuth(app, {
-    persistence: customPersistence
+    persistence: persistenceOption ?? customPersistence,
   });
-  console.log('✅ Firebase Auth initialized with AsyncStorage persistence');
+  console.log('✅ Firebase Auth initialized with persistent storage');
 } catch (error: any) {
   // If already initialized, get existing instance
-  console.log('⚠️ Auth already initialized, using existing instance:', error.message);
+  console.log('⚠️ Auth already initialized, using existing instance:', error?.message ?? error);
   auth = getAuth(app);
 }
 
