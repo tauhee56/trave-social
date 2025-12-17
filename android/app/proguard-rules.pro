@@ -18,17 +18,18 @@
 -dontwarn com.google.android.gms.**
 
 # Agora RTC
--keep class io.agora.** { *; }
--dontwarn io.agora.**
--keep class com.google.devtools.build.android.desugar.runtime.** { *; }
--dontwarn com.google.devtools.build.android.desugar.runtime.**
 
 # React Native
+keep class io.agora.** { *; }
+keep class io.agora.rtc.** { *; }
+keep class io.agora.base.** { *; }
+keep class io.agora.base.internal.** { *; }
+keepclasseswithmembernames class io.agora.** {
+	native <methods>;
+}
+dontwarn io.agora.**
 -keep class com.facebook.react.** { *; }
 -keep class com.facebook.hermes.** { *; }
--dontwarn com.facebook.react.**
-
-# Expo
 -keep class expo.modules.** { *; }
 -keep class versioned.host.exp.exponent.** { *; }
 -dontwarn expo.modules.**
