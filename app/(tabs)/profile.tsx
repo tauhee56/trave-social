@@ -419,15 +419,15 @@ export default function Profile({ userIdProp }: any) {
         if ('data' in postsRes && Array.isArray(postsRes.data)) postsData = postsRes.data;
         else if ('posts' in postsRes && Array.isArray(postsRes.posts)) postsData = postsRes.posts;
         const blocked = authUser?.uid ? await fetchBlockedUserIds(authUser.uid) : new Set<string>();
-        // Pagination logic
-        const paginatedPosts = filterOutBlocked(postsData, blocked).slice(0, postsPage * POSTS_PER_PAGE);
-        setPosts(paginatedPosts);
+        // Show all posts (no pagination limit for now)
+        const filteredPosts = filterOutBlocked(postsData, blocked);
+        setPosts(filteredPosts);
 
         // Initialize liked and saved states for posts
         if (authUser?.uid) {
           const likedState: { [key: string]: boolean } = {};
           const savedState: { [key: string]: boolean } = {};
-          paginatedPosts.forEach(post => {
+          filteredPosts.forEach((post: any) => {
             likedState[post.id] = post.likes?.includes(authUser.uid) || false;
             savedState[post.id] = post.savedBy?.includes(authUser.uid) || false;
           });
@@ -840,12 +840,6 @@ export default function Profile({ userIdProp }: any) {
                 </TouchableOpacity>
               );
             })}
-            {/* Load more button for pagination */}
-            {!loading && posts.length >= POSTS_PER_PAGE && (
-              <TouchableOpacity style={{ width: '100%', padding: 12, alignItems: 'center' }} onPress={handleLoadMorePosts}>
-                <Text style={{ color: '#007aff', fontWeight: '600' }}>Load More</Text>
-              </TouchableOpacity>
-            )}
           </View>
         )}
       </ScrollView>
