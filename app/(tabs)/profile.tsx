@@ -4,7 +4,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../config/firebase';
@@ -765,10 +765,10 @@ export default function Profile({ userIdProp }: any) {
                       setPostViewerVisible(true);
                     }}>
                       <View style={{ width: 48, height: 48, borderRadius: 12, borderWidth: 3, borderColor: '#ffa726', overflow: 'hidden', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 }}>
-                        <Image source={{ uri: imageUrl }} style={{ width: 44, height: 44, borderRadius: 10 }} resizeMode="cover" />
+                        <ExpoImage source={{ uri: imageUrl }} style={{ width: 44, height: 44, borderRadius: 10 }} contentFit="cover" cachePolicy="memory-disk" />
                       </View>
                       <View style={{ marginLeft: 4, marginRight: 0, width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: '#fff', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2, elevation: 2 }}>
-                        <Image source={{ uri: avatarUrl }} style={{ width: 34, height: 34, borderRadius: 17 }} resizeMode="cover" />
+                        <ExpoImage source={{ uri: avatarUrl }} style={{ width: 34, height: 34, borderRadius: 17 }} contentFit="cover" cachePolicy="memory-disk" />
                       </View>
                     </TouchableOpacity>
                   </Marker>

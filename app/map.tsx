@@ -1,7 +1,8 @@
+import { Image as ExpoImage } from 'expo-image';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Dimensions, Image, PermissionsAndroid, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, PermissionsAndroid, Platform, Share, StyleSheet, Text, View } from 'react-native';
 // import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import { collection, query as firestoreQuery, getDocs, where } from 'firebase/firestore';
 import MapView, { Marker, Polyline, Region } from 'react-native-maps';
@@ -86,12 +87,26 @@ export default function MapScreen() {
       const [modalLiked, setModalLiked] = useState<{[id:string]:boolean}>({});
       const [modalCommentsCount, setModalCommentsCount] = useState<{[id:string]:number}>({});
 
-      // Load posts from Firestore on mount
+      // Load posts from Firestore on mount (with caching)
+      const postsCache = useRef<PostType[]>([]);
+      const lastFetchTime = useRef<number>(0);
+
       useEffect(() => {
         setLoading(true);
-        getAllPosts(150).then(res => { // Limit to 150 posts for better performance
+        // Fetch posts with cache (avoid refetching within 30 seconds)
+        const now = Date.now();
+        if (postsCache.current.length > 0 && (now - lastFetchTime.current) < 30000) {
+          setPosts(postsCache.current);
+          setLoading(false);
+          return;
+        }
+
+        getAllPosts(100).then(res => { // Reduced from 150 to 100 for faster loading
           if (res.success) {
-            setPosts(Array.isArray(res.posts) ? res.posts : []);
+            const postsArray = Array.isArray(res.posts) ? res.posts : [];
+            setPosts(postsArray);
+            postsCache.current = postsArray;
+            lastFetchTime.current = now;
           } else {
             setError(res.error || 'Failed to load posts');
           }
@@ -382,8 +397,6 @@ export default function MapScreen() {
             )}
             {/* ...existing code for post markers... */}
             {Object.entries(limitedLocationGroups).map(([key, postsAtLocation]) => {
-              // ...existing code...
-              // (keep post markers as before)
               try {
                 const safePostsAtLocation = Array.isArray(postsAtLocation) ? postsAtLocation : [];
                 const post = safePostsAtLocation[0];
@@ -400,22 +413,38 @@ export default function MapScreen() {
                       console.warn('Invalid marker coordinates, cannot open modal');
                     }
                   };
-                  // Custom marker for both Android and iOS
+                  // Optimized marker without TouchableOpacity wrapper
                   return (
                     <Marker
                       key={`post-${key}`}
                       coordinate={{ latitude: Number(post.lat), longitude: Number(post.lon) }}
                       tracksViewChanges={false}
                       onPress={handleMarkerPress}
+                      anchor={{ x: 0.5, y: 0.5 }}
                     >
-                      <TouchableOpacity activeOpacity={0.9} style={styles.markerContainer} onPress={handleMarkerPress}>
+                      <View style={styles.markerContainer}>
                         <View style={styles.postImageWrapper}>
-                          <Image source={{ uri: post.imageUrl }} style={styles.postImage} resizeMode="cover" />
+                          {post.imageUrl && (
+                            <ExpoImage
+                              source={{ uri: post.imageUrl }}
+                              style={styles.postImage}
+                              contentFit="cover"
+                              cachePolicy="memory-disk"
+                              transition={200}
+                            />
+                          )}
                         </View>
                         <View style={styles.postAvatarOutside}>
-                          <Image source={{ uri: post.userAvatar || DEFAULT_AVATAR_URL }} style={styles.postAvatarImgFixed} resizeMode="cover" />
+                          {(post.userAvatar || DEFAULT_AVATAR_URL) && (
+                            <ExpoImage
+                              source={{ uri: post.userAvatar || DEFAULT_AVATAR_URL }}
+                              style={styles.postAvatarImgFixed}
+                              contentFit="cover"
+                              cachePolicy="memory-disk"
+                            />
+                          )}
                         </View>
-                      </TouchableOpacity>
+                      </View>
                     </Marker>
                   );
                 }
@@ -552,52 +581,55 @@ const styles = StyleSheet.create({
   
   /* Custom marker styles */
   markerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
+    position: 'relative',
+    width: 56,
+    height: 56,
   },
   postImageWrapper: {
-    width: 48,
-    height: 48,
+    width: 56,
+    height: 56,
     borderRadius: 12,
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: '#ffa726',
-    overflow: 'hidden',
     backgroundColor: '#fff',
+    overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 6,
   },
   postImage: {
-    width: 44,
-    height: 44,
+    width: 52,
+    height: 52,
     borderRadius: 10,
   },
   postAvatarOutside: {
-    marginLeft: 4,
-    marginRight: 0,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 2,
     borderColor: '#fff',
     backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 8,
+    zIndex: 100,
+    overflow: 'hidden',
   },
   postAvatarImgFixed: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
   },
 
   /* Live stream marker styles */
