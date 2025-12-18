@@ -549,32 +549,57 @@ export default function Profile({ userIdProp }: any) {
                 style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 }}
                 activeOpacity={0.6}
                 onPress={async () => {
-                  // Pick image
-                  const picker = await import('expo-image-picker');
-                  const result = await picker.launchImageLibraryAsync({ mediaTypes: picker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 });
-                  if (!result.canceled && result.assets && result.assets[0]?.uri && authUser?.uid) {
-                    // Upload image
-                    const { uploadImage, updateUserProfile } = await import('../../lib/firebaseHelpers');
-                    const uploadRes = await uploadImage(result.assets[0].uri, `avatars/${authUser.uid}`);
-                    if (uploadRes.success && uploadRes.url) {
-                      // Update backend profile
-                      const updateRes = await updateUserProfile(authUser.uid, { avatar: uploadRes.url });
-                      // Update Firebase Auth user photoURL
+                  try {
+                    // Pick image
+                    const picker = await import('expo-image-picker');
+                    const result = await picker.launchImageLibraryAsync({ 
+                      mediaTypes: picker.MediaTypeOptions.Images, 
+                      allowsEditing: true, 
+                      aspect: [1, 1], 
+                      quality: 0.8,
+                      base64: false // Don't get base64, we handle it ourselves
+                    });
+                    
+                    if (!result.canceled && result.assets && result.assets[0]?.uri && authUser?.uid) {
                       try {
-                        const { updateProfile } = await import('firebase/auth');
-                        await updateProfile(authUser, { photoURL: uploadRes.url });
-                      } catch (e) {
-                        console.log('Failed to update Firebase Auth photoURL:', e);
+                        // Upload image with proper error handling
+                        const { uploadImage: uploadImageFn, updateUserProfile } = await import('../../lib/firebaseHelpers');
+                        const imageUri = result.assets[0].uri;
+                        
+                        if (!imageUri) {
+                          alert('Image URI is invalid');
+                          return;
+                        }
+                        
+                        const uploadRes = await uploadImageFn(imageUri, `avatars/${authUser.uid}`);
+                        
+                        if (uploadRes.success && uploadRes.url) {
+                          // Update backend profile
+                          const updateRes = await updateUserProfile(authUser.uid, { avatar: uploadRes.url });
+                          // Update Firebase Auth user photoURL
+                          try {
+                            const { updateProfile } = await import('firebase/auth');
+                            await updateProfile(authUser, { photoURL: uploadRes.url });
+                          } catch (e) {
+                            console.log('Failed to update Firebase Auth photoURL:', e);
+                          }
+                          if (updateRes.success) {
+                            setProfile(prev => prev ? { ...prev, avatar: uploadRes.url ?? '' } : prev);
+                            alert('Profile picture updated!');
+                          } else {
+                            alert('Failed to update profile avatar: ' + (updateRes.error || 'Unknown error'));
+                          }
+                        } else {
+                          alert('Image upload failed: ' + (uploadRes.error || 'Unknown error'));
+                        }
+                      } catch (uploadError: any) {
+                        console.error('Avatar upload error:', uploadError);
+                        alert('Error uploading image: ' + uploadError.message);
                       }
-                      if (updateRes.success) {
-                        setProfile(prev => prev ? { ...prev, avatar: uploadRes.url ?? '' } : prev);
-                        alert('Profile picture updated!');
-                      } else {
-                        alert('Failed to update profile avatar.');
-                      }
-                    } else {
-                      alert('Image upload failed.');
                     }
+                  } catch (error: any) {
+                    console.error('Image picker error:', error);
+                    alert('Error picking image: ' + error.message);
                   }
                 }}
               />

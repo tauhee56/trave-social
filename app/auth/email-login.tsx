@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signInUser } from '../../lib/firebaseHelpers';
+import { signInWithGoogle, signInWithApple, signInWithTikTok, signInWithSnapchat, handleSocialAuthResult } from '../../services/socialAuthService';
 import CustomButton from '../_components/auth/CustomButton';
 import SocialButton from '../_components/auth/SocialButton';
 
@@ -60,6 +61,36 @@ export default function EmailLoginScreen() {
       }
     } catch (err: any) {
       setError(err.message || 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSocialLogin = async (provider: 'google' | 'apple' | 'tiktok' | 'snapchat') => {
+    setLoading(true);
+    setError('');
+    try {
+      let result;
+      if (provider === 'google') {
+        result = await signInWithGoogle();
+      } else if (provider === 'apple') {
+        result = await signInWithApple();
+      } else if (provider === 'tiktok') {
+        result = await signInWithTikTok();
+      } else if (provider === 'snapchat') {
+        result = await signInWithSnapchat();
+      }
+      
+      if (result && result.success) {
+        // Handle social auth result (create user profile if needed)
+        await handleSocialAuthResult(result.user, provider);
+        router.replace('/(tabs)/home');
+      } else {
+        setError(result?.error || 'Login failed');
+      }
+    } catch (err: any) {
+      console.error(`${provider} login error:`, err);
+      setError(err.message || `${provider} login failed`);
     } finally {
       setLoading(false);
     }
@@ -152,22 +183,22 @@ export default function EmailLoginScreen() {
         <View style={styles.socialSection}>
           <SocialButton
             provider="google"
-            onPress={() => {/* Handle Google login */}}
+            onPress={() => handleSocialLogin('google')}
             style={styles.socialButton}
           />
           <SocialButton
             provider="apple"
-            onPress={() => {/* Handle Apple login */}}
+            onPress={() => handleSocialLogin('apple')}
             style={styles.socialButton}
           />
           <SocialButton
             provider="tiktok"
-            onPress={() => {/* Handle TikTok login */}}
+            onPress={() => handleSocialLogin('tiktok')}
             style={styles.socialButton}
           />
           <SocialButton
             provider="snapchat"
-            onPress={() => {/* Handle Snap login */}}
+            onPress={() => handleSocialLogin('snapchat')}
             style={styles.socialButton}
           />
         </View>

@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signUpUser } from '../../lib/firebaseHelpers';
+import { signInWithGoogle, signInWithApple, signInWithTikTok, signInWithSnapchat, handleSocialAuthResult } from '../../services/socialAuthService';
 import CustomButton from '../_components/auth/CustomButton';
 import SocialButton from '../_components/auth/SocialButton';
 
@@ -158,22 +159,22 @@ export default function EmailSignUpScreen() {
         <View style={styles.socialSection}>
           <SocialButton
             provider="google"
-            onPress={() => {/* Handle Google signup */}}
+            onPress={() => handleSocialSignUp('google')}
             style={styles.socialButton}
           />
           <SocialButton
             provider="apple"
-            onPress={() => {/* Handle Apple signup */}}
+            onPress={() => handleSocialSignUp('apple')}
             style={styles.socialButton}
           />
           <SocialButton
             provider="tiktok"
-            onPress={() => {/* Handle TikTok signup */}}
+            onPress={() => handleSocialSignUp('tiktok')}
             style={styles.socialButton}
           />
           <SocialButton
             provider="snapchat"
-            onPress={() => {/* Handle Snap signup */}}
+            onPress={() => handleSocialSignUp('snapchat')}
             style={styles.socialButton}
           />
         </View>

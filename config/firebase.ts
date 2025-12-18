@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApps, initializeApp } from 'firebase/app';
-import { Auth, getAuth, initializeAuth } from 'firebase/auth';
+import { Auth, getAuth, initializeAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { Firestore, getFirestore } from 'firebase/firestore';
 import { FirebaseStorage, getStorage } from 'firebase/storage';
+import { Platform } from 'react-native';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -24,21 +25,21 @@ const db: Firestore = getFirestore(app);
 // Initialize Firebase Auth with React Native persistence
 let auth: Auth;
 try {
-  // Custom persistence wrapper for AsyncStorage
-  const persistence = {
-    _isAvailable: async () => true,
-    _set: async (key: string, value: string) => AsyncStorage.setItem(key, value),
-    _get: async (key: string) => AsyncStorage.getItem(key),
-    _remove: async (key: string) => AsyncStorage.removeItem(key),
-    type: 'LOCAL' as const,
-  };
-  
-  auth = initializeAuth(app, {
-    persistence: [persistence as any],
-  });
+  try {
+    // Try to get existing auth instance first
+    auth = getAuth(app);
+  } catch {
+    // If no existing instance, create with custom persistence
+    auth = initializeAuth(app, {
+      persistence: Platform.OS === 'web' 
+        ? browserLocalPersistence 
+        : (require('@react-native-async-storage/async-storage').default as any)
+    });
+  }
   console.log('✅ Firebase Auth initialized');
 } catch (error: any) {
-  // If already initialized, get existing instance
+  console.error('Firebase Auth initialization error:', error);
+  // Fallback - get existing instance
   auth = getAuth(app);
 }
 

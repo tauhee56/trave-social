@@ -83,10 +83,13 @@ export default function EditProfile() {
       // Update profile with avatar URL
       const result = await updateUserProfile(user.uid, {
         name,
+        displayName: name, // Also set displayName for Firebase
         bio,
         website,
         avatar: finalAvatar,
+        photoURL: finalAvatar, // Also set photoURL
         isPrivate,
+        updatedAt: new Date().toISOString(),
       });
       
       if (result && result.success) {
