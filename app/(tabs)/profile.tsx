@@ -670,6 +670,7 @@ export default function Profile({ userIdProp }: any) {
         {/* Name + Bio + Website */}
         <View style={styles.infoBlock}>
           <Text style={styles.displayName}>{profile?.name || 'User'}</Text>
+            {!!profile?.username && <Text style={styles.username}>@{profile.username}</Text>}
           {!!profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
           {!!profile?.website && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.website}>{profile.website}</Text>}
           {/* Only show follow button for other users, and only once */}
@@ -1080,6 +1081,7 @@ const styles = StyleSheet.create({
   statLbl: { fontSize: 11, color: '#666', marginTop: 2 },
   infoBlock: { alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16 },
   displayName: { fontSize: 15, fontWeight: '600', color: '#222' },
+    username: { fontSize: 13, color: '#667eea', marginTop: 2, fontWeight: '500' },
   bio: { fontSize: 13, color: '#555', marginTop: 4, textAlign: 'center', lineHeight: 18 },
   website: { fontSize: 12, color: '#007aff', marginTop: 4 },
   pillRow: { flexDirection: 'row', gap: 8, paddingVertical: 8, paddingHorizontal: 16 },

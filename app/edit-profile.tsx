@@ -19,6 +19,7 @@ export default function EditProfile() {
     const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
   const router = useRouter();
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
   const [website, setWebsite] = useState('');
   const [avatar, setAvatar] = useState('');
@@ -45,11 +46,13 @@ export default function EditProfile() {
     if (result && result.success && result.data) {
       console.log('✅ Profile loaded:', {
         name: result.data.name,
+        username: result.data.username,
         avatar: result.data.avatar?.substring(0, 50),
         isPrivate: result.data.isPrivate
       });
       
       setName(result.data.name || '');
+      setUsername((result.data as any).username || '');
       setBio(result.data.bio || '');
       setWebsite(result.data.website || '');
       setAvatar(result.data.avatar || '');
@@ -78,6 +81,7 @@ export default function EditProfile() {
     
     console.log('💾 Saving profile changes...');
     console.log('  Name:', name);
+    console.log('  Username:', username);
     console.log('  Bio:', bio);
     console.log('  Website:', website);
     console.log('  IsPrivate:', isPrivate);
@@ -105,6 +109,7 @@ export default function EditProfile() {
       console.log('💾 Updating Firestore profile...');
       const result = await updateUserProfile(user.uid, {
         name,
+        username,
         displayName: name, // Also set displayName for Firebase
         bio,
         website,
@@ -252,11 +257,12 @@ export default function EditProfile() {
           <View style={styles.formGroup}>
             <Text style={styles.fieldLabel}>Username</Text>
             <TextInput 
-              value={bio} 
-              onChangeText={setBio} 
+              value={username} 
+              onChangeText={setUsername} 
               style={styles.input} 
-              placeholder="Lumna travel" 
-              placeholderTextColor="#999" 
+              placeholder="@username" 
+              placeholderTextColor="#999"
+              autoCapitalize="none"
             />
           </View>
 
