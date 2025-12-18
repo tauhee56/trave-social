@@ -9,4 +9,8 @@ declare module '@env' {
   export const FIREBASE_MEASUREMENT_ID: string;
   export const AGORA_APP_ID: string;
   export const AGORA_APP_CERTIFICATE: string;
+  export const SNAPCHAT_CLIENT_ID: string;
+  export const SNAPCHAT_CLIENT_SECRET: string;
+  export const TIKTOK_CLIENT_KEY: string;
+  export const TIKTOK_CLIENT_SECRET: string;
 }

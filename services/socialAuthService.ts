@@ -3,6 +3,19 @@ import * as WebBrowser from 'expo-web-browser';
 import { GoogleAuthProvider, OAuthProvider, signInWithCredential, signInWithPopup } from 'firebase/auth';
 import { Alert, Platform } from 'react-native';
 import { auth } from '../config/firebase';
+import {
+  SNAPCHAT_CLIENT_ID,
+  SNAPCHAT_CLIENT_SECRET,
+  TIKTOK_CLIENT_KEY,
+  TIKTOK_CLIENT_SECRET,
+} from '@env';
+
+// Read env with safe fallback to undefined (avoids accidental string "undefined")
+const getEnv = (key: string, envValue?: string) => {
+  if (envValue && envValue !== 'undefined') return envValue;
+  const val = (process as any).env?.[key];
+  return val && val !== 'undefined' ? val : undefined;
+};
 
 // Google Sign-In for native (will be configured)
 let GoogleSignin: any = null;
@@ -227,9 +240,18 @@ export async function signInWithTikTok() {
     // Warm up browser to reduce first-open latency
     try { await WebBrowser.warmUpAsync(); } catch {}
     
-    // TikTok OAuth configuration from developer console
-    const TIKTOK_CLIENT_KEY = 'awel823341vepyyl';
-    const TIKTOK_CLIENT_SECRET = 'dITpPKfOg4kcQiSjvC5ueaezDnbAMDOP';
+    // TikTok OAuth configuration from developer console (read from env for security)
+    const TIKTOK_CLIENT_KEY_VAL = getEnv('TIKTOK_CLIENT_KEY', TIKTOK_CLIENT_KEY);
+    const TIKTOK_CLIENT_SECRET_VAL = getEnv('TIKTOK_CLIENT_SECRET', TIKTOK_CLIENT_SECRET);
+
+    if (!TIKTOK_CLIENT_KEY_VAL || !TIKTOK_CLIENT_SECRET_VAL) {
+      Alert.alert(
+        'TikTok Login Not Configured',
+        'Set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET via env (EAS secrets) from your TikTok Developer Console.',
+        [{ text: 'OK' }]
+      );
+      return { success: false, error: 'TikTok credentials not configured' };
+    }
     
     // TikTok OAuth endpoints
     const discovery = {
@@ -255,7 +277,7 @@ export async function signInWithTikTok() {
     console.log('TikTok State:', state);
     
     // Open TikTok authorization URL with required state parameter
-    const authUrl = `${discovery.authorizationEndpoint}?client_key=${TIKTOK_CLIENT_KEY}&scope=user.info.basic&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&prompt=consent`;
+    const authUrl = `${discovery.authorizationEndpoint}?client_key=${TIKTOK_CLIENT_KEY_VAL}&scope=user.info.basic&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&prompt=consent`;
     
     console.log('TikTok Auth URL:', authUrl);
     
@@ -291,8 +313,8 @@ export async function signInWithTikTok() {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
-          client_key: TIKTOK_CLIENT_KEY,
-          client_secret: TIKTOK_CLIENT_SECRET,
+          client_key: TIKTOK_CLIENT_KEY_VAL,
+          client_secret: TIKTOK_CLIENT_SECRET_VAL,
           code: code,
           grant_type: 'authorization_code',
           redirect_uri: redirectUri,
@@ -337,7 +359,7 @@ export async function signInWithTikTok() {
       
       // Use TikTok open_id as unique identifier
       const tiktokEmail = `tiktok_${tiktokUser.open_id}@trave-social.app`;
-      const tiktokPassword = `TikTok_${tiktokUser.open_id}_${TIKTOK_CLIENT_SECRET}`;
+      const tiktokPassword = `TikTok_${tiktokUser.open_id}_${TIKTOK_CLIENT_SECRET_VAL}`;
       
       let firebaseUser;
       
@@ -428,11 +450,16 @@ export async function signInWithSnapchat() {
       path: 'auth/callback'
     });
     
-    // TODO: Replace with your Snapchat client_id and client_secret
-    const SNAPCHAT_CLIENT_ID = 'YOUR_SNAPCHAT_CLIENT_ID';
-    const SNAPCHAT_CLIENT_SECRET = 'YOUR_SNAPCHAT_CLIENT_SECRET';
-    // Fast-fail if placeholders to avoid long waiting screens
-    if (!SNAPCHAT_CLIENT_ID || SNAPCHAT_CLIENT_ID.startsWith('YOUR_')) {
+    // Snapchat client credentials (read from env for security)
+    const SNAPCHAT_CLIENT_ID_VAL = getEnv('SNAPCHAT_CLIENT_ID', SNAPCHAT_CLIENT_ID);
+    const SNAPCHAT_CLIENT_SECRET_VAL = getEnv('SNAPCHAT_CLIENT_SECRET', SNAPCHAT_CLIENT_SECRET);
+    // Fast-fail if missing to avoid long waiting screens
+    if (!SNAPCHAT_CLIENT_ID_VAL || !SNAPCHAT_CLIENT_SECRET_VAL) {
+      Alert.alert(
+        'Snapchat Login Not Configured',
+        'Set SNAPCHAT_CLIENT_ID and SNAPCHAT_CLIENT_SECRET via env (EAS secrets) from your Snap Kit dashboard.',
+        [{ text: 'OK' }]
+      );
       return { success: false, error: 'Snapchat credentials not configured' };
     }
     const { makeRedirectUri: makeSnapRedirectUri } = await import('expo-auth-session');
@@ -445,7 +472,7 @@ export async function signInWithSnapchat() {
       tokenEndpoint: 'https://accounts.snapchat.com/accounts/oauth2/token',
     };
     // Build Snapchat OAuth URL
-    const snapAuthUrl = `${snapDiscovery.authorizationEndpoint}?client_id=${SNAPCHAT_CLIENT_ID}&redirect_uri=${encodeURIComponent(snapRedirectUri)}&response_type=code&scope=user.display_name%20user.bitmoji.avatar&prompt=consent`;
+    const snapAuthUrl = `${snapDiscovery.authorizationEndpoint}?client_id=${SNAPCHAT_CLIENT_ID_VAL}&redirect_uri=${encodeURIComponent(snapRedirectUri)}&response_type=code&scope=user.display_name%20user.bitmoji.avatar&prompt=consent`;
     // Open browser for authentication
     const snapResult = await WebBrowser.openAuthSessionAsync(snapAuthUrl, snapRedirectUri);
     if (snapResult.type === 'success' && snapResult.url) {
@@ -465,8 +492,8 @@ export async function signInWithSnapchat() {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
-          client_id: SNAPCHAT_CLIENT_ID,
-          client_secret: SNAPCHAT_CLIENT_SECRET,
+          client_id: SNAPCHAT_CLIENT_ID_VAL,
+          client_secret: SNAPCHAT_CLIENT_SECRET_VAL,
           code: code,
           grant_type: 'authorization_code',
           redirect_uri: snapRedirectUri,
@@ -500,7 +527,7 @@ export async function signInWithSnapchat() {
       const { doc, setDoc, getDoc, serverTimestamp } = await import('firebase/firestore');
       const { db } = await import('../config/firebase');
       const snapchatEmail = `snapchat_${userData.data.me.external_id}@trave-social.app`;
-      const snapchatPassword = `Snapchat_${userData.data.me.external_id}_${SNAPCHAT_CLIENT_SECRET}`;
+      const snapchatPassword = `Snapchat_${userData.data.me.external_id}_${SNAPCHAT_CLIENT_SECRET_VAL}`;
       let firebaseUser;
       try {
         const signInResult = await signInWithEmailAndPassword(auth, snapchatEmail, snapchatPassword);
