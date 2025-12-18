@@ -42,7 +42,7 @@ export function subscribeToConversations(userId: string, callback: (conversation
     callback(conversations);
   });
 }
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import {
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
@@ -71,8 +71,7 @@ import {
     deleteObject,
     getDownloadURL,
     ref,
-    uploadBytes,
-    uploadString
+    uploadBytes
 } from 'firebase/storage';
 import { auth, db, storage } from '../config/firebase';
 
@@ -341,7 +340,56 @@ export async function uploadImage(uri: string, path: string): Promise<{ success:
 
     const storageRef = ref(storage, path);
 
-    // For all URIs, use fetch + blob approach (works for http://, https://, file://)
+    // Android file:// URIs need to use FileSystem.readAsStringAsync with base64
+    if (sourceUri.startsWith('file://')) {
+      console.log('📤 Reading file as base64:', sourceUri);
+      const base64 = await FileSystem.readAsStringAsync(sourceUri, {
+        encoding: 'base64',
+      });
+      console.log('✅ Base64 read, length:', base64.length);
+      
+      // Get Firebase auth token for authenticated upload
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error('User must be authenticated to upload images');
+      }
+      const idToken = await currentUser.getIdToken();
+      
+      // Use Firebase Storage REST API for base64 upload (React Native compatible)
+      const storageBucket = storage.app.options.storageBucket;
+      const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o?uploadType=media&name=${encodeURIComponent(path)}`;
+      
+      // Convert base64 to binary for upload
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      console.log('✅ Binary data prepared, size:', bytes.length);
+      
+      // Upload using fetch with binary data and auth token
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'image/jpeg',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: bytes,
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`);
+      }
+      
+      console.log('✅ Upload successful');
+      
+      // Get download URL
+      const downloadURL = await getDownloadURL(storageRef);
+      return { success: true, url: downloadURL };
+    }
+
+    // For http://, https://, use fetch + blob approach
     console.log('📤 Fetching file as blob:', sourceUri);
     const response = await fetch(sourceUri);
     if (!response.ok) {

@@ -108,7 +108,7 @@ export default function PhoneSignUpScreen() {
         {/* Title */}
         <View style={styles.titleSection}>
           <Text style={styles.title}>Sign up</Text>
-          <Text style={styles.subtitle}>Let's keep it quick, 2 steps and you're in.</Text>
+          <Text style={styles.subtitle}>Let&apos;s keep it quick, 2 steps and you&apos;re in.</Text>
         </View>
 
         {/* Form */}

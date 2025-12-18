@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { doc, onSnapshot } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -7,7 +7,6 @@ import { db } from '../config/firebase';
 import { ErrorBoundary } from './_components/ErrorBoundary';
 
 export default function PostScreen() {
-  const router = useRouter();
   const { postId, commentId, mentionId, tagId } = useLocalSearchParams();
   // Debug log for params
   React.useEffect(() => {
@@ -15,6 +14,9 @@ export default function PostScreen() {
   }, [postId, commentId, mentionId, tagId]);
   const [post, setPost] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  // Helper to fetch comment text by commentId
+  const [highlightedComment, setHighlightedComment] = React.useState<string | null>(null);
 
   useEffect(() => {
     if (!postId) return;
@@ -33,6 +35,10 @@ export default function PostScreen() {
       unsub && unsub();
     };
   }, [postId]);
+
+  React.useEffect(() => {
+    setHighlightedComment(null);
+  }, [commentId, postId]);
 
   if (!postId) {
     return (
@@ -57,15 +63,6 @@ export default function PostScreen() {
       <Text style={styles.notFound}>Post not found.</Text>
     </SafeAreaView>
   );
-
-  // Helper to fetch comment text by commentId
-  const [highlightedComment, setHighlightedComment] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    // getPostComments removed (not exported). Only setHighlightedComment(null)
-    React.useEffect(() => {
-      setHighlightedComment(null);
-    }, [commentId, postId]);
-  }, [commentId, postId]);
 
   return (
     <ErrorBoundary>

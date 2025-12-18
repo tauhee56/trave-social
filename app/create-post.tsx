@@ -615,49 +615,63 @@ export default function CreatePostScreen() {
         {/* Modals would go here, omitted for brevity */}
         {/* Category Modal */}
         <Modal visible={showCategoryModal} animationType="slide" transparent onRequestClose={() => setShowCategoryModal(false)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
             <View style={{
               backgroundColor: '#fff',
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              padding: 32,
-              maxHeight: getModalHeight(0.85),
-              minHeight: getModalHeight(0.55) // Minimum 55% height
+              borderTopLeftRadius: 32,
+              borderTopRightRadius: 32,
+              paddingHorizontal: 20,
+              paddingTop: 20,
+              paddingBottom: 24,
+              height: getModalHeight(0.8)
             }}>
-              <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, alignSelf: 'center', marginBottom: 16 }} />
-              <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 16 }}>Select Category</Text>
+              {/* Handle bar */}
+              <View style={{ width: 40, height: 5, backgroundColor: '#e0e0e0', borderRadius: 2.5, alignSelf: 'center', marginBottom: 20 }} />
+              
+              {/* Header */}
+              <Text style={{ fontWeight: '700', fontSize: 20, marginBottom: 16, color: '#000' }}>Select Category</Text>
+              
+              {/* List */}
               <FlatList
                 data={categories}
                 keyExtractor={item => item.name}
                 renderItem={renderCategoryItem}
                 scrollEnabled={true}
+                contentContainerStyle={{ paddingBottom: 10 }}
               />
-              <TouchableOpacity onPress={() => setShowCategoryModal(false)} style={{ marginTop: 18, alignItems: 'center' }}>
-                <View style={{ height: 48 }} />
-                <Text style={{ color: '#FFB800', fontWeight: '600' }}>Close</Text>
-              </TouchableOpacity>
+              
+              {/* Close Button */}
+              <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => setShowCategoryModal(false)}>
+                  <Text style={{ color: '#f39c12', fontWeight: '700', fontSize: 16 }}>Close</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
         {/* Location Modal */}
         <Modal visible={showLocationModal} animationType="slide" transparent onRequestClose={() => setShowLocationModal(false)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.select({ ios: 90, android: 0 })}
               style={{
                 backgroundColor: '#fff',
-                borderTopLeftRadius: 28,
-                borderTopRightRadius: 28,
-                padding: 32,
-                maxHeight: getModalHeight(0.9),
-                minHeight: getModalHeight(0.55) // Minimum 55% height
+                borderTopLeftRadius: 32,
+                borderTopRightRadius: 32,
+                paddingHorizontal: 20,
+                paddingTop: 20,
+                paddingBottom: 24,
+                height: getModalHeight(0.8)
               }}
             >
-              <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, alignSelf: 'center', marginBottom: 16 }} />
-              <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 16 }}>Add Location</Text>
+              {/* Handle bar */}
+              <View style={{ width: 40, height: 5, backgroundColor: '#e0e0e0', borderRadius: 2.5, alignSelf: 'center', marginBottom: 20 }} />
+              <Text style={{ fontWeight: '700', fontSize: 20, marginBottom: 12, color: '#000' }}>Add Location</Text>
               <TextInput
-                style={{ borderWidth: 1, borderColor: '#eee', borderRadius: 8, padding: 10, marginBottom: 12 }}
+                style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14, fontSize: 16, backgroundColor: '#f9f9f9' }}
                 placeholder="Search location..."
+                placeholderTextColor="#999"
                 value={locationSearch}
                 onChangeText={async (text) => {
                   setLocationSearch(text);
@@ -687,6 +701,7 @@ export default function CreatePostScreen() {
                 <FlatList
                   data={locationResults}
                   keyExtractor={item => item.placeId || item.name}
+                  keyboardShouldPersistTaps="handled"
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={{ paddingVertical: 10 }}
@@ -702,26 +717,30 @@ export default function CreatePostScreen() {
                   ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No results</Text>}
                 />
               )}
-              <TouchableOpacity onPress={() => setShowLocationModal(false)} style={{ marginTop: 18, alignItems: 'center' }}>
-                <View style={{ height: 48 }} />
-                <Text style={{ color: '#FFB800', fontWeight: '600' }}>Close</Text>
-              </TouchableOpacity>
+              {/* Close Button */}
+              <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => setShowLocationModal(false)}>
+                  <Text style={{ color: '#f39c12', fontWeight: '700', fontSize: 16 }}>Close</Text>
+                </TouchableOpacity>
+              </View>
             </KeyboardAvoidingView>
           </View>
         </Modal>
         {/* Verified Location Modal */}
         <Modal visible={showVerifiedModal} animationType="slide" transparent onRequestClose={() => setShowVerifiedModal(false)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
             <View style={{
               backgroundColor: '#fff',
-              borderTopLeftRadius: 28,
-              borderTopRightRadius: 28,
-              padding: 32,
-              maxHeight: getModalHeight(0.85),
-              minHeight: getModalHeight(0.55) // Minimum 55% height
+              borderTopLeftRadius: 32,
+              borderTopRightRadius: 32,
+              paddingHorizontal: 20,
+              paddingTop: 20,
+              paddingBottom: 24,
+              height: getModalHeight(0.8)
             }}>
-              <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, alignSelf: 'center', marginBottom: 16 }} />
-              <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 16 }}>Select Verified Location</Text>
+              {/* Handle bar */}
+              <View style={{ width: 40, height: 5, backgroundColor: '#e0e0e0', borderRadius: 2.5, alignSelf: 'center', marginBottom: 20 }} />
+              <Text style={{ fontWeight: '700', fontSize: 20, marginBottom: 12, color: '#000' }}>Select Verified Location</Text>
               <Text style={{ color: '#888', marginBottom: 12 }}>
                 Only your current GPS location or passport ticket locations can be used as verified location.
               </Text>
@@ -743,32 +762,38 @@ export default function CreatePostScreen() {
                 )}
                 ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No verified locations found</Text>}
               />
-              <TouchableOpacity onPress={() => setShowVerifiedModal(false)} style={{ marginTop: 18, alignItems: 'center' }}>
-                <View style={{ height: 48 }} />
-                <Text style={{ color: '#FFB800', fontWeight: '600' }}>Close</Text>
-              </TouchableOpacity>
+              {/* Close Button */}
+              <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => setShowVerifiedModal(false)}>
+                  <Text style={{ color: '#f39c12', fontWeight: '700', fontSize: 16 }}>Close</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
         {/* Tag People Modal */}
         <Modal visible={showTagModal} animationType="slide" transparent onRequestClose={() => setShowTagModal(false)}>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.select({ ios: 90, android: 0 })}
               style={{
                 backgroundColor: '#fff',
-                borderTopLeftRadius: 28,
-                borderTopRightRadius: 28,
-                padding: 32,
-                maxHeight: getModalHeight(0.9),
-                minHeight: getModalHeight(0.55) // Minimum 55% height
+                borderTopLeftRadius: 32,
+                borderTopRightRadius: 32,
+                paddingHorizontal: 20,
+                paddingTop: 20,
+                paddingBottom: 24,
+                height: getModalHeight(0.8)
               }}
             >
-              <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, alignSelf: 'center', marginBottom: 16 }} />
-              <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 16 }}>Tag People</Text>
+              {/* Handle bar */}
+              <View style={{ width: 40, height: 5, backgroundColor: '#e0e0e0', borderRadius: 2.5, alignSelf: 'center', marginBottom: 20 }} />
+              <Text style={{ fontWeight: '700', fontSize: 20, marginBottom: 16, color: '#000' }}>Tag People</Text>
               <TextInput
-                style={{ borderWidth: 1, borderColor: '#eee', borderRadius: 8, padding: 10, marginBottom: 12 }}
+                style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14, fontSize: 16, backgroundColor: '#f9f9f9' }}
                 placeholder="Search users..."
+                placeholderTextColor="#999"
                 value={userSearch}
                 onChangeText={async (text) => {
                   setUserSearch(text);
@@ -792,9 +817,10 @@ export default function CreatePostScreen() {
                 <FlatList
                   data={userResults}
                   keyExtractor={item => item.uid}
+                  keyboardShouldPersistTaps="handled"
                   renderItem={({ item }) => (
                     <TouchableOpacity
-                      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10 }}
+                      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}
                       onPress={() => {
                         if (!taggedUsers.some(u => u.uid === item.uid)) {
                           setTaggedUsers([...taggedUsers, item]);
@@ -803,19 +829,21 @@ export default function CreatePostScreen() {
                         }
                       }}
                     >
-                      <Text style={{ fontSize: 16 }}>{item.displayName || item.userName || item.uid}</Text>
+                      <Text style={{ fontSize: 16, fontWeight: '500', flex: 1 }}>{item.displayName || item.userName || item.uid}</Text>
                       {taggedUsers.some(u => u.uid === item.uid) && (
-                        <Feather name="check" size={20} color="#FFB800" style={{ marginLeft: 8 }} />
+                        <Feather name="check" size={20} color="#f39c12" style={{ marginLeft: 8 }} />
                       )}
                     </TouchableOpacity>
                   )}
                   ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No results</Text>}
                 />
               )}
-              <TouchableOpacity onPress={() => setShowTagModal(false)} style={{ marginTop: 18, alignItems: 'center' }}>
-                <View style={{ height: 48 }} />
-                <Text style={{ color: '#FFB800', fontWeight: '600' }}>Close</Text>
-              </TouchableOpacity>
+              {/* Close Button */}
+              <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => setShowTagModal(false)}>
+                  <Text style={{ color: '#f39c12', fontWeight: '700', fontSize: 16 }}>Close</Text>
+                </TouchableOpacity>
+              </View>
             </KeyboardAvoidingView>
           </View>
         </Modal>

@@ -1,5 +1,5 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
-import { Tabs, useRouter, useSegments, useFocusEffect } from "expo-router";
+import { Tabs, useFocusEffect, useRouter, useSegments } from "expo-router";
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -10,7 +10,6 @@ import { fetchLogoUrl } from '../_services/brandingService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isSmallDevice = SCREEN_WIDTH < 375;
-const isMediumDevice = SCREEN_WIDTH >= 375 && SCREEN_WIDTH < 414;
 const isLargeDevice = SCREEN_WIDTH >= 414;
 const ICON_SIZE = isSmallDevice ? 18 : (isLargeDevice ? 22 : 20);
 const CHEVRON_SIZE = isSmallDevice ? 18 : 20;
@@ -19,9 +18,42 @@ const CHEVRON_SIZE = isSmallDevice ? 18 : 20;
 // Create a context for tab events
 const TabEventContext = createContext<{ emitHomeTabPress: () => void; subscribeHomeTabPress: (cb: () => void) => () => void } | undefined>(undefined);
 
-export function useTabEvent() {
-  return useContext(TabEventContext);
-}
+export const useTabEvent = () => useContext(TabEventContext);
+
+// Dedicated tab bar button components so hooks stay inside components
+const HomeTabButton = (props: any) => {
+  const router = useRouter();
+  const tabEvent = useTabEvent();
+  return (
+    <TouchableOpacity
+      {...props}
+      onPress={() => {
+        tabEvent?.emitHomeTabPress();
+        router.push('/(tabs)/home');
+      }}
+      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+      activeOpacity={0.7}
+    >
+      <Ionicons name={props.accessibilityState?.selected ? 'home' : 'home-outline'} size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
+      <Text style={{ fontSize: 10, color: props.accessibilityState?.selected ? '#f39c12' : '#777', marginTop: 2 }}>Home</Text>
+    </TouchableOpacity>
+  );
+};
+
+const SearchTabButton = (props: any) => {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      {...props}
+      onPress={() => router.push('/search-modal')}
+      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+      activeOpacity={0.7}
+    >
+      <Ionicons name="search-outline" size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
+      <Text style={{ fontSize: 10, color: '#777', marginTop: 2 }}>Search</Text>
+    </TouchableOpacity>
+  );
+};
 
 export default function TabsLayout() {
   // Simple subscription system for home tab press
@@ -65,32 +97,7 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, size }) => (
               <Feather name="home" size={size} color={color} />
             ),
-            tabBarButton: (props) => {
-              const router = useRouter();
-              const tabEvent = useTabEvent();
-              return (
-                <TouchableOpacity
-                  onPress={() => {
-                    tabEvent?.emitHomeTabPress();
-                    router.push('/(tabs)/home');
-                  }}
-                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                  activeOpacity={0.7}
-                  disabled={typeof props.disabled === 'boolean' ? props.disabled : undefined}
-                  onBlur={typeof props.onBlur === 'function' ? props.onBlur : undefined}
-                  onFocus={typeof props.onFocus === 'function' ? props.onFocus : undefined}
-                  onLongPress={typeof props.onLongPress === 'function' ? props.onLongPress : undefined}
-                  onPressIn={typeof props.onPressIn === 'function' ? props.onPressIn : undefined}
-                  onPressOut={typeof props.onPressOut === 'function' ? props.onPressOut : undefined}
-                  accessibilityState={props.accessibilityState}
-                  accessibilityLabel={props.accessibilityLabel}
-                  testID={props.testID}
-                >
-                  <Ionicons name={props.accessibilityState?.selected ? "home" : "home-outline"} size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
-                  <Text style={{ fontSize: 10, color: props.accessibilityState?.selected ? '#f39c12' : '#777', marginTop: 2 }}>Home</Text>
-                </TouchableOpacity>
-              );
-            },
+            tabBarButton: (props) => <HomeTabButton {...props} />,
           }}
         />
         <Tabs.Screen
@@ -100,24 +107,7 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, size }) => (
               <Feather name="search" size={size} color={color} />
             ),
-            tabBarButton: (props) => {
-              const router = useRouter();
-              return (
-                <TouchableOpacity
-                  onPress={() => router.push('/search-modal')}
-                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                  disabled={typeof props.disabled === 'boolean' ? props.disabled : undefined}
-                  onBlur={typeof props.onBlur === 'function' ? props.onBlur : undefined}
-                  onFocus={typeof props.onFocus === 'function' ? props.onFocus : undefined}
-                  onLongPress={typeof props.onLongPress === 'function' ? props.onLongPress : undefined}
-                  onPressIn={typeof props.onPressIn === 'function' ? props.onPressIn : undefined}
-                  onPressOut={typeof props.onPressOut === 'function' ? props.onPressOut : undefined}
-                >
-                  <Ionicons name="search-outline" size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
-                  <Text style={{ fontSize: 10, color: '#777', marginTop: 2 }}>Search</Text>
-                </TouchableOpacity>
-              );
-            },
+            tabBarButton: (props) => <SearchTabButton {...props} />,
           }}
         />
         <Tabs.Screen

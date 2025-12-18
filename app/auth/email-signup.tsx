@@ -4,7 +4,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signUpUser } from '../../lib/firebaseHelpers';
-import { signInWithGoogle, signInWithApple, signInWithTikTok, signInWithSnapchat, handleSocialAuthResult } from '../../services/socialAuthService';
 import CustomButton from '../_components/auth/CustomButton';
 import SocialButton from '../_components/auth/SocialButton';
 
@@ -110,7 +109,7 @@ export default function EmailSignUpScreen() {
         {/* Title Section */}
         <View style={styles.titleSection}>
           <Text style={styles.title}>Sign up</Text>
-          <Text style={styles.subtitle}>Let's keep it quick, 2 steps and you're in.</Text>
+          <Text style={styles.subtitle}>Let&apos;s keep it quick, 2 steps and you&apos;re in.</Text>
         </View>
 
         {/* Email Input */}

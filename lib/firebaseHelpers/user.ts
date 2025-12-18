@@ -111,8 +111,8 @@ export async function getHighlightStories(highlightId: string) {
 // REMOVED - Use getCurrentUser from lib/firebaseHelpers.ts instead
 // This was a stub that always returned null
 // User-related Firestore helpers
-import { collection, doc, getDoc, getDocs, limit, query, updateDoc, where } from 'firebase/firestore';
 import { getAuth, updateProfile } from 'firebase/auth';
+import { collection, doc, getDoc, getDocs, limit, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { userProfileCache } from '../userProfileCache';
 

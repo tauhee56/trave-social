@@ -89,7 +89,7 @@ export default function ForgotPasswordScreen() {
             <View style={styles.titleSection}>
               <Text style={styles.title}>Forgot password?</Text>
               <Text style={styles.subtitle}>
-                Enter your email address and we'll send you a link to reset your password.
+                Enter your email address and we&apos;ll send you a link to reset your password.
               </Text>
             </View>
 

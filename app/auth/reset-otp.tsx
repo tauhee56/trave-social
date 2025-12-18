@@ -160,7 +160,7 @@ export default function ResetOTPScreen() {
 
             {/* Resend Link */}
             <TouchableOpacity onPress={handleResend} style={styles.resendContainer}>
-              <Text style={styles.resendText}>Didn't receive code? </Text>
+              <Text style={styles.resendText}>Didn&apos;t receive code? </Text>
               <Text style={styles.resendLink}>Resend</Text>
             </TouchableOpacity>
           </View>

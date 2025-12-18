@@ -100,6 +100,9 @@ type ProfileData = {
   avatar: string;
   bio?: string;
   website?: string;
+  location?: string;
+  phone?: string;
+  interests?: string;
   followersCount?: number;
   followingCount?: number;
   postsCount?: number;
@@ -128,6 +131,10 @@ export default function Profile({ userIdProp }: any) {
   const viewedUserId = typeof userIdProp !== 'undefined'
     ? userIdProp
     : (typeof params.user === 'string' ? params.user : (authUser?.uid as string | undefined));
+  
+  // Determine if viewing own profile
+  const isOwnProfile = viewedUserId === authUser?.uid || (!params.user && !userIdProp);
+  
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
   const [approvedFollower, setApprovedFollower] = useState(false);
@@ -150,7 +157,6 @@ export default function Profile({ userIdProp }: any) {
   const [commentModalAvatar, setCommentModalAvatar] = useState<string>('');
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [createHighlightModalVisible, setCreateHighlightModalVisible] = useState(false);
-  const isOwnProfile = !userIdProp && (!params.user || params.user === authUser?.uid);
   const isFollowing = !!(profile?.followers || []).includes(authUser?.uid || '');
   const visiblePosts = selectedSection
     ? posts.filter((p: any) => (sections.find((s: any) => s.name === selectedSection)?.postIds || []).includes(p.id))
@@ -667,12 +673,15 @@ export default function Profile({ userIdProp }: any) {
           )}
         </View>
 
-        {/* Name + Bio + Website */}
+        {/* Name + Bio + Website + Location + Phone + Interests */}
         <View style={styles.infoBlock}>
           <Text style={styles.displayName}>{profile?.name || 'User'}</Text>
             {!!profile?.username && <Text style={styles.username}>@{profile.username}</Text>}
           {!!profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
-          {!!profile?.website && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.website}>{profile.website}</Text>}
+          {!!profile?.website && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.website}>🔗 {profile.website}</Text>}
+          {!!(profile as any)?.location && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.location}>📍 {(profile as any).location}</Text>}
+          {!!(profile as any)?.phone && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.phone}>📱 {(profile as any).phone}</Text>}
+          {!!(profile as any)?.interests && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.interests}>✨ {(profile as any).interests}</Text>}
           {/* Only show follow button for other users, and only once */}
           {/* Only show follow button for other users in pillRow below, not here */}
         </View>
@@ -1084,6 +1093,9 @@ const styles = StyleSheet.create({
     username: { fontSize: 13, color: '#667eea', marginTop: 2, fontWeight: '500' },
   bio: { fontSize: 13, color: '#555', marginTop: 4, textAlign: 'center', lineHeight: 18 },
   website: { fontSize: 12, color: '#007aff', marginTop: 4 },
+  location: { fontSize: 12, color: '#666', marginTop: 3 },
+  phone: { fontSize: 12, color: '#666', marginTop: 3 },
+  interests: { fontSize: 12, color: '#666', marginTop: 3, fontStyle: 'italic' },
   pillRow: { flexDirection: 'row', gap: 8, paddingVertical: 8, paddingHorizontal: 16 },
   pillBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f5f5f5', paddingVertical: 8, borderRadius: 6, borderWidth: 1, borderColor: '#e0e0e0' },
   pillText: { fontSize: 12, fontWeight: '500', color: '#333' },

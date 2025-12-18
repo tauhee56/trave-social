@@ -165,7 +165,7 @@ export default function Inbox() {
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
               <Feather name="message-circle" size={64} color="#ccc" />
               <Text style={{ color: '#999', marginTop: 16, fontSize: 16 }}>No messages found</Text>
-              <Text style={{ color: '#ccc', marginTop: 8, textAlign: 'center' }}>Start a conversation by visiting someone's profile</Text>
+              <Text style={{ color: '#ccc', marginTop: 8, textAlign: 'center' }}>Start a conversation by visiting someone&apos;s profile</Text>
             </View>
           );
         })()

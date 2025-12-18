@@ -1,14 +1,14 @@
-import * as AppleAuthentication from 'expo-apple-authentication';
-import * as WebBrowser from 'expo-web-browser';
-import { GoogleAuthProvider, OAuthProvider, signInWithCredential, signInWithPopup } from 'firebase/auth';
-import { Alert, Platform } from 'react-native';
-import { auth } from '../config/firebase';
 import {
   SNAPCHAT_CLIENT_ID,
   SNAPCHAT_CLIENT_SECRET,
   TIKTOK_CLIENT_KEY,
   TIKTOK_CLIENT_SECRET,
 } from '@env';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as WebBrowser from 'expo-web-browser';
+import { GoogleAuthProvider, OAuthProvider, signInWithCredential, signInWithPopup } from 'firebase/auth';
+import { Alert, Platform } from 'react-native';
+import { auth } from '../config/firebase';
 
 // Read env with safe fallback to undefined (avoids accidental string "undefined")
 const getEnv = (key: string, envValue?: string) => {
@@ -578,6 +578,20 @@ export async function handleSocialAuthResult(result: any, router: any) {
       isNew: user.metadata.creationTime === user.metadata.lastSignInTime
     });
 
+    // Helper to safely navigate (prevents "navigate before mounting" error)
+    const safeNavigate = (path: string) => {
+      try {
+        router.replace(path);
+      } catch (error: any) {
+        if (error.message?.includes('Attempted to navigate before mounting')) {
+          console.log('Waiting for root layout to mount...');
+          setTimeout(() => safeNavigate(path), 100);
+        } else {
+          throw error;
+        }
+      }
+    };
+
     // If user is new, create Firestore document
     if (user.metadata.creationTime === user.metadata.lastSignInTime) {
       try {
@@ -603,7 +617,7 @@ export async function handleSocialAuthResult(result: any, router: any) {
         });
 
         // Go to home after creating profile
-        router.replace('/(tabs)/home');
+        safeNavigate('/(tabs)/home');
       } catch (error) {
         console.error('Error creating user profile:', error);
         Alert.alert('Error', 'Failed to create user profile');
@@ -631,7 +645,7 @@ export async function handleSocialAuthResult(result: any, router: any) {
       }
       
       // Go to home
-      router.replace('/(tabs)/home');
+      safeNavigate('/(tabs)/home');
     }
   } else {
     Alert.alert('Authentication Error', result.error);

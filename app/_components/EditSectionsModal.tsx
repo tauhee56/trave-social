@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -145,6 +145,21 @@ export default function EditSectionsModal({
     setSectionMode('select');
   };
 
+  const renameSection = async (oldName: string, newName: string) => {
+    if (!userId) return;
+    if (!newName.trim() || newName === oldName) return;
+    await updateUserSection(userId, {
+      name: newName.trim(),
+      postIds: sections.find(s => s.name === oldName)?.postIds || [],
+      coverImage: sections.find(s => s.name === oldName)?.coverImage,
+    });
+    await deleteUserSection(userId, oldName);
+    const res = await getUserSectionsSorted(userId);
+    if (res.success && res.data) {
+      onSectionsUpdate(res.data);
+    }
+  };
+
   const handleReorderSections = async (data: Section[]) => {
     onSectionsUpdate(data);
     // Save order to Firebase
@@ -153,72 +168,16 @@ export default function EditSectionsModal({
     }
   };
 
-  const renderSectionItem = ({ item, drag, isActive }: RenderItemParams<Section>) => {
-    const isSelected = selectedSectionForEdit === item.name;
-    const [editing, setEditing] = useState(false);
-    const [sectionName, setSectionName] = useState(item.name);
-    const handleNameUpdate = async () => {
-      if (sectionName.trim() && sectionName !== item.name) {
-        // Rename logic: create new section, copy data, delete old section
-        await updateUserSection(userId, { name: sectionName.trim(), postIds: item.postIds, coverImage: item.coverImage });
-        await deleteUserSection(userId, item.name);
-        const res = await getUserSectionsSorted(userId);
-        if (res.success && res.data) {
-          onSectionsUpdate(res.data);
-        }
-      }
-      setEditing(false);
-    };
-    return (
-      <ScaleDecorator>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-          <TouchableOpacity
-            onLongPress={drag}
-            style={[styles.dragHandle, isSelected && { marginRight: 0 }]}
-          >
-            <Ionicons name="menu" size={24} color="#999" />
-          </TouchableOpacity>
-        {isSelected ? (
-          <View style={styles.selectedSectionCard}>
-            <TouchableOpacity
-              activeOpacity={1}
-              onLongPress={() => setEditing(true)}
-              style={styles.selectedSectionInputWrap}
-            >
-              <TextInput
-                style={styles.selectedSectionInput}
-                value={sectionName}
-                editable={editing}
-                onChangeText={setSectionName}
-                onBlur={handleNameUpdate}
-                onSubmitEditing={handleNameUpdate}
-                selectTextOnFocus={editing}
-              />
-            </TouchableOpacity>
-            <View style={styles.selectedSectionActions}>
-              <View style={styles.selectedSectionActionRow}>
-                <Ionicons name="albums-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={styles.selectedSectionActionText}>{item.postIds?.length || 0} Posts</Text>
-              </View>
-              <TouchableOpacity style={styles.selectedSectionActionRow} onPress={() => handleDeleteSection(item.name)}>
-                <Ionicons name="trash-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-                <Text style={styles.selectedSectionActionText}>Delete this section</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.sectionRowSimple}
-            onPress={() => handleSelectSection(item.name)}
-          >
-            <Text style={styles.sectionRowTitle}>{item.name}</Text>
-            <Text style={styles.sectionRowCount}>{item.postIds?.length || 0} Posts</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-      </ScaleDecorator>
-    );
-  };
+  const renderSectionItem = ({ item, drag }: RenderItemParams<Section>) => (
+    <SectionRow
+      item={item}
+      isSelected={selectedSectionForEdit === item.name}
+      onPress={() => handleSelectSection(item.name)}
+      onDelete={() => handleDeleteSection(item.name)}
+      onRename={renameSection}
+      drag={drag}
+    />
+  );
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -348,6 +307,86 @@ export default function EditSectionsModal({
     </Modal>
   );
 }
+
+type SectionRowProps = {
+  item: Section;
+  isSelected: boolean;
+  onPress: () => void;
+  onDelete: () => void;
+  onRename: (oldName: string, newName: string) => Promise<void>;
+  drag: () => void;
+};
+
+const SectionRow = ({ item, isSelected, onPress, onDelete, onRename, drag }: SectionRowProps) => {
+  const [editing, setEditing] = useState(false);
+  const [sectionName, setSectionName] = useState(item.name);
+
+  useEffect(() => {
+    setSectionName(item.name);
+  }, [item.name]);
+
+  const handleNameUpdate = async () => {
+    const trimmed = sectionName.trim();
+    if (!trimmed) {
+      setSectionName(item.name);
+      setEditing(false);
+      return;
+    }
+    await onRename(item.name, trimmed);
+    setEditing(false);
+  };
+
+  return (
+    <ScaleDecorator>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+        <TouchableOpacity
+          onLongPress={drag}
+          style={[styles.dragHandle, isSelected && { marginRight: 0 }]}
+        >
+          <Ionicons name="menu" size={24} color="#999" />
+        </TouchableOpacity>
+        {isSelected ? (
+          <View style={styles.selectedSectionCard}>
+            <TouchableOpacity
+              activeOpacity={1}
+              onLongPress={() => setEditing(true)}
+              style={styles.selectedSectionInputWrap}
+            >
+              <TextInput
+                style={styles.selectedSectionInput}
+                value={sectionName}
+                editable={editing}
+                onChangeText={setSectionName}
+                onBlur={handleNameUpdate}
+                onSubmitEditing={handleNameUpdate}
+                selectTextOnFocus={editing}
+              />
+            </TouchableOpacity>
+            <View style={styles.selectedSectionActions}>
+              <View style={styles.selectedSectionActionRow}>
+                <Ionicons name="albums-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.selectedSectionActionText}>{item.postIds?.length || 0} Posts</Text>
+              </View>
+              <TouchableOpacity style={styles.selectedSectionActionRow} onPress={onDelete}>
+                <Ionicons name="trash-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.selectedSectionActionText}>Delete this section</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.sectionRowSimple}
+            onPress={onPress}
+            onLongPress={drag}
+          >
+            <Text style={styles.sectionRowTitle}>{item.name}</Text>
+            <Text style={styles.sectionRowCount}>{item.postIds?.length || 0} Posts</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </ScaleDecorator>
+  );
+};
 
 const styles = StyleSheet.create({
     selectedSectionCard: {

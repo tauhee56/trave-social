@@ -1,7 +1,7 @@
 import { Feather, MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createPost, getCurrentUser, searchUsers } from '../../lib/firebaseHelpers/index';
 import VerifiedBadge from '../_components/VerifiedBadge';
@@ -39,9 +39,7 @@ export default function PostScreen() {
 
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [locationInput, setLocationInput] = useState('');
-  const [locationSuggestions, setLocationSuggestions] = useState<any[]>([]);
 
   useEffect(() => {
     loadUsers();
@@ -291,7 +289,7 @@ export default function PostScreen() {
           </View>
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <Feather name="image" size={64} color="#666" />
-            <Text style={{ color: '#999', marginTop: 16 }}>Tap "Done" to select from gallery</Text>
+            <Text style={{ color: '#999', marginTop: 16 }}>Tap Done to select from gallery</Text>
           </View>
         </SafeAreaView>
       </Modal>

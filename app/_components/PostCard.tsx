@@ -687,7 +687,10 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
             onPress={() => {
               // Navigate to user profile
               if (post?.userId) {
-                router.push(`/user-profile/${post.userId}` as any);
+                router.push({
+                  pathname: '/(tabs)/profile',
+                  params: { user: post.userId }
+                } as any);
               } else {
                 console.log('No userId available for this post');
               }

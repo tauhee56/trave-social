@@ -158,7 +158,7 @@ export default function SettingsScreen() {
                 <Feather name="slash" size={64} color="#ccc" />
                 <Text style={styles.emptyTitle}>No Blocked Users</Text>
                 <Text style={styles.emptySubtitle}>
-                  When you block someone, they'll appear here
+                  When you block someone, they&apos;ll appear here
                 </Text>
               </View>
             }

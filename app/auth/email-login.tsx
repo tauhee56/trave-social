@@ -1,10 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signInUser } from '../../lib/firebaseHelpers';
-import { signInWithGoogle, signInWithApple, signInWithTikTok, signInWithSnapchat, handleSocialAuthResult } from '../../services/socialAuthService';
+import { handleSocialAuthResult, signInWithApple, signInWithGoogle, signInWithSnapchat, signInWithTikTok } from '../../services/socialAuthService';
 import CustomButton from '../_components/auth/CustomButton';
 import SocialButton from '../_components/auth/SocialButton';
 
@@ -206,7 +206,7 @@ export default function EmailLoginScreen() {
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <Text 
               style={styles.footerLink}
               onPress={() => router.push('/auth/signup-options')}

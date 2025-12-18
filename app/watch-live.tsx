@@ -523,6 +523,8 @@ const CommentItem = React.memo(({ item }: { item: any }) => (
   </View>
 ));
 
+CommentItem.displayName = 'CommentItem';
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,

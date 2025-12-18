@@ -43,7 +43,7 @@ export default function OTPSentScreen() {
         <View style={styles.titleSection}>
           <Text style={styles.title}>Check your email</Text>
           <Text style={styles.subtitle}>
-            We've sent a verification code to your email
+            We&apos;ve sent a verification code to your email
             {contact ? ` associated with ${contact}` : ''}.
           </Text>
         </View>
@@ -69,7 +69,7 @@ export default function OTPSentScreen() {
 
         {/* Resend Link */}
         <TouchableOpacity style={styles.resendContainer}>
-          <Text style={styles.resendText}>Didn't receive the code? </Text>
+          <Text style={styles.resendText}>Didn&apos;t receive the code? </Text>
           <Text style={styles.resendLink}>Resend</Text>
         </TouchableOpacity>
 

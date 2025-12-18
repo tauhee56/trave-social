@@ -22,6 +22,9 @@ export default function EditProfile() {
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
   const [website, setWebsite] = useState('');
+  const [location, setLocation] = useState('');
+  const [phone, setPhone] = useState('');
+  const [interests, setInterests] = useState('');
   const [avatar, setAvatar] = useState('');
   const [newAvatarUri, setNewAvatarUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +58,9 @@ export default function EditProfile() {
       setUsername((result.data as any).username || '');
       setBio(result.data.bio || '');
       setWebsite(result.data.website || '');
+      setLocation((result.data as any).location || '');
+      setPhone((result.data as any).phone || '');
+      setInterests((result.data as any).interests || '');
       setAvatar(result.data.avatar || '');
       setIsPrivate(!!(result.data as any).isPrivate);
     } else {
@@ -84,6 +90,9 @@ export default function EditProfile() {
     console.log('  Username:', username);
     console.log('  Bio:', bio);
     console.log('  Website:', website);
+    console.log('  Location:', location);
+    console.log('  Phone:', phone);
+    console.log('  Interests:', interests);
     console.log('  IsPrivate:', isPrivate);
     console.log('  New Avatar URI:', newAvatarUri ? 'Yes' : 'No');
     
@@ -113,6 +122,9 @@ export default function EditProfile() {
         displayName: name, // Also set displayName for Firebase
         bio,
         website,
+        location,
+        phone,
+        interests,
         avatar: finalAvatar,
         photoURL: finalAvatar, // Also set photoURL
         isPrivate,
@@ -285,6 +297,42 @@ export default function EditProfile() {
               style={styles.input}
               placeholder="Add links"
               placeholderTextColor="#999"
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>Location</Text>
+            <TextInput
+              value={location}
+              onChangeText={setLocation}
+              style={styles.input}
+              placeholder="City, Country"
+              placeholderTextColor="#999"
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>Phone</Text>
+            <TextInput
+              value={phone}
+              onChangeText={setPhone}
+              style={styles.input}
+              placeholder="+1 (555) 123-4567"
+              placeholderTextColor="#999"
+              keyboardType="phone-pad"
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.fieldLabel}>Interests</Text>
+            <TextInput
+              value={interests}
+              onChangeText={setInterests}
+              style={[styles.input, { height: 80 }]}
+              placeholder="e.g., Photography, Travel, Food"
+              placeholderTextColor="#999"
+              multiline
+              numberOfLines={4}
             />
           </View>
 

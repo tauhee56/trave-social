@@ -135,7 +135,7 @@ export default function UsernameSignUpScreen() {
         <View style={styles.titleSection}>
           <Text style={styles.checkIcon}>✓</Text>
           <Text style={styles.title}>Your profile is now verified</Text>
-          <Text style={styles.subtitle}>Let's keep it quick, 2 steps and you're in.</Text>
+          <Text style={styles.subtitle}>Let&apos;s keep it quick, 2 steps and you&apos;re in.</Text>
         </View>
 
         {/* Avatar Placeholder */}

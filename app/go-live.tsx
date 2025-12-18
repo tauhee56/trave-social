@@ -22,7 +22,7 @@ import {
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // @ts-ignore
-import { AGORA_CONFIG } from '../config/agora';
+import { AGORA_CONFIG, getAgoraToken } from '../config/agora';
 // @ts-ignore
 import { auth, db } from '../config/firebase';
 import { logger } from '../utils/logger';
@@ -344,32 +344,37 @@ export default function GoLiveScreen() {
       const channel = `live_${auth.currentUser?.uid}_${Date.now()}`;
       setChannelName(channel);
 
-      // Create stream document in Firebase
+      // Create stream document in Firebase (include listing-friendly fields)
       const streamRef = doc(db, 'liveStreams', channel);
       await setDoc(streamRef, {
         hostId: auth.currentUser?.uid,
         hostName: currentUser?.displayName || currentUser?.username || 'Anonymous',
         hostAvatar: currentUser?.avatar || currentUser?.profileImage || '',
+        userId: auth.currentUser?.uid,
+        userName: currentUser?.displayName || currentUser?.username || 'Anonymous',
+        userAvatar: currentUser?.avatar || currentUser?.profileImage || '',
         title: streamTitle,
         channelName: channel,
         viewerCount: 0,
         isLive: true,
         location: location,
         startedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
       });
 
       // Set as broadcaster
       await engine.setClientRole(ClientRoleType?.ClientRoleBroadcaster);
 
-      // Join channel
-      await engine.joinChannel('', channel, auth.currentUser?.uid || 0, {
+      // Join channel with token (null for dev if no token server)
+      const token = await getAgoraToken(channel, auth.currentUser?.uid || 0);
+      await engine.joinChannel(token || '', channel, auth.currentUser?.uid || 0, {
         clientRoleType: ClientRoleType?.ClientRoleBroadcaster,
         publishMicrophoneTrack: true,
       });
 
       // Listen to comments (limit to last 50 for performance)
       const commentsRef = collection(db, 'liveStreams', channel, 'comments');
-      const commentsQuery = query(commentsRef, orderBy('timestamp', 'desc'));
+      const commentsQuery = query(commentsRef, orderBy('createdAt', 'desc'));
       const unsubComments = onSnapshot(commentsQuery, (snapshot) => {
         const newComments = snapshot.docs.slice(0, 50).map(doc => ({
           id: doc.id,
@@ -473,7 +478,7 @@ export default function GoLiveScreen() {
           userName: currentUser?.displayName || currentUser?.username || 'Anonymous',
           userAvatar: currentUser?.avatar || currentUser?.profileImage || '',
           text: newComment.trim(),
-          timestamp: serverTimestamp(),
+          createdAt: serverTimestamp(),
         });
       } catch (error) {
         logger.error('Error sending comment:', error);
