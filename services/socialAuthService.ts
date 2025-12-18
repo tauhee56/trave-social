@@ -97,16 +97,12 @@ export async function signInWithGoogle() {
         
         // Check if it's Android SHA-1 certificate issue
         if (Platform.OS === 'android' && (configError.code === '10' || configError.message?.includes('DEVELOPER_ERROR'))) {
-          Alert.alert(
-            'Android Setup Required',
-            'Google Sign-In needs SHA-1 certificate to be added in Firebase Console.\n\nSteps:\n1. Run: cd android && ./gradlew signingReport\n2. Copy SHA-1 fingerprint\n3. Add to Firebase Console → Project Settings → Your Android app',
-            [{ text: 'OK' }]
-          );
+          console.warn('⚠️ Google Sign-In SHA-1 Warning: Certificate may need to be added in Firebase Console');
+          console.warn('Steps: 1) cd android && ./gradlew signingReport');
+          console.warn('       2) Copy SHA-1 fingerprint');
+          console.warn('       3) Add to Firebase Console → Project Settings → Android app');
           
-          return {
-            success: false,
-            error: 'SHA-1 certificate not configured in Firebase',
-          };
+          // Don't block - continue to try auth anyway
         }
         
         throw configError;
@@ -241,16 +237,13 @@ export async function signInWithTikTok() {
     try { await WebBrowser.warmUpAsync(); } catch {}
     
     // TikTok OAuth configuration from developer console (read from env for security)
-    const TIKTOK_CLIENT_KEY_VAL = getEnv('TIKTOK_CLIENT_KEY', TIKTOK_CLIENT_KEY);
-    const TIKTOK_CLIENT_SECRET_VAL = getEnv('TIKTOK_CLIENT_SECRET', TIKTOK_CLIENT_SECRET);
+    const TIKTOK_CLIENT_KEY_VAL = getEnv('TIKTOK_CLIENT_KEY', TIKTOK_CLIENT_KEY) || TIKTOK_CLIENT_KEY || 'awel823341vepyyl';
+    const TIKTOK_CLIENT_SECRET_VAL = getEnv('TIKTOK_CLIENT_SECRET', TIKTOK_CLIENT_SECRET) || TIKTOK_CLIENT_SECRET || 'dITpPKfOg4kcQiSjvC5ueaezDnbAMDOP';
 
-    if (!TIKTOK_CLIENT_KEY_VAL || !TIKTOK_CLIENT_SECRET_VAL) {
-      Alert.alert(
-        'TikTok Login Not Configured',
-        'Set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET via env (EAS secrets) from your TikTok Developer Console.',
-        [{ text: 'OK' }]
-      );
-      return { success: false, error: 'TikTok credentials not configured' };
+    console.log('🔑 TikTok credentials:', TIKTOK_CLIENT_KEY_VAL ? '✓ Key loaded' : '✗ Missing');
+    
+    if (!TIKTOK_CLIENT_KEY_VAL || TIKTOK_CLIENT_KEY_VAL === 'undefined') {
+      throw new Error('TikTok credentials not configured');
     }
     
     // TikTok OAuth endpoints
@@ -451,30 +444,16 @@ export async function signInWithSnapchat() {
     });
     
     // Snapchat client credentials (read from env for security)
-    const SNAPCHAT_CLIENT_ID_VAL = getEnv('SNAPCHAT_CLIENT_ID', SNAPCHAT_CLIENT_ID);
-    const SNAPCHAT_CLIENT_SECRET_VAL = getEnv('SNAPCHAT_CLIENT_SECRET', SNAPCHAT_CLIENT_SECRET);
-    // Fast-fail if missing to avoid long waiting screens
-    if (!SNAPCHAT_CLIENT_ID_VAL || !SNAPCHAT_CLIENT_SECRET_VAL) {
-      Alert.alert(
-        'Snapchat Login Not Configured',
-        'Set SNAPCHAT_CLIENT_ID and SNAPCHAT_CLIENT_SECRET via env (EAS secrets) from your Snap Kit dashboard.',
-        [{ text: 'OK' }]
-      );
-      return { success: false, error: 'Snapchat credentials not configured' };
-    }
-    const { makeRedirectUri: makeSnapRedirectUri } = await import('expo-auth-session');
-    const snapRedirectUri = makeSnapRedirectUri({
-      scheme: 'trave-social',
-      path: 'auth/callback'
-    });
-    const snapDiscovery = {
-      authorizationEndpoint: 'https://accounts.snapchat.com/accounts/oauth2/auth',
-      tokenEndpoint: 'https://accounts.snapchat.com/accounts/oauth2/token',
-    };
+    const SNAPCHAT_CLIENT_ID_VAL = getEnv('SNAPCHAT_CLIENT_ID', SNAPCHAT_CLIENT_ID) || SNAPCHAT_CLIENT_ID || '8369d3b8-e04a-4106-bbb8-2cf0b3b2c3dc';
+    const SNAPCHAT_CLIENT_SECRET_VAL = getEnv('SNAPCHAT_CLIENT_SECRET', SNAPCHAT_CLIENT_SECRET) || SNAPCHAT_CLIENT_SECRET || 'YXLnbVtFzJle6i7ffPYNff-qWa1RdqrdhDTy7GWVQLU';
+    
+    console.log('🔑 Snapchat credentials loaded:', SNAPCHAT_CLIENT_ID_VAL ? '✓' : '✗');
+    
     // Build Snapchat OAuth URL
-    const snapAuthUrl = `${snapDiscovery.authorizationEndpoint}?client_id=${SNAPCHAT_CLIENT_ID_VAL}&redirect_uri=${encodeURIComponent(snapRedirectUri)}&response_type=code&scope=user.display_name%20user.bitmoji.avatar&prompt=consent`;
+    const snapAuthUrl = `${discovery.authorizationEndpoint}?client_id=${SNAPCHAT_CLIENT_ID_VAL}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=user.display_name%20user.bitmoji.avatar&prompt=consent`;
+    
     // Open browser for authentication
-    const snapResult = await WebBrowser.openAuthSessionAsync(snapAuthUrl, snapRedirectUri);
+    const snapResult = await WebBrowser.openAuthSessionAsync(snapAuthUrl, redirectUri);
     if (snapResult.type === 'success' && snapResult.url) {
       // Extract authorization code from URL
       const url = new URL(snapResult.url);
@@ -486,7 +465,7 @@ export async function signInWithSnapchat() {
       // Add timeout to token exchange
       const tokenAbort = new AbortController();
       const tokenTimeout = setTimeout(() => tokenAbort.abort(), 12000);
-      const tokenResponse = await fetch(snapDiscovery.tokenEndpoint, {
+      const tokenResponse = await fetch(discovery.tokenEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -496,7 +475,7 @@ export async function signInWithSnapchat() {
           client_secret: SNAPCHAT_CLIENT_SECRET_VAL,
           code: code,
           grant_type: 'authorization_code',
-          redirect_uri: snapRedirectUri,
+          redirect_uri: redirectUri,
         }).toString(),
         signal: tokenAbort.signal,
       });

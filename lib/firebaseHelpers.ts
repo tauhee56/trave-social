@@ -341,21 +341,15 @@ export async function uploadImage(uri: string, path: string): Promise<{ success:
 
     const storageRef = ref(storage, path);
 
-    // Remote HTTP(S) URL → fetch blob and upload
-    if (sourceUri.startsWith('http://') || sourceUri.startsWith('https://')) {
-      const response = await fetch(sourceUri);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch image: ${response.status}`);
-      }
-      const blob = await response.blob();
-      await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
-    } else {
-      // Local file path (file:// or plain path) → read as base64 and upload
-      const base64 = await FileSystem.readAsStringAsync(sourceUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      await uploadString(storageRef, base64, 'base64', { contentType: 'image/jpeg' });
+    // For all URIs, use fetch + blob approach (works for http://, https://, file://)
+    console.log('📤 Fetching file as blob:', sourceUri);
+    const response = await fetch(sourceUri);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status}`);
     }
+    const blob = await response.blob();
+    console.log('✅ Blob fetched, size:', blob.size, 'type:', blob.type);
+    await uploadBytes(storageRef, blob, { contentType: blob.type || 'image/jpeg' });
 
     const downloadURL = await getDownloadURL(storageRef);
     return { success: true, url: downloadURL };

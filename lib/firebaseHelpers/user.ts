@@ -112,6 +112,7 @@ export async function getHighlightStories(highlightId: string) {
 // This was a stub that always returned null
 // User-related Firestore helpers
 import { collection, doc, getDoc, getDocs, limit, query, updateDoc, where } from 'firebase/firestore';
+import { getAuth, updateProfile } from 'firebase/auth';
 import { db } from '../../config/firebase';
 import { userProfileCache } from '../userProfileCache';
 
@@ -188,7 +189,6 @@ export async function updateUserProfile(uid: string, data: any) {
     
     // 2. Update Firebase Auth profile (displayName, photoURL)
     try {
-      const { getAuth, updateProfile } = await import('firebase/auth');
       const auth = getAuth();
       const currentUser = auth.currentUser;
       
