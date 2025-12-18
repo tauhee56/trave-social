@@ -58,7 +58,7 @@
                 "appAuthRedirectScheme": "trave-social",
                 "traveSocialScheme": "trave-social"
               },
-              "enableProguardInReleaseBuilds": true,
+              "enableProguardInReleaseBuilds": false,
               "enableShrinkResourcesInReleaseBuilds": true
           }
         }
