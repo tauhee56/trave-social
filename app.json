@@ -59,7 +59,7 @@
                 "traveSocialScheme": "trave-social"
               },
               "enableProguardInReleaseBuilds": false,
-              "enableShrinkResourcesInReleaseBuilds": true
+              "enableShrinkResourcesInReleaseBuilds": false
           }
         }
       ],
