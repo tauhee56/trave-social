@@ -38,13 +38,24 @@ export default function EditProfile() {
       router.replace('/auth/welcome');
       return;
     }
+    
+    console.log('🔄 Loading profile for user:', user.uid);
     const result = await getUserProfile(user.uid);
+    
     if (result && result.success && result.data) {
+      console.log('✅ Profile loaded:', {
+        name: result.data.name,
+        avatar: result.data.avatar?.substring(0, 50),
+        isPrivate: result.data.isPrivate
+      });
+      
       setName(result.data.name || '');
       setBio(result.data.bio || '');
       setWebsite(result.data.website || '');
       setAvatar(result.data.avatar || '');
       setIsPrivate(!!(result.data as any).isPrivate);
+    } else {
+      console.error('❌ Failed to load profile:', result.error);
     }
     setLoading(false);
   }
@@ -65,6 +76,13 @@ export default function EditProfile() {
       return;
     }
     
+    console.log('💾 Saving profile changes...');
+    console.log('  Name:', name);
+    console.log('  Bio:', bio);
+    console.log('  Website:', website);
+    console.log('  IsPrivate:', isPrivate);
+    console.log('  New Avatar URI:', newAvatarUri ? 'Yes' : 'No');
+    
     setSaving(true);
     setError(null);
     
@@ -73,14 +91,18 @@ export default function EditProfile() {
       
       // Upload new avatar if picked
       if (newAvatarUri) {
+        console.log('📤 Uploading new avatar...');
         const uploadResult = await uploadImage(newAvatarUri, `avatars/${user.uid}`);
         if (uploadResult && uploadResult.success && uploadResult.url) {
           finalAvatar = uploadResult.url;
+          console.log('✅ Avatar uploaded:', finalAvatar.substring(0, 50));
         } else {
           throw new Error(uploadResult.error || 'Failed to upload image');
         }
       }
+      
       // Update profile with avatar URL
+      console.log('💾 Updating Firestore profile...');
       const result = await updateUserProfile(user.uid, {
         name,
         displayName: name, // Also set displayName for Firebase
@@ -93,6 +115,8 @@ export default function EditProfile() {
       });
       
       if (result && result.success) {
+        console.log('✅ Profile updated in Firestore');
+        
         // If privacy setting changed, update all user's posts
         console.log('🔄 Updating posts privacy to:', isPrivate);
         const { collection, query, where, getDocs, updateDoc, doc } = await import('firebase/firestore');
@@ -129,15 +153,25 @@ export default function EditProfile() {
           Alert.alert('Warning', `Profile updated but some posts may not have been updated. Please try again.`);
         }
         
+        // Reload profile to get fresh data
         await loadProfile();
+        
         Alert.alert('Success', 'Profile updated!', [
-          { text: 'OK', onPress: () => router.back() }
+          { 
+            text: 'OK', 
+            onPress: () => {
+              // Force profile screen to reload by going back
+              router.back();
+            }
+          }
         ]);
       } else {
         throw new Error(result.error || 'Failed to update profile');
       }
     } catch (e: any) {
+      console.error('Save profile error:', e);
       setError(e.message || 'Failed to save profile');
+      Alert.alert('Error', e.message || 'Failed to save profile');
     } finally {
       setSaving(false);
     }

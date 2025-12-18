@@ -172,6 +172,7 @@ export async function getUserProfile(uid: string) {
  */
 export async function updateUserProfile(uid: string, data: any) {
   try {
+    // 1. Update Firestore document
     const docRef = doc(db, 'users', uid);
     let avatarValue = data.avatar;
     if (!avatarValue || avatarValue.trim() === '') {
@@ -184,6 +185,32 @@ export async function updateUserProfile(uid: string, data: any) {
       isPrivate: data.isPrivate !== undefined ? data.isPrivate : false,
     };
     await updateDoc(docRef, safeData);
+    
+    // 2. Update Firebase Auth profile (displayName, photoURL)
+    try {
+      const { getAuth, updateProfile } = await import('firebase/auth');
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      
+      if (currentUser && currentUser.uid === uid) {
+        const authUpdates: any = {};
+        if (data.displayName !== undefined) authUpdates.displayName = data.displayName;
+        if (data.name !== undefined) authUpdates.displayName = data.name;
+        if (avatarValue) authUpdates.photoURL = avatarValue;
+        
+        if (Object.keys(authUpdates).length > 0) {
+          await updateProfile(currentUser, authUpdates);
+          console.log('✅ Firebase Auth profile updated:', authUpdates);
+        }
+      }
+    } catch (authError) {
+      console.warn('Failed to update Firebase Auth profile:', authError);
+      // Don't fail the whole operation if auth update fails
+    }
+    
+    // Clear cache so next getUserProfile fetches fresh data
+    userProfileCache.delete(uid);
+    
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
