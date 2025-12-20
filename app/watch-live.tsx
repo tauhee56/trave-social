@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Camera } from 'expo-camera';
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from "react";
@@ -19,6 +20,27 @@ function getSafeCoordinate(coord: { latitude?: number; longitude?: number } | nu
   const lat = typeof coord?.latitude === 'number' && isFinite(coord.latitude) ? coord.latitude : fallback.latitude;
   const lon = typeof coord?.longitude === 'number' && isFinite(coord.longitude) ? coord.longitude : fallback.longitude;
   return { latitude: lat, longitude: lon };
+}
+
+// Calculate distance between two coordinates (in km)
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+// Format distance for display
+function formatDistance(km: number): string {
+  if (km < 1) {
+    return `${Math.round(km * 1000)}m`;
+  }
+  return `${km.toFixed(1)}km`;
 }
 
 // Import Agora SDK
@@ -72,11 +94,33 @@ export default function WatchLiveScreen() {
   const [showSelfCamera, setShowSelfCamera] = useState(false);
   const [isMapFullScreen, setIsMapFullScreen] = useState(false);
 
+  // Viewer location state
+  const [viewerLocation, setViewerLocation] = useState<{latitude: number; longitude: number} | null>(null);
+
   const engineRef = useRef<any>(null);
   const uidRef = useRef(Math.floor(Math.random() * 100000));
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttemptsRef = useRef(3);
   const isInitializingRef = useRef(false);
+
+  // Get viewer location
+  useEffect(() => {
+    const getLocation = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({});
+          setViewerLocation({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+          });
+        }
+      } catch (error) {
+        console.error('Error getting location:', error);
+      }
+    };
+    getLocation();
+  }, []);
 
   useEffect(() => {
     if (!currentUser || !streamId || !channelName) {
@@ -535,6 +579,17 @@ export default function WatchLiveScreen() {
   // Full screen map view
   if (isMapFullScreen) {
     const hasLocation = streamData?.location && typeof streamData.location.latitude === 'number' && typeof streamData.location.longitude === 'number';
+
+    // Calculate distance if both locations available
+    const distance = hasLocation && viewerLocation
+      ? calculateDistance(
+          viewerLocation.latitude,
+          viewerLocation.longitude,
+          streamData.location.latitude,
+          streamData.location.longitude
+        )
+      : 0;
+
     return (
       <View style={styles.container}>
         <MapView
@@ -556,6 +611,7 @@ export default function WatchLiveScreen() {
           liteMode={false}
           cacheEnabled={true}
         >
+          {/* Streamer marker */}
           {hasLocation ? (
             <Marker coordinate={{ latitude: streamData.location.latitude, longitude: streamData.location.longitude }}>
               <View style={styles.mapMarker}>
@@ -566,6 +622,25 @@ export default function WatchLiveScreen() {
               </View>
             </Marker>
           ) : null}
+
+          {/* Viewer marker (you) with distance */}
+          {viewerLocation && (
+            <Marker coordinate={viewerLocation}>
+              <View style={styles.viewerMarkerContainer}>
+                {hasLocation && distance > 0 && (
+                  <View style={styles.distanceBadge}>
+                    <Text style={styles.distanceText}>{formatDistance(distance)}</Text>
+                  </View>
+                )}
+                <View style={styles.viewerMarker}>
+                  <Image
+                    source={{ uri: currentUser?.avatar || currentUser?.photoURL || DEFAULT_AVATAR_URL }}
+                    style={styles.viewerMarkerAvatar}
+                  />
+                </View>
+              </View>
+            </Marker>
+          )}
         </MapView>
 
         {/* Top Header on Map */}
@@ -1087,6 +1162,38 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
+  },
+
+  // Viewer marker styles
+  viewerMarkerContainer: {
+    alignItems: 'center',
+  },
+  distanceBadge: {
+    backgroundColor: '#e0245e',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  distanceText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  viewerMarker: {
+    alignItems: 'center',
+  },
+  viewerMarkerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#3498db',
   },
 
   // Self Camera PiP

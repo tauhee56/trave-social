@@ -36,6 +36,27 @@ import { logger } from '../utils/logger';
     return { latitude: lat, longitude: lon };
   }
 
+  // Calculate distance between two coordinates (in km)
+  function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }
+
+  // Format distance for display
+  function formatDistance(km: number): string {
+    if (km < 1) {
+      return `${Math.round(km * 1000)}m`;
+    }
+    return `${km.toFixed(1)}km`;
+  }
+
 const { width, height } = Dimensions.get('window');
 const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
 
@@ -74,6 +95,10 @@ interface Viewer {
   id: string;
   name: string;
   avatar: string;
+  location?: {
+    latitude: number;
+    longitude: number;
+  };
 }
 
 export default function GoLiveScreen() {
@@ -580,6 +605,7 @@ export default function GoLiveScreen() {
           liteMode={false}
           cacheEnabled={true}
         >
+          {/* Streamer marker (you) */}
           <Marker coordinate={getSafeCoordinate(location)}>
             <View style={styles.mapMarker}>
               <Image
@@ -588,6 +614,42 @@ export default function GoLiveScreen() {
               />
             </View>
           </Marker>
+
+          {/* Viewer markers with distance */}
+          {safeViewers.map((viewer) => {
+            if (!viewer.location?.latitude || !viewer.location?.longitude) return null;
+
+            const distance = location
+              ? calculateDistance(
+                  location.latitude,
+                  location.longitude,
+                  viewer.location.latitude,
+                  viewer.location.longitude
+                )
+              : 0;
+
+            return (
+              <Marker
+                key={viewer.id}
+                coordinate={{
+                  latitude: viewer.location.latitude,
+                  longitude: viewer.location.longitude
+                }}
+              >
+                <View style={styles.viewerMarkerContainer}>
+                  <View style={styles.distanceBadge}>
+                    <Text style={styles.distanceText}>{formatDistance(distance)}</Text>
+                  </View>
+                  <View style={styles.viewerMarker}>
+                    <Image
+                      source={{ uri: viewer.avatar || DEFAULT_AVATAR_URL }}
+                      style={styles.viewerMarkerAvatar}
+                    />
+                  </View>
+                </View>
+              </Marker>
+            );
+          })}
         </MapView>
 
         {/* Top Header on Map */}
@@ -1304,6 +1366,38 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 3,
     borderColor: '#00D26A',
+  },
+
+  // Viewer marker styles
+  viewerMarkerContainer: {
+    alignItems: 'center',
+  },
+  distanceBadge: {
+    backgroundColor: '#e0245e',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  distanceText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  viewerMarker: {
+    alignItems: 'center',
+  },
+  viewerMarkerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: '#3498db',
   },
   liveVideoPipMap: {
     position: 'absolute',

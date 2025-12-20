@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Dimensions, PermissionsAndroid, Platform, Share, StyleSheet, Text, View } from 'react-native';
 // import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 import { collection, query as firestoreQuery, getDocs, where } from 'firebase/firestore';
-import MapView, { Marker, Polyline, Region } from 'react-native-maps';
+import MapView, { Marker, Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PostLocationModal } from '../components/PostLocationModal';
 import { db } from '../config/firebase';
@@ -431,20 +431,42 @@ export default function MapScreen() {
   };
 
   // UI render
-  // Helper: get streamer location from liveStreams (first live stream)
-  const streamer = safeLiveStreams.length > 0 ? safeLiveStreams[0] : null;
-  const streamerCoords = streamer?.location ? {
-    lat: streamer.location.latitude,
-    lon: streamer.location.longitude
-  } : null;
+  // Live stream markers component
+  const LiveStreamMarker = ({ stream }: { stream: LiveStream }) => {
+    if (!stream.location) return null;
 
-  // Helper: route coordinates (viewer to streamer)
-  const routeCoords = (viewerCoords && streamerCoords)
-    ? [
-        { latitude: viewerCoords.lat, longitude: viewerCoords.lon },
-        { latitude: streamerCoords.lat, longitude: streamerCoords.lon }
-      ]
-    : [];
+    return (
+      <Marker
+        key={`live-${stream.id}`}
+        coordinate={{
+          latitude: stream.location.latitude,
+          longitude: stream.location.longitude
+        }}
+        anchor={{ x: 0.5, y: 0.5 }}
+        onPress={() => {
+          // Navigate to watch-live screen
+          router.push({
+            pathname: '/watch-live',
+            params: { channelName: stream.channelName || stream.id }
+          });
+        }}
+      >
+        <View style={styles.liveMarkerContainer}>
+          <View style={styles.liveBadgeNew}>
+            <Text style={styles.liveText}>LIVE</Text>
+          </View>
+          <View style={styles.liveAvatarOutside}>
+            <ExpoImage
+              source={{ uri: stream.userAvatar || 'https://via.placeholder.com/32' }}
+              style={styles.liveAvatarNew}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+          </View>
+        </View>
+      </Marker>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -464,33 +486,12 @@ export default function MapScreen() {
             }
             customMapStyle={standardMapStyle}
           >
-            {/* Viewer marker */}
-            {viewerCoords && (
-              <Marker
-                key="viewer"
-                coordinate={{ latitude: viewerCoords.lat, longitude: viewerCoords.lon }}
-                pinColor="#3498db"
-                title="You"
-              />
-            )}
-            {/* Streamer marker */}
-            {streamerCoords && (
-              <Marker
-                key="streamer"
-                coordinate={{ latitude: streamerCoords.lat, longitude: streamerCoords.lon }}
-                pinColor="#e0245e"
-                title={streamer?.userName || "Streamer"}
-              />
-            )}
-            {/* Route polyline */}
-            {routeCoords.length === 2 && (
-              <Polyline
-                coordinates={routeCoords}
-                strokeColor="#e0245e"
-                strokeWidth={4}
-              />
-            )}
-            {/* ...existing code for post markers... */}
+            {/* Live stream markers - only show LIVE pill, no distance */}
+            {safeLiveStreams.map((stream) => (
+              <LiveStreamMarker key={stream.id} stream={stream} />
+            ))}
+
+            {/* Post markers */}
             {Object.entries(limitedLocationGroups).map(([key, postsAtLocation]) => {
               try {
                 const safePostsAtLocation = Array.isArray(postsAtLocation) ? postsAtLocation : [];
