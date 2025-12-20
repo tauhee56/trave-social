@@ -70,8 +70,7 @@ import {
 import {
     deleteObject,
     getDownloadURL,
-    ref,
-    uploadBytes
+    ref
 } from 'firebase/storage';
 import { auth, db, storage } from '../config/firebase';
 
@@ -237,14 +236,24 @@ export async function isFollowRequestPending(privateUserId: string, userId: stri
 
 // ============= AUTHENTICATION =============
 
-export async function signUpUser(email: string, password: string, name: string) {
+export async function signUpUser(email: string, password: string, name: string, skipEmailVerification: boolean = false) {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    // Send email verification
-    const { sendEmailVerification } = await import('firebase/auth');
-    await sendEmailVerification(user);
+    // Send email verification (enabled by default for security)
+    if (!skipEmailVerification) {
+      try {
+        const { sendEmailVerification } = await import('firebase/auth');
+        await sendEmailVerification(user);
+        console.log('✅ Email verification sent');
+      } catch (emailError) {
+        console.warn('⚠️ Email verification failed (non-blocking):', emailError);
+        // Don't block signup if email fails - user can still login
+      }
+    } else {
+      console.log('ℹ️ Email verification skipped');
+    }
 
     // Default avatar URL
     const defaultAvatar = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
@@ -305,8 +314,8 @@ export async function updateUserProfile(uid: string, data: any) {
   try {
     const docRef = doc(db, 'users', uid);
     // Always save avatar to both avatar and photoURL fields
-    let avatarValue = data.avatar;
-    if (!avatarValue || avatarValue.trim() === '') {
+    let avatarValue = data?.avatar;
+    if (!avatarValue || (typeof avatarValue === 'string' && avatarValue.trim() === '')) {
       avatarValue = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
     }
     const safeData = {
@@ -315,6 +324,13 @@ export async function updateUserProfile(uid: string, data: any) {
       photoURL: avatarValue,
     };
     await updateDoc(docRef, safeData);
+
+    // Emit event if privacy changed
+    if ('isPrivate' in data) {
+      const { feedEventEmitter } = await import('./feedEventEmitter');
+      feedEventEmitter.emitUserPrivacyChanged(uid, data.isPrivate);
+    }
+
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -338,71 +354,88 @@ export async function uploadImage(uri: string, path: string): Promise<{ success:
       sourceUri = tempPath;
     }
 
-    const storageRef = ref(storage, path);
+    console.log('📤 Starting upload for:', sourceUri);
 
-    // Android file:// URIs need to use FileSystem.readAsStringAsync with base64
+    // Read file as base64
+    let base64Data: string;
+
     if (sourceUri.startsWith('file://')) {
-      console.log('📤 Reading file as base64:', sourceUri);
-      const base64 = await FileSystem.readAsStringAsync(sourceUri, {
+      const fileInfo = await FileSystem.getInfoAsync(sourceUri);
+      if (!fileInfo.exists) {
+        throw new Error('File does not exist: ' + sourceUri);
+      }
+      console.log('✅ File exists, size:', fileInfo.size);
+
+      base64Data = await FileSystem.readAsStringAsync(sourceUri, {
         encoding: 'base64',
       });
-      console.log('✅ Base64 read, length:', base64.length);
-      
-      // Get Firebase auth token for authenticated upload
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        throw new Error('User must be authenticated to upload images');
+    } else if (sourceUri.startsWith('http://') || sourceUri.startsWith('https://')) {
+      // Download remote file first
+      console.log('📥 Downloading remote image...');
+      const tempDownloadPath = `${FileSystem.cacheDirectory}upload-remote-${Date.now()}.jpg`;
+      const dl = await FileSystem.downloadAsync(sourceUri, tempDownloadPath);
+      if (dl.status !== 200) {
+        throw new Error(`Failed to download image: HTTP ${dl.status}`);
       }
-      const idToken = await currentUser.getIdToken();
-      
-      // Use Firebase Storage REST API for base64 upload (React Native compatible)
-      const storageBucket = storage.app.options.storageBucket;
-      const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${storageBucket}/o?uploadType=media&name=${encodeURIComponent(path)}`;
-      
-      // Convert base64 to binary for upload
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      
-      console.log('✅ Binary data prepared, size:', bytes.length);
-      
-      // Upload using fetch with binary data and auth token
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'image/jpeg',
-          'Authorization': `Bearer ${idToken}`,
-        },
-        body: bytes,
-      });
-      
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`);
-      }
-      
-      console.log('✅ Upload successful');
-      
-      // Get download URL
-      const downloadURL = await getDownloadURL(storageRef);
-      return { success: true, url: downloadURL };
+      base64Data = await FileSystem.readAsStringAsync(tempDownloadPath, { encoding: 'base64' });
+    } else {
+      throw new Error('Unsupported URI format');
     }
 
-    // For http://, https://, use fetch + blob approach
-    console.log('📤 Fetching file as blob:', sourceUri);
-    const response = await fetch(sourceUri);
+    if (!base64Data || base64Data.length === 0) {
+      throw new Error('Failed to read file or file is empty');
+    }
+
+    console.log('✅ Base64 read, length:', base64Data.length);
+
+    // Convert base64 to binary array buffer
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    console.log('✅ Binary array created, size:', bytes.length);
+
+    // Use Firebase Storage REST API to upload (avoids Blob issues in React Native)
+    const bucket = storage.app.options.storageBucket;
+    const encodedPath = encodeURIComponent(path);
+
+    // Get auth token
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+    const token = await user.getIdToken();
+
+    // Upload using REST API with binary data
+    const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o?name=${encodedPath}`;
+
+    console.log('📤 Uploading to Firebase Storage via REST API...');
+
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'image/jpeg',
+      },
+      body: bytes,
+    });
+
     if (!response.ok) {
-      throw new Error(`Failed to fetch image: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`Upload failed: ${response.status} - ${errorText}`);
     }
-    const blob = await response.blob();
-    console.log('✅ Blob fetched, size:', blob.size, 'type:', blob.type);
-    await uploadBytes(storageRef, blob, { contentType: blob.type || 'image/jpeg' });
 
+    console.log('✅ Upload complete');
+
+    // Get download URL using SDK
+    const storageRef = ref(storage, path);
     const downloadURL = await getDownloadURL(storageRef);
+
     return { success: true, url: downloadURL };
   } catch (error: any) {
-    console.error('uploadImage error:', error);
+    console.error('❌ uploadImage error:', error);
     return { success: false, error: error?.message ?? String(error) };
   }
 }
@@ -575,7 +608,7 @@ export async function createPost(
       videoUrl: mediaType === 'video' ? imageUrls[0] : null,
       mediaType: mediaType,
       caption,
-      location: location && location.trim() ? location : (locationData?.name || 'Unknown'),
+      location: (location && typeof location === 'string' && location.trim()) ? location : (locationData?.name || 'Unknown'),
       category: category || '',
       likes: [],
       likesCount: 0,
@@ -613,6 +646,10 @@ export async function createPost(
       postsCount: (userData.postsCount || 0) + 1
     });
     console.log('✅ User post count updated');
+
+    // Emit event for new post
+    const { feedEventEmitter } = await import('./feedEventEmitter');
+    feedEventEmitter.emitPostCreated(docRef.id, postData);
 
     return { success: true, postId: docRef.id };
   } catch (error: any) {
@@ -755,6 +792,10 @@ export async function deletePost(postId: string, currentUserId?: string) {
     const postData = postDoc.data();
     const userId = postData.userId;
     const imagePath = postData.imagePath;
+
+    // Emit event before deletion
+    const { feedEventEmitter } = await import('./feedEventEmitter');
+    feedEventEmitter.emitPostDeleted(postId);
 
     // Only allow delete if currentUserId matches post owner
     if (currentUserId && userId !== currentUserId) {

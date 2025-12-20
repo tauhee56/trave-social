@@ -1,11 +1,16 @@
 // Post feed helper for search
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
-export async function getAllPosts() {
+/**
+ * Get all posts with pagination
+ * OPTIMIZATION: Added limit to prevent fetching all posts (expensive!)
+ */
+export async function getAllPosts(limitCount: number = 100) {
 	   try {
 		   const postsRef = collection(db, 'posts');
-		   const snapshot = await getDocs(postsRef);
+		   const q = query(postsRef, orderBy('createdAt', 'desc'), limit(limitCount));
+		   const snapshot = await getDocs(q);
 		   console.log('getAllPosts: snapshot.docs.length =', snapshot.docs.length);
 		   const posts = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
 		   console.log('getAllPosts: mapped posts =', posts);
@@ -56,14 +61,24 @@ export * from './post';
 // Section helpers for EditSectionsModal
 export async function addUserSection(userId: string, section: { name: string, postIds: string[], coverImage?: string }) {
 	try {
+		console.log('🔥 addUserSection called:', { userId, sectionName: section.name });
+
 		const { setDoc, doc } = await import('firebase/firestore');
 		const { db } = await import('../../config/firebase');
-		await setDoc(doc(db, 'users', userId, 'sections', section.name), {
+
+		const sectionRef = doc(db, 'users', userId, 'sections', section.name);
+		console.log('📍 Section path:', `users/${userId}/sections/${section.name}`);
+
+		await setDoc(sectionRef, {
 			postIds: section.postIds || [],
-			coverImage: section.coverImage || ''
+			coverImage: section.coverImage || '',
+			createdAt: new Date()
 		});
+
+		console.log('✅ Section created successfully in Firestore');
 		return { success: true };
 	} catch (error: any) {
+		console.error('❌ addUserSection error:', error);
 		return { success: false, error: error.message };
 	}
 }

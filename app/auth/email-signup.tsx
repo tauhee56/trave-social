@@ -52,16 +52,18 @@ export default function EmailSignUpScreen() {
     try {
       // Use email username as name for now
       const username = email.split('@')[0];
-      const result = await signUpUser(email, password, username);
+
+      // Enable email verification (false = send verification email)
+      const result = await signUpUser(email, password, username, false);
 
       if (result.success) {
-        // Show email verification alert
+        // Account created - email verification sent (but not required to login)
         Alert.alert(
-          'Verify Your Email ✉️',
-          `A verification email has been sent to ${email}. Please check your inbox and verify your email to continue.`,
+          'Account Created! 🎉',
+          'Your account has been created successfully. A verification email has been sent (optional). You can start using the app now!',
           [
             {
-              text: 'OK',
+              text: 'Get Started',
               onPress: () => router.replace('/(tabs)/home')
             }
           ]

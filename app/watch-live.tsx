@@ -76,6 +76,7 @@ export default function WatchLiveScreen() {
   const uidRef = useRef(Math.floor(Math.random() * 100000));
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttemptsRef = useRef(3);
+  const isInitializingRef = useRef(false);
 
   useEffect(() => {
     if (!currentUser || !streamId || !channelName) {
@@ -140,9 +141,18 @@ export default function WatchLiveScreen() {
 
   const initializeViewer = async () => {
     try {
+      // Prevent multiple simultaneous initializations
+      if (isInitializingRef.current) {
+        console.log('⚠️ Already initializing, skipping...');
+        return;
+      }
+      
+      isInitializingRef.current = true;
+      
       if (!AGORA_AVAILABLE) {
         console.log('❌ Agora SDK not available');
         setIsInitializing(false);
+        isInitializingRef.current = false;
         return;
       }
 
@@ -150,6 +160,7 @@ export default function WatchLiveScreen() {
         console.log('❌ Missing streamId or channelName:', { streamId, channelName });
         Alert.alert('Error', 'Stream information missing');
         setIsInitializing(false);
+        isInitializingRef.current = false;
         return;
       }
 
@@ -157,7 +168,20 @@ export default function WatchLiveScreen() {
         console.log('❌ No current user');
         Alert.alert('Error', 'Please log in first');
         setIsInitializing(false);
+        isInitializingRef.current = false;
         return;
+      }
+      
+      // Clean up existing engine before creating new one
+      if (engineRef.current) {
+        console.log('🧹 Cleaning up existing engine before reinitializing...');
+        try {
+          await engineRef.current.leaveChannel();
+          await engineRef.current.release();
+        } catch (e) {
+          console.log('Error during pre-cleanup:', e);
+        }
+        engineRef.current = null;
       }
 
       // Check if stream exists and is live BEFORE trying to join
@@ -263,48 +287,92 @@ export default function WatchLiveScreen() {
           console.error('❌ Agora error:', err, msg);
           // Error codes:
           // 17 = ERR_JOIN_CHANNEL_REJECTED
-          // 110 = ERR_OPEN_CHANNEL_TIMEOUT
+          // 110 = ERR_OPEN_CHANNEL_TIMEOUT (channel join timeout)
           // 2 = ERR_INVALID_ARGUMENT
 
-          if (err === 17 || err === 110 || err === 2) {
-            // Try reconnecting for these errors
+          if (err === 110) {
+            // Error 110: Timeout joining channel - broadcaster might not be ready
+            console.log('⚠️ Channel join timeout (110) - broadcaster may not be streaming yet');
+            
             if (reconnectAttemptsRef.current < maxReconnectAttemptsRef.current) {
               reconnectAttemptsRef.current += 1;
               setConnectionStatus('reconnecting');
               console.log(`🔄 Reconnecting... Attempt ${reconnectAttemptsRef.current}/${maxReconnectAttemptsRef.current}`);
 
-              // Leave channel first before rejoining
-              engineRef.current?.leaveChannel();
-
-              setTimeout(() => {
+              // Proper cleanup before retry
+              isInitializingRef.current = false;
+              
+              setTimeout(async () => {
+                try {
+                  if (engineRef.current) {
+                    await engineRef.current.leaveChannel();
+                  }
+                } catch (e) {
+                  console.log('Error leaving channel during error 110 retry:', e);
+                }
                 initializeViewer();
-              }, 3000); // Wait 3 seconds before retry (increased from 2s)
+              }, 5000); // Wait 5 seconds for error 110 (broadcaster might need time to start publishing)
             } else {
               setConnectionStatus('disconnected');
-              Alert.alert('Connection Error', 'Unable to join stream after multiple attempts. The stream may have ended or there may be network issues.');
               setIsInitializing(false);
+              isInitializingRef.current = false;
+              Alert.alert(
+                'Connection Timeout', 
+                'Unable to connect to the stream. The broadcaster may not be streaming yet or there may be network issues.',
+                [{ text: 'OK', onPress: () => router.back() }]
+              );
+            }
+          } else if (err === 17 || err === 2) {
+            // Other errors - try reconnecting
+            if (reconnectAttemptsRef.current < maxReconnectAttemptsRef.current) {
+              reconnectAttemptsRef.current += 1;
+              setConnectionStatus('reconnecting');
+              console.log(`🔄 Reconnecting... Attempt ${reconnectAttemptsRef.current}/${maxReconnectAttemptsRef.current}`);
+
+              isInitializingRef.current = false;
+              
+              setTimeout(async () => {
+                try {
+                  if (engineRef.current) {
+                    await engineRef.current.leaveChannel();
+                  }
+                } catch (e) {
+                  console.log('Error leaving channel during retry:', e);
+                }
+                initializeViewer();
+              }, 3000);
+            } else {
+              setConnectionStatus('disconnected');
+              setIsInitializing(false);
+              isInitializingRef.current = false;
+              Alert.alert('Connection Error', 'Unable to join stream after multiple attempts.');
             }
           }
         },
         onConnectionStateChanged: (_connection: any, state: number, reason: number) => {
           console.log('🔌 Connection state changed:', state, 'reason:', reason);
           // state 1 = connecting, 2 = connected, 3 = reconnecting, 4 = failed, 5 = disconnected
-          if (state === 3) {
+          // reason 0 = default, 5 = leave channel, 8 = client role changed
+          
+          if (state === 2) { // connected
+            setConnectionStatus('connected');
+            console.log('✅ Connection established');
+            reconnectAttemptsRef.current = 0; // Reset on successful connection
+            isInitializingRef.current = false;
+          } else if (state === 3) {
             setConnectionStatus('reconnecting');
             console.log('⚠️ Reconnecting to Agora...');
           } else if (state === 4 || state === 5) {
-            setConnectionStatus('disconnected');
-            console.log('❌ Connection failed/disconnected, attempting to rejoin');
-            if (reconnectAttemptsRef.current < maxReconnectAttemptsRef.current) {
-              reconnectAttemptsRef.current += 1;
-              setConnectionStatus('reconnecting');
-              setTimeout(() => {
-                initializeViewer();
-              }, 2000);
+            // Only reconnect for actual disconnections, not intentional leaves (reason 5)
+            if (reason !== 5 && reason !== 0) {
+              setConnectionStatus('disconnected');
+              console.log('❌ Connection failed/disconnected (reason:', reason, ')');
+              
+              // Don't auto-reconnect on connection state changes if we're already handling error 110
+              // The error handler will manage reconnects
+            } else {
+              console.log('ℹ️ Connection state changed but not reconnecting (reason:', reason, ')');
             }
-          } else if (state === 2) { // connected
-            setConnectionStatus('connected');
-            console.log('✅ Connection established');
           }
         }
       });
@@ -340,32 +408,40 @@ export default function WatchLiveScreen() {
         }
       }
       
-      // Timeout after 20 seconds if no broadcaster found
+      // Timeout after 30 seconds if no broadcaster found (increased to give more time)
       const timeoutId = setTimeout(() => {
         if (!remoteUid && isInitializing) {
-          console.log('⏱️ Timeout: No broadcaster found after 20s, marking as not initializing');
+          console.log('⏱️ Timeout: No broadcaster found after 30s, marking as not initializing');
           setIsInitializing(false);
+          isInitializingRef.current = false;
           setConnectionStatus('connected'); // Show connected but no video available
         }
-      }, 20000);
+      }, 30000);
 
       return () => clearTimeout(timeoutId);
     } catch (error: any) {
       console.error('💥 Error initializing viewer:', error.message, error);
       setIsInitializing(false);
+      isInitializingRef.current = false;
       setConnectionStatus('disconnected');
       Alert.alert('Error', `Failed to join stream: ${error.message}`);
     }
   };
 
   const cleanup = async () => {
+    console.log('🧹 Starting cleanup...');
+    isInitializingRef.current = false;
+    
     if (engineRef.current) {
       try {
+        console.log('🔌 Leaving channel and releasing engine...');
         await engineRef.current.leaveChannel();
-        engineRef.current.release();
+        await engineRef.current.release();
         engineRef.current = null;
+        console.log('✅ Engine cleaned up successfully');
       } catch (error) {
-        console.error('Error cleaning up:', error);
+        console.error('Error cleaning up engine:', error);
+        engineRef.current = null; // Force null even if error
       }
     }
 

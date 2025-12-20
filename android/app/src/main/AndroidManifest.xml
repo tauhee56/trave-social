@@ -41,28 +41,9 @@
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="trave-social"/>
-        <data android:scheme="travesocial"/>
-        <data android:scheme="tiktokauth"/>
-        <data android:scheme="google"/>
         <data android:scheme="exp+trave-social"/>
       </intent-filter>
     </activity>
-    <activity
-        android:name="expo.modules.imagepicker.ExpoCropImageActivity"
-        android:exported="false"
-        tools:replace="android:exported" />
-
-    <provider
-        android:name="expo.modules.filesystem.FileSystemFileProvider"
-        android:authorities="${applicationId}.FileSystemFileProvider"
-        android:exported="false"
-        android:grantUriPermissions="true"
-        tools:replace="android:authorities,android:exported">
-        <meta-data
-            android:name="android.support.FILE_PROVIDER_PATHS"
-            android:resource="@xml/file_paths"
-            tools:replace="android:resource" />
-    </provider>
     <uses-library android:name="org.apache.http.legacy" android:required="false"/>
   </application>
 </manifest>

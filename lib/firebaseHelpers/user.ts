@@ -175,8 +175,9 @@ export async function updateUserProfile(uid: string, data: any) {
   try {
     // 1. Update Firestore document
     const docRef = doc(db, 'users', uid);
-    let avatarValue = data.avatar;
-    if (!avatarValue || avatarValue.trim() === '') {
+    let avatarValue = data?.avatar;
+    // Safely check if avatar is a string before calling trim()
+    if (!avatarValue || (typeof avatarValue === 'string' && avatarValue.trim() === '')) {
       avatarValue = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
     }
     const safeData = {
@@ -209,7 +210,7 @@ export async function updateUserProfile(uid: string, data: any) {
     }
     
     // Clear cache so next getUserProfile fetches fresh data
-    userProfileCache.delete(uid);
+    userProfileCache.remove(uid);
     
     return { success: true };
   } catch (error: any) {

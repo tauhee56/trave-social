@@ -1,3 +1,5 @@
+import 'react-native-reanimated';
+import 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import * as Font from 'expo-font';
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -7,6 +9,7 @@ import { ActivityIndicator, LogBox, Text as RNText, View } from "react-native";
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { auth } from "../config/firebase";
 import { UserProvider } from "./_components/UserContext";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 // Suppress non-critical warnings
 LogBox.ignoreLogs([
   'Unable to activate keep awake',
@@ -87,46 +90,44 @@ export default function RootLayout() {
     }
   }, [user, segments, loading, fontsLoaded]);
 
-  if (loading || !fontsLoaded) {
-    return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
-          <ActivityIndicator size="large" color="#667eea" />
-          {initError && (
-            <View style={{ marginTop: 20, padding: 20 }}>
-              <RNText style={{ color: 'red', textAlign: 'center' }}>
-                Initialization Error: {initError}
-              </RNText>
-            </View>
-          )}
-        </View>
-      </GestureHandlerRootView>
-    );
-  }
-
   return (
-    <UserProvider>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="auth/welcome" />
-          <Stack.Screen name="auth/login-options" />
-          <Stack.Screen name="auth/phone-login" />
-          <Stack.Screen name="auth/email-login" />
-          <Stack.Screen name="auth/username-login" />
-          <Stack.Screen name="auth/signup-options" />
-          <Stack.Screen name="auth/phone-signup" />
-          <Stack.Screen name="auth/email-signup" />
-          <Stack.Screen name="auth/username-signup" />
-          <Stack.Screen name="auth/phone-otp" />
-          <Stack.Screen name="auth/forgot-password" />
-          <Stack.Screen name="auth/reset-otp" />
-          <Stack.Screen name="auth/reset-password" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="create-post" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
-          <Stack.Screen name="search-modal" options={{ presentation: 'modal' }} />
-        </Stack>
-      </GestureHandlerRootView>
-    </UserProvider>
+    <ErrorBoundary>
+      <UserProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          {loading || !fontsLoaded ? (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
+              <ActivityIndicator size="large" color="#667eea" />
+              {initError && (
+                <View style={{ marginTop: 20, padding: 20 }}>
+                  <RNText style={{ color: 'red', textAlign: 'center' }}>
+                    Initialization Error: {initError}
+                  </RNText>
+                </View>
+              )}
+            </View>
+          ) : (
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="auth/welcome" />
+              <Stack.Screen name="auth/login-options" />
+              <Stack.Screen name="auth/phone-login" />
+              <Stack.Screen name="auth/email-login" />
+              <Stack.Screen name="auth/username-login" />
+              <Stack.Screen name="auth/signup-options" />
+              <Stack.Screen name="auth/phone-signup" />
+              <Stack.Screen name="auth/email-signup" />
+              <Stack.Screen name="auth/username-signup" />
+              <Stack.Screen name="auth/phone-otp" />
+              <Stack.Screen name="auth/forgot-password" />
+              <Stack.Screen name="auth/reset-otp" />
+              <Stack.Screen name="auth/reset-password" />
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen name="create-post" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
+              <Stack.Screen name="search-modal" options={{ presentation: 'modal' }} />
+            </Stack>
+          )}
+        </GestureHandlerRootView>
+      </UserProvider>
+    </ErrorBoundary>
   );
 }

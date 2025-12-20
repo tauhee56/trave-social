@@ -3,12 +3,37 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Dimensions, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 // import {} from "../../lib/firebaseHelpers";
 import { createStory, getAllStoriesForFeed, getCurrentUser, getUserProfile } from "../../lib/firebaseHelpers/index";
 import { useUser } from './UserContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Responsive values
+const isSmallDevice = SCREEN_HEIGHT < 700;
+const isMediumDevice = SCREEN_HEIGHT >= 700 && SCREEN_HEIGHT < 850;
+
+const responsiveValues = {
+  // Image preview height
+  imageHeight: isSmallDevice ? 240 : isMediumDevice ? 300 : 340,
+
+  // Font sizes
+  titleSize: isSmallDevice ? 16 : 18,
+  labelSize: isSmallDevice ? 13 : 14,
+  inputSize: isSmallDevice ? 14 : 15,
+
+  // Spacing
+  spacing: isSmallDevice ? 12 : 16,
+  spacingLarge: isSmallDevice ? 16 : 20,
+
+  // Input heights
+  inputHeight: isSmallDevice ? 44 : 48,
+
+  // Padding
+  modalPadding: isSmallDevice ? 16 : 20,
+};
 
 interface StoryUser {
   userId: string;
@@ -235,7 +260,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
       <Modal
         visible={showUploadModal}
         animationType="slide"
-        transparent={true}
+        transparent={false}
         onRequestClose={() => {
           setShowUploadModal(false);
           setSelectedMedia(null);
@@ -243,24 +268,12 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
           setLocationSuggestions([]);
         }}
       >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={0}
-        >
-          <View style={styles.uploadModalOverlay}>
-            {/* Background */}
-            <TouchableOpacity
-              style={styles.uploadModalBackdrop}
-              activeOpacity={1}
-              onPress={() => { 
-                setShowUploadModal(false); 
-                setSelectedMedia(null);
-                setLocationQuery('');
-                setLocationSuggestions([]);
-              }}
-            />
-
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }} edges={['top', 'bottom']}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          >
             {/* Main content card */}
             <View style={styles.uploadModalCard}>
               {/* Header */}
@@ -279,11 +292,15 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                 <View style={{ width: 24 }} />
               </View>
 
-              <ScrollView 
-                style={{ flex: 1 }}
-                contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+              <ScrollView
+                contentContainerStyle={{
+                  paddingHorizontal: responsiveValues.modalPadding,
+                  paddingBottom: isSmallDevice ? 30 : 40
+                }}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
+                nestedScrollEnabled={true}
+                bounces={false}
               >
               {/* Media Preview */}
               {selectedMedia ? (
@@ -346,9 +363,9 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
               </View>
 
               {/* Location Input */}
-              <View style={styles.inputGroup}>
+              <View style={[styles.inputGroup, { zIndex: 10 }]}>
                 <Text style={styles.inputLabel}>Location (Optional)</Text>
-                <View style={{ position: 'relative', zIndex: 10 }}>
+                <View style={{ position: 'relative' }}>
                   <View style={styles.locationInputContainer}>
                     <Feather name="map-pin" size={18} color="#666" />
                     <TextInput
@@ -357,35 +374,44 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                       onChangeText={setLocationQuery}
                       style={styles.locationInput}
                       placeholderTextColor="#999"
+                      returnKeyType="done"
+                      blurOnSubmit={true}
                     />
                   </View>
                   {locationSuggestions.length > 0 && (
                     <View style={styles.locationDropdown}>
-                      {locationSuggestions.map((item) => (
-                        <TouchableOpacity
-                          key={item.placeId}
-                          style={styles.locationItem}
-                          onPress={() => {
-                            console.log('Location selected:', item);
-                            setSelectedMedia((prev: any) => prev ? { 
-                              ...prev, 
-                              locationData: {
-                                name: item.name,
-                                address: item.address,
-                                placeId: item.placeId,
-                              }
-                            } : prev);
-                            setLocationQuery(item.name);
-                            setLocationSuggestions([]);
-                          }}
-                        >
-                          <Feather name="map-pin" size={16} color="#007aff" style={{ marginRight: 8 }} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.locationName}>{item.name}</Text>
-                            <Text style={styles.locationAddress} numberOfLines={1}>{item.address}</Text>
-                          </View>
-                        </TouchableOpacity>
-                      ))}
+                      <ScrollView
+                        nestedScrollEnabled={true}
+                        showsVerticalScrollIndicator={true}
+                        keyboardShouldPersistTaps="handled"
+                      >
+                        {locationSuggestions.map((item) => (
+                          <TouchableOpacity
+                            key={item.placeId}
+                            style={styles.locationItem}
+                            onPress={() => {
+                              console.log('Location selected:', item);
+                              Keyboard.dismiss();
+                              setSelectedMedia((prev: any) => prev ? {
+                                ...prev,
+                                locationData: {
+                                  name: item.name,
+                                  address: item.address,
+                                  placeId: item.placeId,
+                                }
+                              } : prev);
+                              setLocationQuery(item.name);
+                              setLocationSuggestions([]);
+                            }}
+                          >
+                            <Feather name="map-pin" size={16} color="#007aff" style={{ marginRight: 8 }} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.locationName}>{item.name}</Text>
+                              <Text style={styles.locationAddress} numberOfLines={1}>{item.address}</Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
                     </View>
                   )}
                   {loadingLocations && (
@@ -464,8 +490,8 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
               </TouchableOpacity>
               </ScrollView>
             </View>
-          </View>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
     </View>
   );
@@ -548,36 +574,35 @@ const styles = StyleSheet.create({
     color: '#222',
   },
   uploadModalCard: {
+    flex: 1,
     backgroundColor: '#fff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
     width: '100%',
-    height: SCREEN_HEIGHT * 0.98,
     paddingTop: 0,
     paddingHorizontal: 0,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    paddingBottom: 0,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
+    paddingVertical: responsiveValues.spacing,
+    paddingHorizontal: responsiveValues.modalPadding,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fff',
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: responsiveValues.titleSize,
     fontWeight: '700',
     color: '#222',
   },
   mediaPreviewContainer: {
-    marginTop: 20,
-    marginBottom: 20,
+    marginTop: responsiveValues.spacingLarge,
+    marginBottom: responsiveValues.spacingLarge,
   },
   modalImage: {
     width: '100%',
-    height: 340,
+    height: responsiveValues.imageHeight,
     borderRadius: 16,
     backgroundColor: '#f5f5f5',
   },
@@ -596,7 +621,7 @@ const styles = StyleSheet.create({
   },
   imagePickerArea: {
     width: '100%',
-    height: 340,
+    height: responsiveValues.imageHeight,
     borderRadius: 16,
     borderWidth: 2,
     borderColor: '#e0e0e0',
@@ -604,32 +629,33 @@ const styles = StyleSheet.create({
     backgroundColor: '#fafafa',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 20,
+    marginTop: responsiveValues.spacingLarge,
+    marginBottom: responsiveValues.spacingLarge,
   },
   imagePickerText: {
     color: '#007aff',
     marginTop: 12,
     fontWeight: '600',
-    fontSize: 15,
+    fontSize: responsiveValues.inputSize,
   },
   inputGroup: {
     width: '100%',
-    marginBottom: 20,
+    marginBottom: responsiveValues.spacingLarge,
+    zIndex: 1,
   },
   inputLabel: {
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: responsiveValues.labelSize,
     marginBottom: 8,
     color: '#666',
   },
   inputField: {
-    minHeight: 48,
-    maxHeight: 100,
-    fontSize: 15,
+    minHeight: responsiveValues.inputHeight,
+    maxHeight: isSmallDevice ? 80 : 100,
+    fontSize: responsiveValues.inputSize,
     backgroundColor: '#f5f5f5',
     borderRadius: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: responsiveValues.spacing,
     paddingVertical: 12,
     borderWidth: 1,
     borderColor: '#e0e0e0',
@@ -640,15 +666,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f5f5f5',
     borderRadius: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: responsiveValues.spacing,
     paddingVertical: 12,
     borderWidth: 1,
     borderColor: '#e0e0e0',
     gap: 10,
+    minHeight: responsiveValues.inputHeight,
   },
   locationInput: {
     flex: 1,
-    fontSize: 15,
+    fontSize: responsiveValues.inputSize,
     color: '#222',
     padding: 0,
   },
@@ -695,15 +722,14 @@ const styles = StyleSheet.create({
   },
   locationDropdown: {
     position: 'absolute',
-    top: 56,
+    top: responsiveValues.inputHeight + 8,
     left: 0,
     right: 0,
     backgroundColor: '#fff',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e0e0e0',
-    maxHeight: 200,
-    overflow: 'hidden',
+    maxHeight: isSmallDevice ? 160 : 200,
     zIndex: 1000,
     shadowColor: '#000',
     shadowOpacity: 0.1,
@@ -714,18 +740,19 @@ const styles = StyleSheet.create({
   locationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    padding: isSmallDevice ? 12 : 14,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fff',
   },
   locationName: {
     color: '#222',
-    fontSize: 14,
+    fontSize: responsiveValues.labelSize,
     fontWeight: '600',
   },
   locationAddress: {
     color: '#999',
-    fontSize: 12,
+    fontSize: isSmallDevice ? 11 : 12,
     marginTop: 2,
   },
   locationLoading: {

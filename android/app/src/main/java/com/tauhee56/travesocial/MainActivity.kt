@@ -11,10 +11,6 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 import expo.modules.ReactActivityDelegateWrapper
 
-// Import Reanimated and GestureHandler
-import com.facebook.react.bridge.ReactContext
-import com.swmansion.gesturehandler.react.RNGestureHandlerEnabledRootView
-
 class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     // Set the theme to AppTheme BEFORE onCreate to support

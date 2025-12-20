@@ -131,6 +131,32 @@ export default function Home() {
     loadCategories();
   }, []);
 
+  // Listen for feed events (post deleted, privacy changed, etc.)
+  useEffect(() => {
+    const { feedEventEmitter } = require('../../lib/feedEventEmitter');
+
+    const unsubscribe = feedEventEmitter.onFeedUpdate((event: any) => {
+      console.log('📢 Feed event received in home:', event.type);
+
+      if (event.type === 'POST_DELETED') {
+        // Remove deleted post from feed
+        setPosts(prev => prev.filter(p => p.id !== event.postId));
+        setAllLoadedPosts(prev => prev.filter(p => p.id !== event.postId));
+      } else if (event.type === 'POST_CREATED') {
+        // Refresh feed to show new post
+        onRefresh();
+      } else if (event.type === 'USER_PRIVACY_CHANGED') {
+        // Refresh feed to apply privacy changes
+        onRefresh();
+      } else if (event.type === 'USER_BLOCKED' || event.type === 'USER_UNBLOCKED') {
+        // Refresh feed to apply blocking changes
+        onRefresh();
+      }
+    });
+
+    return unsubscribe;
+  }, []);
+
   // Listen for home tab press event from context - scroll to top and refresh
   const tabEvent = useTabEvent();
   useEffect(() => {
@@ -140,14 +166,14 @@ export default function Home() {
       if (flatListRef.current) {
         flatListRef.current.scrollToOffset({ offset: 0, animated: true });
       }
-      
+
       // After scrolling, create fresh mixed feed with complete re-shuffle
       setTimeout(() => {
         if (allLoadedPosts.length > 0) {
           // Clear first, then set new shuffled feed
           setPosts([]);
           setFeedReloadKey(prev => prev + 1);
-          
+
           setTimeout(() => {
             const newMixedFeed = createMixedFeed(allLoadedPosts);
             setPosts(newMixedFeed);

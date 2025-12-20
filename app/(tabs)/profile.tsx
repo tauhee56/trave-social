@@ -500,7 +500,7 @@ export default function Profile({ userIdProp }: any) {
 
   // UI
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header for other users' profiles with back button and 3-dots menu */}
       {!isOwnProfile && (
         <View style={styles.profileHeader}>
@@ -1087,7 +1087,7 @@ const styles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: '#e0e0e0', justifyContent: 'space-between' },
   topIcon: { padding: 4 },
   topTitle: { fontSize: 16, fontWeight: '600', color: '#000' },
-  content: { paddingHorizontal: 0, paddingBottom: 16 },
+  content: { paddingHorizontal: 0, paddingBottom: 0 },
   avatarContainer: { alignItems: 'center', paddingVertical: 12, marginTop: 4 },
   avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#eee', borderWidth: 2, borderColor: '#f39c12' },
   statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16, gap: 24 },
@@ -1119,7 +1119,7 @@ const styles = StyleSheet.create({
   segmentBtnActive: { flex: 1, alignItems: 'center', paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: '#f39c12' },
   card: { backgroundColor: '#f7f7f7', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#eee', marginTop: 8 },
   cardText: { color: '#333', lineHeight: 20 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 0 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 0, paddingBottom: 8 },
   gridItem: { flexBasis: '25%', aspectRatio: 1, padding: 1 },
   sectionOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', padding: 8, alignItems: 'center' },
   sectionGridLabel: { color: '#fff', fontSize: 12, fontWeight: '600', textAlign: 'center' },

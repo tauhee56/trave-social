@@ -1,53 +1,95 @@
-# Ignore unnecessary files and folders for EAS Build
-node_modules/
-output/
-android/.gradle/
-android/app/build/
-android/build/
-*.aab
-*.apk
-*.pb
+# EAS Build Archive Ignore File
+# This file specifies which files and directories should be excluded from the EAS build archive
+
+# === CRITICAL - LARGEST FOLDERS ===
+node_modules
+.gradle
+.gradle-tmp
+.git
+.github
+
+# === ANDROID BUILD CACHE ===
+android/.gradle
+android/app/build
+android/build
+android/.idea
+android/.gradle-tmp
+android/gradle
+
+# === iOS BUILD CACHE ===
+ios/build
+ios/Pods
+ios/.xcworkspace
+
+# === BUILD OUTPUTS ===
+output
+dist
+build
+.tmp-pack
+
+# === LOGS & TEMP FILES ===
 *.log
 *.tmp
 *.bak
-assets/images/raw/
-assets/images/test/
-assets/test/
-coverage/
-__tests__/
-__mocks__/
-*.md
-*.DS_Store
-.env
-.env.local
-.env.*
-expo-env.d.ts
-.vscode/
-.idea/
+crashlog.txt
+build.log
+
+# === DEPENDENCIES NOT NEEDED ===
+# (These will be reinstalled during build)
+
+# === IDE & EDITOR ===
+.vscode
+.idea
 *.iml
-ElevatedDiagnostics/
-/android
-output/
+*.swp
+*.swo
+.DS_Store
+.eslintcache
+tsconfig.tsbuildinfo
+
+# === DOCUMENTATION ===
+*.md
+*.txt
+!package.json
+
+# === TEST FILES ===
+__tests__
+__mocks__
+*.test.js
+*.test.ts
+jest.config.json
+jest.setup.js
+coverage
+
+# === DEVELOPMENT UTILITIES ===
+deleteAllNotifications.js
+deleteOldNotifications.js
+deleteTopLevelNotifications.js
+fixNotificationTimestamps.js
+forceFixNotificationTimestamps.js
+hardFixNotificationTimestamps.js
+migrateNotifications.js
+updateAvatars.js
+updateCreatedAtTimestamps.js
+updatePostAvatarsAndLocations.js
+fix-imports.js
+
+# === KEYSTORE BACKUPS ===
+@tuhee__trave-social_OLD_1.jks
+release.keystore.base64
+
+# === BUILD TOOLS ===
+bundletool-all-*.jar
+
+# === EXPO ===
+.expo
+
+# === MISCELLANEOUS ===
+profilecode..m
+*.pb
 *.aab
 *.apk
-*.pb
-crashlog.txt
-# assets/images/ (removed to allow image files for build)
-.git
-.gitignore
-*.log
-*.md
-*.DS_Store
-android/build
-android/app/build
-android/.gradle
-android/.idea
-ios/build
-ios/Pods
-assets/images/raw
-assets/images/test
-assets/test
-coverage
+expo-env.d.ts
 __tests__
 __mocks__
 .env
