@@ -1,11 +1,19 @@
 // Agora.io Configuration
 // Keep these credentials secure and never commit to public repositories
 
+// IMPORTANT: If you're getting Error 110 (ERR_OPEN_CHANNEL_TIMEOUT):
+// 1. Go to: https://console.agora.io
+// 2. Select your project: travel-app
+// 3. Click "Config" or "Edit"
+// 4. Find "Primary Certificate" section
+// 5. Click "Disable" to turn OFF the certificate requirement
+// 6. OR implement a token server (see getAgoraToken function below)
+
 // Directly use config to avoid environment loading issues
 export const AGORA_CONFIG = {
   appId: '29320482381a43498eb8ca3e222b6e34',
-  appCertificate: 'e8372567e0334d75add0ec3f597fb67b',
-  tokenServerUrl: '',
+  appCertificate: 'e8372567e0334d75add0ec3f597fb67b', // Only needed if certificate is enabled
+  tokenServerUrl: '', // Add your token server URL here if using certificates
 };
 
 // Generate a channel name for live streaming

@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { handleSocialAuthResult, signInWithApple, signInWithGoogle, signInWithSnapchat, signInWithTikTok } from '../../services/socialAuthService';
 import CustomButton from '../_components/auth/CustomButton';
@@ -25,31 +25,63 @@ export default function WelcomeScreen() {
   }, []);
 
   const handleGoogleSignIn = async () => {
+    if (loading) {
+      console.log('⚠️ Sign-in already in progress, ignoring duplicate tap');
+      return;
+    }
+
     setLoading(true);
-    const result = await signInWithGoogle();
-    await handleSocialAuthResult(result, router);
-    setLoading(false);
+    try {
+      const result = await signInWithGoogle();
+      await handleSocialAuthResult(result, router);
+    } catch (error) {
+      console.error('Google Sign-In error:', error);
+      Alert.alert('Error', 'Failed to sign in with Google. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAppleSignIn = async () => {
+    if (loading) return;
     setLoading(true);
-    const result = await signInWithApple();
-    await handleSocialAuthResult(result, router);
-    setLoading(false);
+    try {
+      const result = await signInWithApple();
+      await handleSocialAuthResult(result, router);
+    } catch (error) {
+      console.error('Apple Sign-In error:', error);
+      Alert.alert('Error', 'Failed to sign in with Apple. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleTikTokSignIn = async () => {
+    if (loading) return;
     setLoading(true);
-    const result = await signInWithTikTok();
-    await handleSocialAuthResult(result, router);
-    setLoading(false);
+    try {
+      const result = await signInWithTikTok();
+      await handleSocialAuthResult(result, router);
+    } catch (error) {
+      console.error('TikTok Sign-In error:', error);
+      Alert.alert('Error', 'Failed to sign in with TikTok. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSnapchatSignIn = async () => {
+    if (loading) return;
     setLoading(true);
-    const result = await signInWithSnapchat();
-    await handleSocialAuthResult(result, router);
-    setLoading(false);
+    try {
+      const result = await signInWithSnapchat();
+      await handleSocialAuthResult(result, router);
+    } catch (error) {
+      console.error('Snapchat Sign-In error:', error);
+      Alert.alert('Error', 'Failed to sign in with Snapchat. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -98,10 +130,10 @@ export default function WelcomeScreen() {
             <View style={styles.line} />
           </View>
 
-          <SocialButton provider="google" onPress={handleGoogleSignIn} style={styles.socialButton} />
-          <SocialButton provider="apple" onPress={handleAppleSignIn} style={styles.socialButton} />
-          <SocialButton provider="tiktok" onPress={handleTikTokSignIn} style={styles.socialButton} />
-          <SocialButton provider="snapchat" onPress={handleSnapchatSignIn} style={{ ...styles.socialButton, ...styles.snapButton }} />
+          <SocialButton provider="google" onPress={handleGoogleSignIn} style={styles.socialButton} disabled={loading} />
+          <SocialButton provider="apple" onPress={handleAppleSignIn} style={styles.socialButton} disabled={loading} />
+          <SocialButton provider="tiktok" onPress={handleTikTokSignIn} style={styles.socialButton} disabled={loading} />
+          <SocialButton provider="snapchat" onPress={handleSnapchatSignIn} style={{ ...styles.socialButton, ...styles.snapButton }} disabled={loading} />
         </View>
 
         {/* Footer */}

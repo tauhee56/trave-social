@@ -33,7 +33,9 @@ const COUNTRIES = [
 export default function PhoneLoginScreen() {
   const router = useRouter();
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[2]); // Default to India
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[3]); // Default to Pakistan
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -43,8 +45,13 @@ export default function PhoneLoginScreen() {
       return;
     }
 
+    if (!password.trim()) {
+      Alert.alert('Error', 'Please enter your password');
+      return;
+    }
+
     const fullPhoneNumber = `${selectedCountry.code}${phoneNumber}`;
-    
+
     // Validate phone number format
     if (phoneNumber.length < 8) {
       Alert.alert('Error', 'Please enter a valid phone number');
@@ -54,15 +61,97 @@ export default function PhoneLoginScreen() {
     setLoading(true);
 
     try {
-      // Navigate directly to phone OTP screen
-      // SMS will be sent via Firebase Phone Auth
-      router.push({
-        pathname: '/auth/phone-otp',
-        params: { phone: fullPhoneNumber, flow: 'login' }
-      });
+      // Find user by phone number and login with their email
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
+      const { db } = await import('../../config/firebase');
+      const { signInUser } = await import('../../lib/firebaseHelpers');
+
+      // Search for user with this phone number
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('phoneNumber', '==', fullPhoneNumber));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        Alert.alert('Error', 'No account found with this phone number. Please sign up first.');
+        setLoading(false);
+        return;
+      }
+
+      // Get user's email
+      const userDoc = querySnapshot.docs[0];
+      const userData = userDoc.data();
+      const email = userData.email;
+
+      console.log('📱 Found user with phone:', fullPhoneNumber, 'email:', email);
+
+      // Login with email and password
+      const result = await signInUser(email, password);
+
+      if (result.success) {
+        console.log('✅ Login successful!');
+        router.replace('/(tabs)/home');
+      } else {
+        Alert.alert('Login Failed', result.error || 'Invalid credentials');
+      }
     } catch (error: any) {
-      console.error('Phone auth error:', error);
-      Alert.alert('Error', error.message || 'Failed to send OTP');
+      console.error('Phone login error:', error);
+      Alert.alert('Error', error.message || 'Failed to login');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!phoneNumber.trim()) {
+      Alert.alert('Enter Phone Number', 'Please enter your phone number first to reset password');
+      return;
+    }
+
+    const fullPhoneNumber = `${selectedCountry.code}${phoneNumber}`;
+
+    if (phoneNumber.length < 8) {
+      Alert.alert('Error', 'Please enter a valid phone number');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Find user by phone number
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
+      const { db } = await import('../../config/firebase');
+      const { sendPasswordResetEmail } = await import('firebase/auth');
+      const { auth } = await import('../../config/firebase');
+
+      // Search for user with this phone number
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('phoneNumber', '==', fullPhoneNumber));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        Alert.alert('Error', 'No account found with this phone number.');
+        setLoading(false);
+        return;
+      }
+
+      // Get user's email
+      const userDoc = querySnapshot.docs[0];
+      const userData = userDoc.data();
+      const email = userData.email;
+
+      console.log('📧 Sending password reset email to:', email);
+
+      // Send password reset email
+      await sendPasswordResetEmail(auth, email);
+
+      Alert.alert(
+        'Password Reset Email Sent',
+        `A password reset link has been sent to ${email}. Please check your email.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      console.error('Password reset error:', error);
+      Alert.alert('Error', error.message || 'Failed to send password reset email');
     } finally {
       setLoading(false);
     }
@@ -100,7 +189,7 @@ export default function PhoneLoginScreen() {
         <View style={styles.inputContainer}>
           <Text style={styles.label}>Enter your phone number</Text>
           <View style={styles.phoneInputWrapper}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.countrySelector}
               onPress={() => setShowCountryPicker(true)}
             >
@@ -116,6 +205,37 @@ export default function PhoneLoginScreen() {
               onChangeText={setPhoneNumber}
               keyboardType="phone-pad"
             />
+          </View>
+        </View>
+
+        {/* Password Input */}
+        <View style={styles.inputContainer}>
+          <View style={styles.labelRow}>
+            <Text style={styles.label}>Password</Text>
+            <TouchableOpacity onPress={handleForgotPassword}>
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.passwordInputWrapper}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Enter your password"
+              placeholderTextColor="#999"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity
+              style={styles.eyeIcon}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <Ionicons
+                name={showPassword ? "eye-off" : "eye"}
+                size={20}
+                color="#666"
+              />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -156,10 +276,11 @@ export default function PhoneLoginScreen() {
 
         {/* Login Button */}
         <CustomButton
-          title="Login"
+          title={loading ? "Logging in..." : "Login"}
           onPress={handleLogin}
           variant="primary"
           style={styles.loginButton}
+          disabled={loading}
         />
 
         {/* Social Login Options */}
@@ -243,10 +364,20 @@ const styles = StyleSheet.create({
   inputContainer: {
     marginBottom: 20,
   },
+  labelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   label: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 8,
+  },
+  forgotPasswordText: {
+    fontSize: 13,
+    color: '#f39c12',
+    fontWeight: '600',
   },
   input: {
     backgroundColor: '#f5f5f5',
@@ -307,6 +438,21 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     color: '#000',
+  },
+  passwordInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 16,
+    fontSize: 16,
+    color: '#000',
+  },
+  eyeIcon: {
+    padding: 16,
   },
   modalOverlay: {
     flex: 1,

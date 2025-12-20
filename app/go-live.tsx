@@ -11,6 +11,7 @@ import {
     Dimensions,
     FlatList,
     Image,
+    KeyboardAvoidingView,
     PermissionsAndroid,
     Platform,
     StyleSheet,
@@ -797,29 +798,54 @@ export default function GoLiveScreen() {
         </View>
       )}
 
-      {/* Comments Section - Always show comments */}
-      <View style={styles.commentsContainer}>
-        <FlatList
-          data={safeComments}
-          keyExtractor={item => item.id}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => (
-            <View style={styles.commentBubble}>
-              <Text style={styles.commentUsername}>{item.userName}</Text>
-              <Text style={styles.commentText}>{item.text}</Text>
-            </View>
-          )}
-          initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          removeClippedSubviews={true}
-        />
-      </View>
+      {/* Comments Section - Show when input is NOT active */}
+      {!showComments && (
+        <View style={styles.commentsContainer}>
+          <FlatList
+            data={safeComments}
+            keyExtractor={item => item.id}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <View style={styles.commentBubble}>
+                <Text style={styles.commentUsername}>{item.userName}</Text>
+                <Text style={styles.commentText}>{item.text}</Text>
+              </View>
+            )}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews={true}
+          />
+        </View>
+      )}
 
-      {/* Bottom Controls */}
-      <SafeAreaView style={styles.bottomOverlay} edges={['bottom']}>
-        {/* Input Row - Only show when comment icon is ON */}
-        {showComments && (
+      {/* Bottom Controls - Comment Input with KeyboardAvoidingView */}
+      {showComments && (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          style={styles.commentInputContainer}
+        >
+          {/* Comments List ABOVE input */}
+          <View style={styles.commentsListAboveInput}>
+            <FlatList
+              data={safeComments}
+              keyExtractor={item => item.id}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }) => (
+                <View style={styles.commentBubble}>
+                  <Text style={styles.commentUsername}>{item.userName}</Text>
+                  <Text style={styles.commentText}>{item.text}</Text>
+                </View>
+              )}
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              removeClippedSubviews={true}
+            />
+          </View>
+
+          {/* Input Row */}
           <View style={styles.inputRow}>
             <TextInput
               style={styles.inputField}
@@ -828,12 +854,18 @@ export default function GoLiveScreen() {
               placeholder="Send a message"
               placeholderTextColor="rgba(255,255,255,0.5)"
               onSubmitEditing={handleSendComment}
+              returnKeyType="send"
+              blurOnSubmit={false}
             />
-            <TouchableOpacity onPress={handleSendComment}>
+            <TouchableOpacity onPress={handleSendComment} style={styles.sendButton}>
               <Ionicons name="send" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
-        )}
+        </KeyboardAvoidingView>
+      )}
+
+      {/* Bottom Controls */}
+      <SafeAreaView style={styles.bottomOverlay} edges={['bottom']}>
 
         {/* Bottom Control Buttons */}
         <View style={styles.bottomControlsRow}>
@@ -1140,21 +1172,38 @@ const styles = StyleSheet.create({
     zIndex: 10,
     paddingBottom: 16,
   },
+  commentInputContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 80,
+    zIndex: 20,
+    maxHeight: '50%',
+  },
+  commentsListAboveInput: {
+    maxHeight: 200,
+    marginBottom: 10,
+    paddingHorizontal: 16,
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 16,
     marginBottom: 16,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     borderRadius: 25,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   inputField: {
     flex: 1,
     fontSize: 15,
     color: '#fff',
     marginRight: 10,
+    maxHeight: 100,
+  },
+  sendButton: {
+    padding: 4,
   },
   inputRowMap: {
     flexDirection: 'row',

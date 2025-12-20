@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { FlatList, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import CustomButton from '../_components/auth/CustomButton';
 
 // Popular countries list
@@ -64,7 +65,7 @@ export default function PhoneSignUpScreen() {
 
   const handleNext = async () => {
     setError('');
-    
+
     // Validation
     if (!phoneNumber || phoneNumber.length < 8) {
       setError('Please enter a valid phone number');
@@ -77,16 +78,62 @@ export default function PhoneSignUpScreen() {
     }
 
     setLoading(true);
-    
+
     try {
       const fullPhone = `${selectedCountry.code}${phoneNumber}`;
-      // Navigate to email OTP screen - OTP will be sent via email
-      router.push({
-        pathname: '/auth/email-otp',
-        params: { email: email, phone: fullPhone, flow: 'signup' }
-      });
+
+      // Create account directly with email and phone
+      const { signUpUser, updateUserProfile } = await import('../../lib/firebaseHelpers');
+
+      // Generate secure password from phone number + random number
+      const randomNum = Math.floor(1000 + Math.random() * 9000);
+      const tempPassword = `${phoneNumber.replace(/\D/g, '')}${randomNum}!`;
+      const username = email.split('@')[0];
+
+      console.log('📱 Creating account for:', email, 'with phone:', fullPhone);
+
+      // Import auth first
+      const { auth } = await import('../../config/firebase');
+
+      // Create account (email verification will be sent automatically)
+      const result = await signUpUser(email, tempPassword, username, false);
+
+      if (result.success) {
+        // Store phone number in user profile
+        const user = auth.currentUser;
+
+        if (user) {
+          await updateUserProfile(user.uid, {
+            phoneNumber: fullPhone
+          });
+
+          // Logout user immediately so they must verify email first
+          await auth.signOut();
+        }
+
+        Alert.alert(
+          'Check Your Email! 📧',
+          `Account created successfully!\n\nA verification link has been sent to:\n${email}\n\nPlease check your email (including spam folder) and click the link to verify your account.\n\nAfter verification, login with:\nEmail: ${email}\nPassword: ${tempPassword}\n\n(Save this password! You can change it later in settings)`,
+          [
+            {
+              text: 'Copy Password',
+              onPress: async () => {
+                await Clipboard.setStringAsync(tempPassword);
+                Alert.alert('Copied! ✅', `Password copied to clipboard:\n${tempPassword}`);
+              }
+            },
+            {
+              text: 'Go to Login',
+              onPress: () => router.replace('/auth/login-options')
+            }
+          ]
+        );
+      } else {
+        setError(result.error || 'Signup failed');
+      }
     } catch (err: any) {
-      setError(err.message || 'Failed to send OTP');
+      console.error('Phone signup error:', err);
+      setError(err.message || 'Failed to create account');
     } finally {
       setLoading(false);
     }

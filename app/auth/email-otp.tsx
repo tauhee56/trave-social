@@ -11,11 +11,12 @@ export default function EmailOTPScreen() {
   const email = params.email as string || 'user@example.com';
   const phone = params.phone as string;
   const flow = params.flow as string || 'login';
+  const generatedOtp = params.generatedOtp as string; // For dev/testing
 
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   const inputRefs = useRef<Array<TextInput | null>>([]);
 
   const handleOtpChange = (value: string, index: number) => {
@@ -54,9 +55,16 @@ export default function EmailOTPScreen() {
 
   const handleVerify = async () => {
     const otpCode = otp.join('');
-    
+
     if (otpCode.length !== 6) {
       setError('Please enter complete OTP');
+      return;
+    }
+
+    // Verify OTP (in dev mode, check against generated OTP)
+    if (generatedOtp && otpCode !== generatedOtp) {
+      setError(`Invalid OTP. Please check the console for the correct code.`);
+      console.log('❌ OTP mismatch. Expected:', generatedOtp, 'Got:', otpCode);
       return;
     }
 
@@ -64,24 +72,53 @@ export default function EmailOTPScreen() {
     setError('');
 
     try {
-      // TODO: Verify OTP with backend
-      // For demo, we'll simulate verification
-      // In production, this would verify the OTP against backend
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // On success, navigate to home or show success
-      Alert.alert(
-        'Verification Successful! ✅',
-        flow === 'signup' ? 'Your account has been created successfully.' : 'You have been logged in successfully.',
-        [
-          {
-            text: 'Continue',
-            onPress: () => router.replace('/(tabs)')
+      // For phone signup flow, create account with email and phone
+      if (flow === 'signup' && email && phone) {
+        const { signUpUser } = await import('../../lib/firebaseHelpers');
+
+        // Generate password from phone number (user can change later)
+        const tempPassword = `${phone.replace(/\D/g, '')}Temp!`;
+        const username = email.split('@')[0];
+
+        // Create account (skip email verification since we're using OTP)
+        const result = await signUpUser(email, tempPassword, username, true);
+
+        if (result.success) {
+          // Store phone number in user profile
+          const { updateUserProfile } = await import('../../lib/firebaseHelpers');
+          const { auth } = await import('../../config/firebase');
+          const user = auth.currentUser;
+
+          if (user) {
+            await updateUserProfile(user.uid, { phoneNumber: phone });
           }
-        ]
-      );
+
+          Alert.alert(
+            'Account Created! 🎉',
+            'Your account has been created successfully. You can now login with your email.',
+            [
+              {
+                text: 'Continue',
+                onPress: () => router.replace('/(tabs)/home')
+              }
+            ]
+          );
+        } else {
+          setError(result.error || 'Signup failed');
+        }
+      } else {
+        // For login flow
+        Alert.alert(
+          'Verification Successful! ✅',
+          'You have been logged in successfully.',
+          [
+            {
+              text: 'Continue',
+              onPress: () => router.replace('/(tabs)')
+            }
+          ]
+        );
+      }
     } catch (err: any) {
       setError(err.message || 'Verification failed. Please try again.');
     } finally {
@@ -90,14 +127,25 @@ export default function EmailOTPScreen() {
   };
 
   const handleResend = async () => {
-    Alert.alert(
-      'OTP Resent! ✅', 
-      `A new verification code has been sent to ${email}`,
-      [{ text: 'OK' }]
-    );
-    setOtp(['', '', '', '', '', '']);
-    setError('');
-    inputRefs.current[0]?.focus();
+    try {
+      // Generate new OTP
+      const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      console.log('📱 Resent OTP:', newOtp, 'for email:', email);
+
+      // TODO: In production, send this OTP via SMS or email service
+
+      Alert.alert(
+        'OTP Resent! ✅',
+        `A new verification code has been generated. Check the console for the code.`,
+        [{ text: 'OK' }]
+      );
+      setOtp(['', '', '', '', '', '']);
+      setError('');
+      inputRefs.current[0]?.focus();
+    } catch (error: any) {
+      console.error('Resend OTP error:', error);
+      Alert.alert('Error', 'Failed to resend OTP. Please try again.');
+    }
   };
 
   return (

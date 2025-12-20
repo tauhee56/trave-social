@@ -6,6 +6,7 @@ interface SocialButtonProps {
   provider: 'google' | 'apple' | 'tiktok' | 'snapchat';
   onPress: () => void;
   style?: ViewStyle;
+  disabled?: boolean;
 }
 
 const providerConfig = {
@@ -39,7 +40,7 @@ const providerConfig = {
   },
 };
 
-export default function SocialButton({ provider, onPress, style }: SocialButtonProps) {
+export default function SocialButton({ provider, onPress, style, disabled = false }: SocialButtonProps) {
   const config = providerConfig[provider];
 
   return (
@@ -48,9 +49,11 @@ export default function SocialButton({ provider, onPress, style }: SocialButtonP
         styles.button,
         { backgroundColor: config.bgColor },
         style,
+        disabled && styles.disabled,
       ]}
       onPress={onPress}
       activeOpacity={0.8}
+      disabled={disabled}
     >
       <View style={styles.iconContainer}>
         <Ionicons name={config.icon} size={20} color={config.iconColor} />
@@ -78,5 +81,8 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 15,
     fontWeight: '600',
+  },
+  disabled: {
+    opacity: 0.5,
   },
 });

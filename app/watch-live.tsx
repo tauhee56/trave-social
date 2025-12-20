@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Camera } from 'expo-camera';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { addDoc, collection, doc, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, PermissionsAndroid, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import MapView, { Marker } from 'react-native-maps';
@@ -53,6 +53,7 @@ export default function WatchLiveScreen() {
   const [isInitializing, setIsInitializing] = useState(false);
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [viewers, setViewers] = useState<any[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'reconnecting'>('connecting');
   // Real stream data
   const [streamData, setStreamData] = useState<any>(null);
 
@@ -73,6 +74,8 @@ export default function WatchLiveScreen() {
 
   const engineRef = useRef<any>(null);
   const uidRef = useRef(Math.floor(Math.random() * 100000));
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectAttemptsRef = useRef(3);
 
   useEffect(() => {
     if (!currentUser || !streamId || !channelName) {
@@ -82,6 +85,7 @@ export default function WatchLiveScreen() {
       return;
     }
 
+    reconnectAttemptsRef.current = 0; // Reset on new stream
     initializeViewer();
 
     return () => {
@@ -136,9 +140,54 @@ export default function WatchLiveScreen() {
 
   const initializeViewer = async () => {
     try {
-      if (!AGORA_AVAILABLE) return;
+      if (!AGORA_AVAILABLE) {
+        console.log('❌ Agora SDK not available');
+        setIsInitializing(false);
+        return;
+      }
+
+      if (!streamId || !channelName) {
+        console.log('❌ Missing streamId or channelName:', { streamId, channelName });
+        Alert.alert('Error', 'Stream information missing');
+        setIsInitializing(false);
+        return;
+      }
+
+      if (!currentUser) {
+        console.log('❌ No current user');
+        Alert.alert('Error', 'Please log in first');
+        setIsInitializing(false);
+        return;
+      }
+
+      // Check if stream exists and is live BEFORE trying to join
+      console.log('🔍 Checking if stream exists:', streamId);
+      const streamRef = doc(db, 'liveStreams', streamId as string);
+      const streamSnap = await getDoc(streamRef);
+
+      if (!streamSnap.exists()) {
+        console.log('❌ Stream document does not exist');
+        Alert.alert('Stream Not Found', 'This stream does not exist or has ended.', [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
+        setIsInitializing(false);
+        return;
+      }
+
+      const streamDataCheck = streamSnap.data();
+      if (!streamDataCheck?.isLive) {
+        console.log('❌ Stream is not live');
+        Alert.alert('Stream Ended', 'This stream has ended.', [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
+        setIsInitializing(false);
+        return;
+      }
+
+      console.log('✅ Stream is live, proceeding to join...');
 
       setIsInitializing(true);
+      setConnectionStatus('connecting');
 
       // Request audio permissions for viewer (mic optional, but needed if they want to speak)
       if (Platform.OS === 'android') {
@@ -146,55 +195,166 @@ export default function WatchLiveScreen() {
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
           PermissionsAndroid.PERMISSIONS.CAMERA,
         ]);
-        console.log('Permissions:', granted);
+        console.log('✅ Permissions granted:', granted);
       } else {
         await Camera.requestCameraPermissionsAsync();
       }
 
-      await joinLiveStream(streamId as string, currentUser!.uid);
+      await joinLiveStream(streamId as string, currentUser.uid);
 
       const engine = RtcEngine();
+      if (!engine) {
+        console.log('❌ Failed to create Agora engine');
+        setIsInitializing(false);
+        return;
+      }
+
       engineRef.current = engine;
 
+      console.log('🔧 Initializing Agora engine with appId:', AGORA_CONFIG.appId);
       await engine.initialize({
         appId: AGORA_CONFIG.appId,
         channelProfile: ChannelProfileType.ChannelProfileLiveBroadcasting,
       });
 
       await engine.enableVideo();
+      await engine.enableAudio();
       await engine.setClientRole(ClientRoleType.ClientRoleAudience);
+      
+      // Enable dual stream mode for better quality
+      await engine.enableDualStreamMode(true);
+      await engine.setRemoteDefaultVideoStreamType(0); // High quality
 
+      console.log('📡 Registering event handlers...');
       // CRITICAL FIX: Register event handlers BEFORE joining channel
       engine.registerEventHandler({
         onUserJoined: (_connection: any, uid: number) => {
           console.log('✅ Remote broadcaster joined:', uid);
           setRemoteUid(uid);
+          setConnectionStatus('connected');
+          setIsInitializing(false);
         },
-        onUserOffline: (_connection: any, uid: number) => {
-          console.log('❌ Remote broadcaster left:', uid);
-          setRemoteUid(null);
+        onUserOffline: (_connection: any, uid: number, reason: number) => {
+          console.log('❌ Remote broadcaster left:', uid, 'reason:', reason);
+          if (uid === remoteUid) {
+            setRemoteUid(null);
+            setConnectionStatus('disconnected');
+            Alert.alert('Stream Ended', 'The broadcaster has left', [
+              { text: 'OK', onPress: () => router.back() }
+            ]);
+          }
         },
         onJoinChannelSuccess: (_connection: any, elapsed: number) => {
-          console.log('✅ Successfully joined channel as viewer');
+          console.log('✅ Successfully joined channel as viewer, elapsed:', elapsed);
           setIsJoined(true);
+          setConnectionStatus('connected');
+        },
+        onRemoteVideoStateChanged: (_connection: any, uid: number, state: number, reason: number) => {
+          console.log('📹 Remote video state changed:', uid, 'state:', state, 'reason:', reason);
+          // state 2 = playing
+          if (state === 2 && !remoteUid) {
+            console.log('✅ Setting remote UID from video state change:', uid);
+            setRemoteUid(uid);
+            setConnectionStatus('connected');
+            setIsInitializing(false);
+          }
         },
         onError: (err: number, msg: string) => {
           console.error('❌ Agora error:', err, msg);
+          // Error codes:
+          // 17 = ERR_JOIN_CHANNEL_REJECTED
+          // 110 = ERR_OPEN_CHANNEL_TIMEOUT
+          // 2 = ERR_INVALID_ARGUMENT
+
+          if (err === 17 || err === 110 || err === 2) {
+            // Try reconnecting for these errors
+            if (reconnectAttemptsRef.current < maxReconnectAttemptsRef.current) {
+              reconnectAttemptsRef.current += 1;
+              setConnectionStatus('reconnecting');
+              console.log(`🔄 Reconnecting... Attempt ${reconnectAttemptsRef.current}/${maxReconnectAttemptsRef.current}`);
+
+              // Leave channel first before rejoining
+              engineRef.current?.leaveChannel();
+
+              setTimeout(() => {
+                initializeViewer();
+              }, 3000); // Wait 3 seconds before retry (increased from 2s)
+            } else {
+              setConnectionStatus('disconnected');
+              Alert.alert('Connection Error', 'Unable to join stream after multiple attempts. The stream may have ended or there may be network issues.');
+              setIsInitializing(false);
+            }
+          }
+        },
+        onConnectionStateChanged: (_connection: any, state: number, reason: number) => {
+          console.log('🔌 Connection state changed:', state, 'reason:', reason);
+          // state 1 = connecting, 2 = connected, 3 = reconnecting, 4 = failed, 5 = disconnected
+          if (state === 3) {
+            setConnectionStatus('reconnecting');
+            console.log('⚠️ Reconnecting to Agora...');
+          } else if (state === 4 || state === 5) {
+            setConnectionStatus('disconnected');
+            console.log('❌ Connection failed/disconnected, attempting to rejoin');
+            if (reconnectAttemptsRef.current < maxReconnectAttemptsRef.current) {
+              reconnectAttemptsRef.current += 1;
+              setConnectionStatus('reconnecting');
+              setTimeout(() => {
+                initializeViewer();
+              }, 2000);
+            }
+          } else if (state === 2) { // connected
+            setConnectionStatus('connected');
+            console.log('✅ Connection established');
+          }
         }
       });
 
       const token = await getAgoraToken(channelName as string, uidRef.current);
+      console.log('🎫 Got Agora token:', token ? 'Yes (secure)' : 'No (dev mode - null token)');
 
-      await engine.joinChannel(token, channelName as string, uidRef.current, {
-        clientRoleType: ClientRoleType.ClientRoleAudience,
-      });
+      console.log('📡 Joining channel:', channelName, 'with uid:', uidRef.current);
 
-      // Set joined immediately (will be confirmed by onJoinChannelSuccess)
-      setIsJoined(true);
-      setIsInitializing(false);
+      try {
+        await engine.joinChannel(token || '', channelName as string, uidRef.current, {
+          clientRoleType: ClientRoleType.ClientRoleAudience,
+          publishMicrophoneTrack: false,
+          publishCameraTrack: false,
+          autoSubscribeAudio: true,
+          autoSubscribeVideo: true,
+        });
+
+        console.log('✅ Successfully called joinChannel, waiting for broadcaster...');
+        setIsJoined(true);
+      } catch (joinError: any) {
+        console.error('❌ Failed to join channel:', joinError);
+
+        // If token error, show helpful message
+        if (joinError.message?.includes('token') || joinError.message?.includes('certificate')) {
+          Alert.alert(
+            'Connection Error',
+            'Unable to connect to stream. The stream may require authentication. Please contact support.',
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+        } else {
+          throw joinError; // Re-throw to be caught by outer try-catch
+        }
+      }
+      
+      // Timeout after 20 seconds if no broadcaster found
+      const timeoutId = setTimeout(() => {
+        if (!remoteUid && isInitializing) {
+          console.log('⏱️ Timeout: No broadcaster found after 20s, marking as not initializing');
+          setIsInitializing(false);
+          setConnectionStatus('connected'); // Show connected but no video available
+        }
+      }, 20000);
+
+      return () => clearTimeout(timeoutId);
     } catch (error: any) {
-      console.error('Error joining stream:', error);
+      console.error('💥 Error initializing viewer:', error.message, error);
       setIsInitializing(false);
+      setConnectionStatus('disconnected');
+      Alert.alert('Error', `Failed to join stream: ${error.message}`);
     }
   };
 
@@ -249,6 +409,50 @@ export default function WatchLiveScreen() {
       } catch (error) {
         console.error('Error sending video comment:', error);
       }
+    }
+  };
+
+  // Toggle viewer's camera
+  const toggleSelfCamera = async () => {
+    if (!engineRef.current) return;
+
+    const newState = !showSelfCamera;
+    setShowSelfCamera(newState);
+
+    try {
+      if (newState) {
+        // Enable camera
+        console.log('📹 Enabling viewer camera...');
+        await engineRef.current.enableLocalVideo(true);
+        await engineRef.current.startPreview();
+
+        // Request camera permissions if needed
+        if (Platform.OS === 'android') {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.CAMERA
+          );
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            console.warn('Camera permission denied');
+            setShowSelfCamera(false);
+            return;
+          }
+        } else {
+          const { status } = await Camera.requestCameraPermissionsAsync();
+          if (status !== 'granted') {
+            console.warn('Camera permission denied');
+            setShowSelfCamera(false);
+            return;
+          }
+        }
+      } else {
+        // Disable camera
+        console.log('📹 Disabling viewer camera...');
+        await engineRef.current.enableLocalVideo(false);
+        await engineRef.current.stopPreview();
+      }
+    } catch (error) {
+      console.error('Error toggling camera:', error);
+      setShowSelfCamera(false);
     }
   };
 
@@ -422,11 +626,48 @@ export default function WatchLiveScreen() {
         ) : (
           <View style={[styles.videoBackground, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
             <ActivityIndicator size="large" color="#fff" style={{ marginBottom: 10 }} />
-            <Text style={{ color: '#fff', fontSize: 16 }}>Connecting to live stream...</Text>
-            <Text style={{ color: '#aaa', fontSize: 12, marginTop: 5 }}>Please wait</Text>
+            <Text style={{ color: '#fff', fontSize: 16 }}>
+              {connectionStatus === 'reconnecting' ? 'Reconnecting...' : 'Connecting to live stream...'}
+            </Text>
+            <Text style={{ color: '#aaa', fontSize: 12, marginTop: 5 }}>
+              {connectionStatus === 'reconnecting' ? `Attempt ${reconnectAttemptsRef.current}/${maxReconnectAttemptsRef.current}` : 'Please wait'}
+            </Text>
+            {connectionStatus === 'disconnected' && (
+              <TouchableOpacity 
+                style={{ marginTop: 20, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#ff6b6b', borderRadius: 8 }}
+                onPress={() => {
+                  reconnectAttemptsRef.current = 0;
+                  initializeViewer();
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Try Again</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
+
+      {/* Top Header - Host info and viewer count */}
+      <SafeAreaView style={styles.topOverlay} edges={['top']}>
+        <View style={styles.topHeader}>
+          <View style={styles.viewerSection}>
+            <View style={styles.viewerAvatars}>
+              {viewers.slice(0, 3).map((viewer, idx) => (
+                <Image
+                  key={viewer.id}
+                  source={{ uri: viewer.avatar || DEFAULT_AVATAR_URL }}
+                  style={[styles.viewerAvatar, { marginLeft: idx > 0 ? -8 : 0 }]}
+                />
+              ))}
+            </View>
+            <Text style={styles.viewerCountText}>{viewerCount}</Text>
+            <View style={styles.greenDot} />
+          </View>
+          <TouchableOpacity style={styles.closeBtn} onPress={() => router.back()}>
+            <Ionicons name="close" size={20} color="#000" />
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
 
       {/* Self Camera PiP - Show viewer's own camera when enabled */}
       {showSelfCamera && AGORA_AVAILABLE && RtcSurfaceView && (
@@ -445,29 +686,82 @@ export default function WatchLiveScreen() {
         </View>
       )}
 
-      {/* Comments Section - Always show comments */}
-      <View style={styles.commentsContainer}>
-        <FlatList
-          data={comments}
-          keyExtractor={item => item.id}
-          inverted={true}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => <CommentItem item={item} />}
-          initialNumToRender={8}
-          maxToRenderPerBatch={8}
-          windowSize={5}
-          removeClippedSubviews={true}
-          contentContainerStyle={{ paddingBottom: 10, paddingTop: 10 }}
-        />
-      </View>
+      {/* Map Popup - Show location when enabled */}
+      {showMap && streamData?.location && typeof streamData.location.latitude === 'number' && (
+        <View style={styles.mapPopup}>
+          <TouchableOpacity 
+            style={styles.mapPopupExpandBtn}
+            onPress={() => setIsMapFullScreen(true)}
+          >
+            <Ionicons name="expand-outline" size={18} color="#333" />
+          </TouchableOpacity>
+          <MapView
+            style={styles.mapPopupView}
+            initialRegion={{
+              latitude: streamData.location.latitude,
+              longitude: streamData.location.longitude,
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
+            }}
+            showsUserLocation
+            loadingEnabled={true}
+            loadingIndicatorColor="#00c853"
+            cacheEnabled={true}
+          >
+            <Marker coordinate={{ latitude: streamData.location.latitude, longitude: streamData.location.longitude }}>
+              <View style={styles.mapMarker}>
+                <Image
+                  source={{ uri: hostAvatarSafe }}
+                  style={styles.mapMarkerAvatar}
+                />
+              </View>
+            </Marker>
+          </MapView>
+        </View>
+      )}
 
-      {/* Bottom Controls */}
+      {/* Comments Section - Always show comments ABOVE input */}
+      {!showComments && (
+        <View style={styles.commentsContainer}>
+          <FlatList
+            data={comments}
+            keyExtractor={item => item.id}
+            inverted={true}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => <CommentItem item={item} />}
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            windowSize={5}
+            removeClippedSubviews={true}
+            contentContainerStyle={{ paddingBottom: 10, paddingTop: 10 }}
+          />
+        </View>
+      )}
+
+      {/* Bottom Controls - Comment Input with KeyboardAvoidingView */}
       {showComments && (
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
-          style={{ position: 'absolute', left: 0, right: 0, bottom: 100, width: '100%' }} // 100px above bottom for more space above icons
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          style={styles.commentInputContainer}
         >
+          {/* Comments List ABOVE input */}
+          <View style={styles.commentsListAboveInput}>
+            <FlatList
+              data={comments}
+              keyExtractor={item => item.id}
+              inverted={true}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }) => <CommentItem item={item} />}
+              initialNumToRender={8}
+              maxToRenderPerBatch={8}
+              windowSize={5}
+              removeClippedSubviews={true}
+              contentContainerStyle={{ paddingBottom: 10, paddingTop: 10 }}
+            />
+          </View>
+
+          {/* Input Row */}
           <View style={styles.inputRow}>
             <TextInput
               style={styles.inputField}
@@ -476,8 +770,10 @@ export default function WatchLiveScreen() {
               placeholder="Send a message"
               placeholderTextColor="rgba(255,255,255,0.5)"
               onSubmitEditing={handleSend}
+              returnKeyType="send"
+              blurOnSubmit={false}
             />
-            <TouchableOpacity onPress={handleSend}>
+            <TouchableOpacity onPress={handleSend} style={styles.sendButton}>
               <Ionicons name="send" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
@@ -489,7 +785,7 @@ export default function WatchLiveScreen() {
           {/* Camera/Selfie Button */}
           <TouchableOpacity
             style={[styles.controlBtn, showSelfCamera && styles.controlBtnActive]}
-            onPress={() => setShowSelfCamera(!showSelfCamera)}
+            onPress={toggleSelfCamera}
           >
             <Ionicons name="camera-outline" size={22} color={showSelfCamera ? "#fff" : "#333"} />
           </TouchableOpacity>
@@ -701,6 +997,21 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
   },
+  mapMarker: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#00D26A',
+  },
+  mapMarkerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
 
   // Self Camera PiP
   selfCameraPip: {
@@ -747,21 +1058,38 @@ const styles = StyleSheet.create({
     zIndex: 10,
     paddingBottom: 16,
   },
+  commentInputContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 80,
+    zIndex: 20,
+    maxHeight: '50%',
+  },
+  commentsListAboveInput: {
+    maxHeight: 200,
+    marginBottom: 10,
+    paddingHorizontal: 16,
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 16,
     marginBottom: 16,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     borderRadius: 25,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   inputField: {
     flex: 1,
     fontSize: 15,
     color: '#fff',
     marginRight: 10,
+    maxHeight: 100,
+  },
+  sendButton: {
+    padding: 4,
   },
   inputRowMap: {
     flexDirection: 'row',
@@ -831,16 +1159,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.9)',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  mapMarker: {
-    alignItems: 'center',
-  },
-  mapMarkerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 3,
-    borderColor: '#00D26A',
   },
   selfCameraPipMap: {
     position: 'absolute',

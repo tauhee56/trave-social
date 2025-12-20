@@ -280,11 +280,19 @@ export default function MapScreen() {
     );
   }
 
-  // Show all posts with valid location
+  // Show posts with valid location AND 100+ likes (unless viewing specific user)
   const filteredPosts = safePosts.filter(p => {
     const lat = p.lat ?? (typeof p.location !== 'string' ? p.location?.lat : undefined);
     const lon = p.lon ?? (typeof p.location !== 'string' ? p.location?.lon : undefined);
-    return isValidLatLon(lat, lon);
+    const likes = p.likesCount ?? p.likes ?? 0;
+
+    // If userId param exists, show all posts from that user (no like filter)
+    if (userId) {
+      return isValidLatLon(lat, lon) && p.userId === userId;
+    }
+
+    // Otherwise, show only posts with 100+ likes
+    return isValidLatLon(lat, lon) && likes >= 100;
   });
 
   // Group filtered posts by location (lat/lon rounded to 5 decimals), max 5 per location sorted by likes
@@ -343,12 +351,18 @@ export default function MapScreen() {
     const [avatarLoaded, setAvatarLoaded] = useState(false);
 
     useEffect(() => {
-      const timeout = setTimeout(() => setTracks(false), 1500);
+      const timeout = setTimeout(() => {
+        setTracks(false);
+        console.log('⏱️ Marker timeout for post:', post.id);
+      }, 2000); // Increased to 2 seconds
       return () => clearTimeout(timeout);
     }, []);
 
     useEffect(() => {
-      if (imgLoaded && avatarLoaded) setTracks(false);
+      if (imgLoaded && avatarLoaded) {
+        setTracks(false);
+        console.log('✅ Both images loaded for post:', post.id);
+      }
     }, [imgLoaded, avatarLoaded]);
 
     const handleMarkerPress = () => {
@@ -356,6 +370,12 @@ export default function MapScreen() {
         setSelectedPosts(postsAtLocation);
       }
     };
+
+    // Ensure valid image URL
+    const imageUrl = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls[0]) || '';
+    const avatarUrl = post.userAvatar || DEFAULT_AVATAR_URL;
+
+    console.log('🗺️ Rendering marker for post:', post.id, 'imageUrl:', imageUrl?.substring(0, 50));
 
     return (
       <Marker
@@ -367,27 +387,43 @@ export default function MapScreen() {
       >
         <View style={styles.markerContainer}>
           <View style={styles.postImageWrapper}>
-            {post.imageUrl && (
+            {imageUrl ? (
               <ExpoImage
-                source={{ uri: post.imageUrl }}
+                source={{ uri: imageUrl }}
                 style={styles.postImage}
                 contentFit="cover"
                 cachePolicy="memory-disk"
+                priority="high"
                 transition={150}
-                onLoad={() => setImgLoaded(true)}
+                onLoad={() => {
+                  console.log('📸 Post image loaded:', post.id);
+                  setImgLoaded(true);
+                }}
+                onError={(error) => {
+                  console.error('❌ Post image error:', post.id, error);
+                  setImgLoaded(true); // Stop tracking even on error
+                }}
               />
+            ) : (
+              <View style={[styles.postImage, { backgroundColor: '#ddd' }]} />
             )}
           </View>
           <View style={styles.postAvatarOutside}>
-            {(post.userAvatar || DEFAULT_AVATAR_URL) && (
-              <ExpoImage
-                source={{ uri: post.userAvatar || DEFAULT_AVATAR_URL }}
-                style={styles.postAvatarImgFixed}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-                onLoad={() => setAvatarLoaded(true)}
-              />
-            )}
+            <ExpoImage
+              source={{ uri: avatarUrl }}
+              style={styles.postAvatarImgFixed}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              priority="high"
+              onLoad={() => {
+                console.log('👤 Avatar loaded:', post.id);
+                setAvatarLoaded(true);
+              }}
+              onError={(error) => {
+                console.error('❌ Avatar error:', post.id, error);
+                setAvatarLoaded(true); // Stop tracking even on error
+              }}
+            />
           </View>
         </View>
       </Marker>
@@ -601,54 +637,56 @@ const styles = StyleSheet.create({
   /* Custom marker styles */
   markerContainer: {
     position: 'relative',
-    width: 56,
-    height: 56,
+    width: 44,
+    height: 44,
   },
   postImageWrapper: {
-    width: 56,
-    height: 56,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 10,
     borderWidth: 2,
     borderColor: '#ffa726',
-    backgroundColor: '#fff',
+    backgroundColor: '#f0f0f0',
     overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 6,
-  },
-  postImage: {
-    width: 52,
-    height: 52,
-    borderRadius: 10,
-  },
-  postAvatarOutside: {
-    position: 'absolute',
-    top: -2,
-    right: -4,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: '#fff',
-    backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.25,
     shadowRadius: 3,
-    elevation: 8,
+    elevation: 5,
+  },
+  postImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  postAvatarOutside: {
+    position: 'absolute',
+    top: -2,
+    left: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#fff',
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 6,
     zIndex: 100,
     overflow: 'hidden',
   },
   postAvatarImgFixed: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
   },
 
   /* Live stream marker styles */

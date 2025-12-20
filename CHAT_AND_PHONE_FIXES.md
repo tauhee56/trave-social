@@ -213,11 +213,15 @@ export async function getUserSectionsSorted(userId: string) {
 | Issue | Status | Solution |
 |-------|--------|----------|
 | Duplicate messages | ✅ Fixed | Proper snapshot handling + unique keys |
-| Phone signup OTP | ✅ Fixed | Firebase email link |
-| OTP resend | ✅ Fixed | Real email resend |
-| Account creation | ✅ Fixed | Creates account with phone |
+| Phone signup | ✅ Fixed | Email verification link (like password reset) |
+| Phone login | ✅ Fixed | Login with phone + password |
+| Account creation | ✅ Fixed | Creates account with phone + email |
 | Section creation | ✅ Fixed | Include new sections not in order |
 | Section modal UI | ✅ Fixed | SafeAreaView with proper edges |
+| Logout error | ✅ Fixed | userId validation |
+| Map 100+ likes filter | ✅ Fixed | Only popular posts on main map |
+| Map images loading | ✅ Fixed | Priority + error handling |
+| Home screen flash | ✅ Fixed | Logout immediately after signup |
 
 ---
 
