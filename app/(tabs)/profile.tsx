@@ -375,12 +375,16 @@ export default function Profile({ userIdProp }: any) {
             setPosts([]);
           }
           // Fetch sections (sorted by user's preferred order)
-          const sectionsRes = await getUserSectionsSorted(viewedUserId || '');
           let sectionsData: any[] = [];
-          if (sectionsRes.success) {
-            if ('data' in sectionsRes && Array.isArray(sectionsRes.data)) sectionsData = sectionsRes.data;
-            else if ('sections' in sectionsRes && Array.isArray(sectionsRes.sections)) sectionsData = sectionsRes.sections;
-            setSections(sectionsData);
+          if (viewedUserId) {
+            const sectionsRes = await getUserSectionsSorted(viewedUserId);
+            if (sectionsRes.success) {
+              if ('data' in sectionsRes && Array.isArray(sectionsRes.data)) sectionsData = sectionsRes.data;
+              else if ('sections' in sectionsRes && Array.isArray(sectionsRes.sections)) sectionsData = sectionsRes.sections;
+              setSections(sectionsData);
+            } else {
+              setSections([]);
+            }
           } else {
             setSections([]);
           }
@@ -944,14 +948,16 @@ export default function Profile({ userIdProp }: any) {
       </Modal>
 
       {/* Edit sections modal */}
-      <EditSectionsModal
-        visible={editSectionsModal}
-        onClose={() => setEditSectionsModal(false)}
-        userId={viewedUserId || ''}
-        sections={sections}
-        posts={posts}
-        onSectionsUpdate={setSections}
-      />
+      {viewedUserId && (
+        <EditSectionsModal
+          visible={editSectionsModal}
+          onClose={() => setEditSectionsModal(false)}
+          userId={viewedUserId}
+          sections={sections}
+          posts={posts}
+          onSectionsUpdate={setSections}
+        />
+      )}
 
       {/* Create Highlight Modal */}
       <CreateHighlightModal

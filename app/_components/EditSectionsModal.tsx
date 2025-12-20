@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import React, { useEffect, useState } from 'react';
-import { Alert, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserSectionsSorted } from '../../lib/firebaseHelpers/getUserSectionsSorted';
 import { addUserSection, deleteUserSection, updateUserSection } from '../../lib/firebaseHelpers/index';
 import { updateUserSectionsOrder } from '../../lib/firebaseHelpers/updateUserSectionsOrder';
@@ -43,12 +44,26 @@ export default function EditSectionsModal({
   const [showCreateInput, setShowCreateInput] = useState(false);
 
   const handleCreateSection = async () => {
-    if (!newSectionName.trim() || !userId) return;
-    await addUserSection(userId, { name: newSectionName.trim(), postIds: [] });
-    const res = await getUserSectionsSorted(userId);
-    if (res.success && res.data) {
-      onSectionsUpdate(res.data);
+    if (!newSectionName.trim() || !userId) {
+      console.log('❌ Cannot create section - missing name or userId:', { newSectionName, userId });
+      return;
     }
+
+    console.log('📝 Creating section:', newSectionName.trim(), 'for user:', userId);
+
+    const createResult = await addUserSection(userId, { name: newSectionName.trim(), postIds: [] });
+    console.log('✅ Create section result:', createResult);
+
+    const res = await getUserSectionsSorted(userId);
+    console.log('📋 Fetched sections after create:', res);
+
+    if (res.success && res.data) {
+      console.log('✅ Updating sections in UI:', res.data);
+      onSectionsUpdate(res.data);
+    } else {
+      console.error('❌ Failed to fetch sections:', res);
+    }
+
     setNewSectionName('');
     setShowCreateInput(false);
   };
@@ -179,10 +194,15 @@ export default function EditSectionsModal({
     />
   );
 
+  // Safety check: Don't render if no userId
+  if (!userId) {
+    return null;
+  }
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn}>

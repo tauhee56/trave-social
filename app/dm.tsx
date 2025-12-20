@@ -102,18 +102,40 @@ export default function DM() {
     setMessages([]);
     setLastMessageDoc(null);
     setHasMoreMessages(true);
-    
+
     // Subscribe to real-time messages
     const unsub = subscribeToMessages(conversationId, (msgs) => {
-      setMessages(msgs);
+      console.log('📨 Received messages:', msgs.length, 'IDs:', msgs.map(m => m.id));
+
+      // Only update if messages actually changed
+      setMessages(prevMessages => {
+        // Check if messages are different
+        if (prevMessages.length !== msgs.length) {
+          console.log('✅ Length changed:', prevMessages.length, '->', msgs.length);
+          return msgs;
+        }
+
+        // Check if any message ID is different
+        const prevIds = prevMessages.map(m => m.id).join(',');
+        const newIds = msgs.map(m => m.id).join(',');
+
+        if (prevIds !== newIds) {
+          console.log('✅ IDs changed');
+          return msgs;
+        }
+
+        console.log('⏭️ No change, skipping update');
+        // No change, return previous
+        return prevMessages;
+      });
       setLoading(false);
     });
-    
+
     // Mark as read when opening conversation
     if (currentUserTyped && currentUserTyped.uid) {
       markConversationAsRead(conversationId, currentUserTyped.uid);
     }
-    
+
     return () => {
       if (typeof unsub === 'function') unsub();
     };
@@ -138,7 +160,16 @@ export default function DM() {
     }
     const snap = await getDocs(messagesQuery);
     const newMessages = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
-    setMessages(prev => [...prev, ...newMessages]);
+
+    // Merge with existing messages and remove duplicates
+    setMessages(prev => {
+      const allMessages = [...prev, ...newMessages];
+      const uniqueMessages = Array.from(
+        new Map(allMessages.map(msg => [msg.id, msg])).values()
+      );
+      return uniqueMessages;
+    });
+
     setLastMessageDoc(snap.docs[snap.docs.length - 1] || lastMessageDoc);
     setHasMoreMessages(newMessages.length === MESSAGES_PAGE_SIZE);
     setLoading(false);
@@ -319,8 +350,8 @@ export default function DM() {
           {/* Reactions display */}
           {reactionsList.length > 0 && (
             <View style={[styles.reactionsContainer, isSelf ? styles.reactionsSelf : styles.reactionsOther]}>
-              {reactionsList.map(([oderId, emoji]) => (
-                <Text key={oderId} style={styles.reactionEmoji}>{emoji as string}</Text>
+              {reactionsList.map(([userId, emoji], index) => (
+                <Text key={`${item.id}_${userId}_${index}`} style={styles.reactionEmoji}>{emoji as string}</Text>
               ))}
             </View>
           )}
@@ -375,7 +406,7 @@ export default function DM() {
             <FlatList
               ref={flatListRef}
               data={messages}
-              keyExtractor={(item, index) => `${item.id}_${index}`}
+              keyExtractor={(item) => item.id}
               renderItem={renderMessage}
               contentContainerStyle={{ paddingVertical: 10 }}
               onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
@@ -385,6 +416,11 @@ export default function DM() {
                 if (hasMoreMessages && !loading) loadMessagesPage();
               }}
               onEndReachedThreshold={0.2}
+              removeClippedSubviews={true}
+              maxToRenderPerBatch={10}
+              windowSize={10}
+              extraData={messages.length}
+              initialNumToRender={20}
               ListFooterComponent={hasMoreMessages ? (
                 <TouchableOpacity style={{ alignSelf: 'center', marginVertical: 10 }} onPress={loadMessagesPage}>
                   <Text style={{ color: '#007aff', fontSize: 15 }}>Load more messages</Text>

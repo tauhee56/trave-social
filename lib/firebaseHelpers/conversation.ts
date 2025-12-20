@@ -43,22 +43,24 @@ export async function getOrCreateConversation(userId1: string, userId2: string) 
 }
 
 // Subscribe to user's conversations with real-time updates
+// Fixed: Prevent duplicate conversations by getting fresh snapshot
 export function subscribeToConversations(userId: string, callback: (convos: any[]) => void) {
   const convRef = collection(db, 'conversations');
   const q = query(
-    convRef, 
+    convRef,
     where('participants', 'array-contains', userId),
     orderBy('lastMessageAt', 'desc')
   );
-  
+
   const unsub = onSnapshot(q, async (snapshot: any) => {
+    // Get all conversations from snapshot (fresh data each time)
     const convosPromises = snapshot.docs.map(async (docSnap: any) => {
       const data = docSnap.data();
-      
+
       // Get other user's data
       const otherUserId = data.participants?.find((p: string) => p !== userId);
       let otherUser = null;
-      
+
       if (otherUserId) {
         try {
           const userDoc = await getDoc(doc(db, 'users', otherUserId));
@@ -69,19 +71,25 @@ export function subscribeToConversations(userId: string, callback: (convos: any[
           console.error('Error fetching other user:', e);
         }
       }
-      
-      return { 
-        id: docSnap.id, 
+
+      return {
+        id: docSnap.id,
         ...data,
         otherUser,
         unread: data.unreadCount?.[userId] || 0
       };
     });
-    
+
     const convos = await Promise.all(convosPromises);
-    callback(convos);
+
+    // Remove duplicates by ID (just in case)
+    const uniqueConvos = Array.from(
+      new Map(convos.map(convo => [convo.id, convo])).values()
+    );
+
+    callback(uniqueConvos);
   });
-  
+
   return unsub;
 }
 

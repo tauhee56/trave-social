@@ -34,19 +34,29 @@ export async function reactToMessage(conversationId: string, messageId: string, 
 
 /**
  * Subscribe to real-time messages in a conversation
+ * Fixed: Prevent duplicate messages by getting fresh snapshot each time
  */
 export function subscribeToMessages(conversationId: string, callback: (messages: any[]) => void) {
   const messagesRef = collection(db, 'conversations', conversationId, 'messages');
   const q = query(messagesRef, orderBy('createdAt', 'desc'));
-  
+
   const unsub = onSnapshot(q, (snapshot) => {
-    const messages = snapshot.docs.map((doc) => ({ 
-      id: doc.id, 
-      ...doc.data() 
+    // Get all messages from snapshot (fresh data each time)
+    const messages = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data()
     }));
-    callback(messages);
+
+    // Remove duplicates by ID (just in case)
+    const uniqueMessages = Array.from(
+      new Map(messages.map(msg => [msg.id, msg])).values()
+    );
+
+    callback(uniqueMessages);
+  }, (error) => {
+    console.error('❌ subscribeToMessages error:', error);
   });
-  
+
   return unsub;
 }
 
