@@ -37,7 +37,13 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.tauhee56.travesocial",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Allow Trave-Social to access your camera for posting photos and live streaming.",
+        "NSMicrophoneUsageDescription": "Allow Trave-Social to access your microphone for live streaming.",
+        "NSPhotoLibraryUsageDescription": "Allow Trave-Social to access your photos for posting.",
+        "NSLocationWhenInUseUsageDescription": "Allow Trave-Social to use your location for map features and location tagging.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Trave-Social to track your travels to create passport stamps.",
+        "NSLocationAlwaysUsageDescription": "Allow Trave-Social to track your travels even when the app is closed to create passport stamps."
       }
     },
     "web": {
@@ -50,16 +56,20 @@
       "./plugins/withNetworkSecurityConfig.js",
       "./plugins/withAppAuthRedirectScheme.js",
       "./plugins/withAndroidManifestFix.js",
+      "./plugins/withAndroidPip.js",
       [
         "expo-build-properties",
         {
           "android": {
-              "manifestPlaceholders": {
-                "appAuthRedirectScheme": "trave-social",
-                "traveSocialScheme": "trave-social"
-              },
-              "enableProguardInReleaseBuilds": true,
-              "enableShrinkResourcesInReleaseBuilds": true
+            "manifestPlaceholders": {
+              "appAuthRedirectScheme": "trave-social",
+              "traveSocialScheme": "trave-social"
+            },
+            "enableProguardInReleaseBuilds": false,
+            "enableShrinkResourcesInReleaseBuilds": false,
+            "gradleVersion": "7.6.0",
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34
           }
         }
       ],
@@ -103,8 +113,7 @@
           "backgroundColor": "#667eea"
         }
       ],
-      "expo-web-browser",
-      
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": false
@@ -124,12 +133,11 @@
       "FIREBASE_MESSAGING_SENDER_ID": "709095117662",
       "FIREBASE_APP_ID": "1:709095117662:web:5f00f45bb4e392ee17f5cf",
       "FIREBASE_MEASUREMENT_ID": "G-PFZRL4FDFD",
-      "AGORA_APP_ID": "29320482381a43498eb8ca3e222b6e34",
-      "AGORA_APP_CERTIFICATE": "e8372567e0334d75add0ec3f597fb67b",
+      
       "eas": {
-        "projectId": "e4252e97-9a55-4b25-8090-837a8546f612"
+        "projectId": "513a1158-d790-4560-869c-77d75b5ffd6e"
       }
     },
-    "owner": "tuhee"
+    "owner": "tauheedahmad"
   }
 }
