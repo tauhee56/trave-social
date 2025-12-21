@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { getLocationVisitCount, likePost, unlikePost } from "../../lib/firebaseHelpers";
+import { feedEventEmitter } from '../../lib/feedEventEmitter';
 import { getOptimizedImageUrl } from "../../lib/imageHelpers";
 import { CommentSection } from "./CommentSection";
 import SaveButton from "./SaveButton";
@@ -980,9 +981,13 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 if (wasLiked) {
                   setLikes(prev => prev.filter(id => id !== userId));
                   setLikesCount((prev: number) => Math.max(0, prev - 1));
+                  // Broadcast unlike to update all feed instances
+                  feedEventEmitter.emitPostUpdated(post.id, { liked: false, likesCount: Math.max(0, (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) - 1) });
                 } else {
                   setLikes(prev => [...prev, userId]);
                   setLikesCount((prev: number) => prev + 1);
+                  // Broadcast like to update all feed instances
+                  feedEventEmitter.emitPostUpdated(post.id, { liked: true, likesCount: (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) + 1 });
                 }
                 
                 // Then update in background
@@ -993,6 +998,8 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                     setLikes(prev => [...prev, userId]);
                     setLikesCount((prev: number) => prev + 1);
                     alert('Unlike error: ' + res.error);
+                    // Re-broadcast revert
+                    feedEventEmitter.emitPostUpdated(post.id, { liked: true, likesCount: (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) + 1 });
                   }
                 } else {
                   const res = await likePost(post.id, userId);
@@ -1001,6 +1008,8 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                     setLikes(prev => prev.filter(id => id !== userId));
                     setLikesCount((prev: number) => Math.max(0, prev - 1));
                     alert('Like error: ' + res.error);
+                    // Re-broadcast revert
+                    feedEventEmitter.emitPostUpdated(post.id, { liked: false, likesCount: Math.max(0, (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) - 1) });
                   }
                 }
               } catch (err) {
@@ -1009,9 +1018,11 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 if (wasLiked) {
                   setLikes(prev => [...prev, userId]);
                   setLikesCount((prev: number) => prev + 1);
+                  feedEventEmitter.emitPostUpdated(post.id, { liked: true, likesCount: (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) + 1 });
                 } else {
                   setLikes(prev => prev.filter(id => id !== userId));
                   setLikesCount((prev: number) => Math.max(0, prev - 1));
+                  feedEventEmitter.emitPostUpdated(post.id, { liked: false, likesCount: Math.max(0, (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) - 1) });
                 }
                 alert('Like/unlike exception: ' + err);
               }

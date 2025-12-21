@@ -72,7 +72,7 @@ export default function TermsOfServiceScreen() {
           • Promotes violence or illegal activities{'\n'}
           • Contains nudity or sexual content{'\n'}
           • Is spam or misleading{'\n'}
-          • Violates others' privacy
+          • Violates others&apos; privacy
         </Text>
 
         <Text style={styles.sectionTitle}>6. User Conduct</Text>
@@ -107,7 +107,7 @@ export default function TermsOfServiceScreen() {
 
         <Text style={styles.sectionTitle}>9. Disclaimers</Text>
         <Text style={styles.paragraph}>
-          • The App is provided "as is" without warranties{'\n'}
+          • The App is provided &quot;as is&quot; without warranties{'\n'}
           • We do not guarantee uninterrupted service{'\n'}
           • We are not responsible for user content{'\n'}
           • Do not rely on content for professional advice

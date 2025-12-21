@@ -27,6 +27,17 @@ declare module '../config/agora.js' {
   export const AGORA_CONFIG: any;
   export const getAgoraToken: any;
 }
+
+// Add declarations for imports using two-level up paths
+declare module '../../config/agora' {
+  export const AGORA_CONFIG: any;
+  export const getAgoraToken: any;
+}
+
+declare module '../../config/agora.js' {
+  export const AGORA_CONFIG: any;
+  export const getAgoraToken: any;
+}
 declare module '../lib/firebaseHelpers/archive' {
   export const archiveConversation: any;
   export const unarchiveConversation: any;
@@ -36,10 +47,6 @@ declare module '../lib/firebaseHelpers/archive' {
 declare module '../config/agora' {
   export const AGORA_CONFIG: any;
   export const getAgoraToken: any;
-}
-declare module '*.js' {
-  const value: any;
-  export = value;
 }
 
 declare module '../lib/firebaseHelpers/archive.js' {

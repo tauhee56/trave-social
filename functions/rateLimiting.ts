@@ -15,6 +15,7 @@
 
 // @ts-ignore - These are Cloud Functions dependencies, not available in app
 import * as functions from 'firebase-functions';
+import { onSchedule, ScheduledEvent } from 'firebase-functions/v2/scheduler';
 // @ts-ignore
 import * as admin from 'firebase-admin';
 
@@ -156,9 +157,7 @@ export const checkRateLimit = functions.https.onCall(
 /**
  * Cleanup old rate limit entries (runs daily)
  */
-export const cleanupRateLimits = functions.pubsub
-  .schedule('every 24 hours')
-  .onRun(async () => {
+export const cleanupRateLimits = onSchedule('every 24 hours', async (event: ScheduledEvent): Promise<void> => {
     try {
       const now = Math.floor(Date.now() / 1000);
       const cutoffTime = now - 86400; // 24 hours ago
@@ -181,10 +180,12 @@ export const cleanupRateLimits = functions.pubsub
         console.log(`✅ Cleaned up ${deleted} expired rate limit entries`);
       }
 
-      return { cleaned: deleted };
+      // Just log, don't return anything
+      return;
     } catch (error) {
       console.error('Cleanup error:', error);
-      throw error;
+      // Just log error, don't return anything
+      return;
     }
   });
 

@@ -4,11 +4,7 @@
  */
 
 import { IStreamingService } from '../interfaces/IStreamingService';
-
-// Direct config to avoid environment loading issues
-const AGORA_APP_ID = '29320482381a43498eb8ca3e222b6e34';
-const AGORA_APP_CERTIFICATE = 'e8372567e0334d75add0ec3f597fb67b';
-const AGORA_TOKEN_SERVER_URL = '';
+import { AGORA_CONFIG } from '../../config/agora';
 
 export class AgoraStreamingService implements IStreamingService {
   private appId: string;
@@ -26,9 +22,9 @@ export class AgoraStreamingService implements IStreamingService {
   private errorCallbacks: ((error: Error) => void)[] = [];
 
   constructor() {
-    this.appId = AGORA_APP_ID;
-    this.appCertificate = AGORA_APP_CERTIFICATE;
-    this.tokenServerUrl = AGORA_TOKEN_SERVER_URL;
+    this.appId = AGORA_CONFIG.appId;
+    this.appCertificate = AGORA_CONFIG.appCertificate || '';
+    this.tokenServerUrl = AGORA_CONFIG.tokenServerUrl || '';
   }
 
   async initialize(): Promise<void> {

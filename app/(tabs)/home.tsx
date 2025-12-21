@@ -148,6 +148,37 @@ export default function Home() {
       } else if (event.type === 'USER_PRIVACY_CHANGED') {
         // Refresh feed to apply privacy changes
         onRefresh();
+      } else if (event.type === 'POST_UPDATED' && event.postId) {
+        // Sync like state across duplicates of the same post
+        const { data } = event;
+        if (data && (typeof data.likesCount !== 'undefined' || typeof data.liked !== 'undefined')) {
+          setPosts(prev => prev.map(p => {
+            if (p.id !== event.postId) return p;
+            const next = { ...p };
+            if (typeof data.likesCount === 'number') {
+              next.likesCount = data.likesCount;
+            }
+            if (typeof data.liked === 'boolean' && currentUser?.uid) {
+              const uid = currentUser.uid;
+              const arr = Array.isArray(next.likes) ? next.likes : [];
+              next.likes = data.liked ? (arr.includes(uid) ? arr : [...arr, uid]) : arr.filter((id: string) => id !== uid);
+            }
+            return next;
+          }));
+          setAllLoadedPosts(prev => prev.map(p => {
+            if (p.id !== event.postId) return p;
+            const next = { ...p };
+            if (typeof data.likesCount === 'number') {
+              next.likesCount = data.likesCount;
+            }
+            if (typeof data.liked === 'boolean' && currentUser?.uid) {
+              const uid = currentUser.uid;
+              const arr = Array.isArray(next.likes) ? next.likes : [];
+              next.likes = data.liked ? (arr.includes(uid) ? arr : [...arr, uid]) : arr.filter((id: string) => id !== uid);
+            }
+            return next;
+          }));
+        }
       } else if (event.type === 'USER_BLOCKED' || event.type === 'USER_UNBLOCKED') {
         // Refresh feed to apply blocking changes
         onRefresh();

@@ -1002,7 +1002,7 @@ export default function Profile({ userIdProp }: any) {
       <Modal
         visible={userMenuVisible}
         transparent={true}
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setUserMenuVisible(false)}
       >
         <TouchableOpacity
@@ -1010,83 +1010,89 @@ export default function Profile({ userIdProp }: any) {
           activeOpacity={1}
           onPress={() => setUserMenuVisible(false)}
         >
-          <View style={styles.menuSheet}>
-            {/* Handle */}
-            <View style={styles.menuHandle} />
-            
-            {/* Menu Options */}
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={handleBlockUser}
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <ScrollView 
+              style={styles.menuSheet}
+              contentContainerStyle={styles.menuSheetContent}
+              bounces={false}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: '#fee' }]}>
-                <Ionicons name="ban-outline" size={22} color="#e74c3c" />
-              </View>
-              <Text style={[styles.menuItemText, { color: '#e74c3c' }]}>Block</Text>
-            </TouchableOpacity>
+              {/* Handle */}
+              <View style={styles.menuHandle} />
+              
+              {/* Menu Options */}
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={handleBlockUser}
+              >
+                <View style={[styles.menuIconContainer, { backgroundColor: '#fee' }]}>
+                  <Ionicons name="ban-outline" size={22} color="#e74c3c" />
+                </View>
+                <Text style={[styles.menuItemText, { color: '#e74c3c' }]}>Block</Text>
+              </TouchableOpacity>
 
-            <View style={styles.menuSeparator} />
+              <View style={styles.menuSeparator} />
 
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={handleReportUser}
-            >
-              <View style={[styles.menuIconContainer, { backgroundColor: '#fff5e6' }]}>
-                <Ionicons name="flag-outline" size={22} color="#f39c12" />
-              </View>
-              <Text style={styles.menuItemText}>Report</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={handleReportUser}
+              >
+                <View style={[styles.menuIconContainer, { backgroundColor: '#fff5e6' }]}>
+                  <Ionicons name="flag-outline" size={22} color="#f39c12" />
+                </View>
+                <Text style={styles.menuItemText}>Report</Text>
+              </TouchableOpacity>
 
-            <View style={styles.menuSeparator} />
+              <View style={styles.menuSeparator} />
 
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setUserMenuVisible(false);
-                // Share profile
-                import('react-native').then(({ Share }) => {
-                  Share.share({
-                    message: `Check out ${profile?.name || 'this user'}'s profile on Trave Social!`,
-                    title: 'Share Profile'
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setUserMenuVisible(false);
+                  // Share profile
+                  import('react-native').then(({ Share }) => {
+                    Share.share({
+                      message: `Check out ${profile?.name || 'this user'}'s profile on Trave Social!`,
+                      title: 'Share Profile'
+                    });
                   });
-                });
-              }}
-            >
-              <View style={[styles.menuIconContainer, { backgroundColor: '#e8f4fd' }]}>
-                <Ionicons name="share-outline" size={22} color="#0095f6" />
-              </View>
-              <Text style={styles.menuItemText}>Share Profile</Text>
-            </TouchableOpacity>
+                }}
+              >
+                <View style={[styles.menuIconContainer, { backgroundColor: '#e8f4fd' }]}>
+                  <Ionicons name="share-outline" size={22} color="#0095f6" />
+                </View>
+                <Text style={styles.menuItemText}>Share Profile</Text>
+              </TouchableOpacity>
 
-            <View style={styles.menuSeparator} />
+              <View style={styles.menuSeparator} />
 
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setUserMenuVisible(false);
-                // Copy profile URL
-                import('expo-clipboard').then(async (Clipboard) => {
-                  await Clipboard.setStringAsync(`trave-social://user/${viewedUserId}`);
-                  Alert.alert('Copied', 'Profile link copied to clipboard');
-                }).catch(() => {
-                  Alert.alert('Error', 'Could not copy link');
-                });
-              }}
-            >
-              <View style={[styles.menuIconContainer, { backgroundColor: '#f0f0f0' }]}>
-                <Ionicons name="link-outline" size={22} color="#666" />
-              </View>
-              <Text style={styles.menuItemText}>Copy Profile URL</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setUserMenuVisible(false);
+                  // Copy profile URL
+                  import('expo-clipboard').then(async (Clipboard) => {
+                    await Clipboard.setStringAsync(`trave-social://user/${viewedUserId}`);
+                    Alert.alert('Copied', 'Profile link copied to clipboard');
+                  }).catch(() => {
+                    Alert.alert('Error', 'Could not copy link');
+                  });
+                }}
+              >
+                <View style={[styles.menuIconContainer, { backgroundColor: '#f0f0f0' }]}>
+                  <Ionicons name="link-outline" size={22} color="#666" />
+                </View>
+                <Text style={styles.menuItemText}>Copy Profile URL</Text>
+              </TouchableOpacity>
 
-            {/* Cancel Button */}
-            <TouchableOpacity
-              style={styles.menuCancelBtn}
-              onPress={() => setUserMenuVisible(false)}
-            >
-              <Text style={styles.menuCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
+              {/* Cancel Button */}
+              <TouchableOpacity
+                style={styles.menuCancelBtn}
+                onPress={() => setUserMenuVisible(false)}
+              >
+                <Text style={styles.menuCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
     </SafeAreaView>
@@ -1096,11 +1102,12 @@ export default function Profile({ userIdProp }: any) {
 const styles = StyleSheet.create({
     headerBackBtn: { padding: 8, marginRight: 8 },
     headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#222', flex: 1, textAlign: 'center' },
-    headerMenuBtn: { padding: 8, marginLeft: 8 },
-    menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.25)', justifyContent: 'flex-end' },
-    menuSheet: { backgroundColor: '#fff', borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingBottom: 24, paddingTop: 8, minHeight: 120 },
-    menuHandle: { width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2, alignSelf: 'center', marginVertical: 8 },
-    menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: '#f4f4f4' },
+    headerMenuBtn: { padding: 8, marginLeft: 8, marginTop: 4 },
+    menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+    menuSheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '85%' },
+    menuSheetContent: { paddingBottom: 20, paddingTop: 8 },
+    menuHandle: { width: 40, height: 4, backgroundColor: '#ccc', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 16 },
+    menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 20 },
     menuIconContainer: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
     menuItemText: { fontSize: 16, color: '#222', fontWeight: '500' },
   container: { flex: 1, backgroundColor: '#fff' },
@@ -1225,10 +1232,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f0f0',
   },
   menuCancelBtn: {
-    marginTop: 16,
-    paddingVertical: 14,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
+    marginTop: 24,
+    marginBottom: 4,
+    marginHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 14,
     alignItems: 'center',
   },
   menuCancelText: {

@@ -79,7 +79,7 @@ export default function PrivacyPolicyScreen() {
           • Withdraw Consent: Stop sharing optional data
         </Text>
 
-        <Text style={styles.sectionTitle}>7. Children's Privacy</Text>
+        <Text style={styles.sectionTitle}>7. Children&apos;s Privacy</Text>
         <Text style={styles.paragraph}>
           Our app is not intended for children under 13. We do not knowingly collect data from children under 13.
         </Text>

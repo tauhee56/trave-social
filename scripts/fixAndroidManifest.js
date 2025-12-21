@@ -25,3 +25,47 @@ manifests.forEach((manifest) => {
     }
   }
 });
+
+// Enable Picture-in-Picture in app's AndroidManifest if present (after prebuild)
+try {
+  const appManifestPath = path.join(__dirname, '..', 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+  if (fs.existsSync(appManifestPath)) {
+    let xml = fs.readFileSync(appManifestPath, 'utf8');
+
+    // Add uses-feature for PiP if missing
+    if (!xml.includes('android.software.picture_in_picture')) {
+      xml = xml.replace(
+        /<manifest[\s\S]*?>/,
+        (m) =>
+          m.replace(
+            '</manifest>',
+            ''
+          )
+      );
+      // Insert uses-feature right after <manifest> header
+      xml = xml.replace(
+        /<manifest[^>]*>/,
+        (m) =>
+          `${m}\n    <uses-feature android:name="android.software.picture_in_picture" android:required="false" />`
+      );
+    }
+
+    // Add supportsPictureInPicture="true" to MainActivity
+    if (!xml.includes('supportsPictureInPicture="true"')) {
+      xml = xml.replace(
+        /<activity[^>]*MainActivity[^>]*>/,
+        (m) => {
+          if (m.includes('supportsPictureInPicture')) return m; 
+          return m.replace('>', ' android:supportsPictureInPicture="true" android:resizeableActivity="true">');
+        }
+      );
+    }
+
+    fs.writeFileSync(appManifestPath, xml, 'utf8');
+    console.log('✓ Enabled Picture-in-Picture in AndroidManifest');
+  } else {
+    console.log('ℹ️ AndroidManifest not found (Expo managed) — will be patched after prebuild');
+  }
+} catch (e) {
+  console.error('✗ Error enabling PiP in AndroidManifest:', e.message);
+}

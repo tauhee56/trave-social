@@ -149,6 +149,21 @@ export default function SettingsScreen() {
             <Text style={styles.aboutText}>For help or feedback, email support@travesocial.com</Text>
           </View>
 
+          {/* Legal Section */}
+          <View style={styles.legalBox}>
+            <Text style={styles.legalTitle}>Legal</Text>
+            <TouchableOpacity style={styles.legalItem} onPress={() => router.push('/legal/privacy' as any)}>
+              <Feather name="shield" size={18} color="#667eea" style={{ marginRight: 10 }} />
+              <Text style={styles.legalText}>Privacy Policy</Text>
+              <Feather name="chevron-right" size={18} color="#ccc" style={{ marginLeft: 'auto' }} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.legalItem} onPress={() => router.push('/legal/terms' as any)}>
+              <Feather name="file-text" size={18} color="#667eea" style={{ marginRight: 10 }} />
+              <Text style={styles.legalText}>Terms of Service</Text>
+              <Feather name="chevron-right" size={18} color="#ccc" style={{ marginLeft: 'auto' }} />
+            </TouchableOpacity>
+          </View>
+
           <FlatList
             data={blockedUsers}
             keyExtractor={(item) => item.userId}
@@ -334,5 +349,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 2,
+  },
+  legalBox: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 8,
+    margin: 16,
+    marginBottom: 0,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  legalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#222',
+    marginBottom: 6,
+    paddingHorizontal: 8,
+  },
+  legalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f2f2f2',
+  },
+  legalText: {
+    fontSize: 15,
+    color: '#1f2937',
+    fontWeight: '500',
   },
 });

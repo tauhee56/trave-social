@@ -11,10 +11,11 @@
 
 // Directly use config to avoid environment loading issues
 export const AGORA_CONFIG = {
-  appId: '29320482381a43498eb8ca3e222b6e34',
-  appCertificate: 'e8372567e0334d75add0ec3f597fb67b', // Only needed if certificate is enabled
+  appId: 'b3afe61e45af4fe3819dbdffbbcffbf3', // NEW Testing Mode App ID (no certificate)
+  appCertificate: '', // Testing Mode: certificate disabled, no token required
+  // VERIFY: Ensure appId and appCertificate match latest from Agora Console
   // Cloud Function URL for token generation (production-ready)
-  tokenServerUrl: 'https://us-central1-travel-app-3da72.cloudfunctions.net/generateAgoraToken',
+  tokenServerUrl: '', // Testing Mode: no token server needed (null token works)
 };
 
 // Generate a channel name for live streaming
@@ -30,6 +31,12 @@ export const getAgoraToken = async (channelName, uid, role = 'subscriber') => {
     console.log('📡 Channel:', channelName);
     console.log('🎯 UID:', uid);
     console.log('👤 Role:', role);
+
+    // Testing Mode: no token server, return null (certificate disabled)
+    if (!AGORA_CONFIG.tokenServerUrl || AGORA_CONFIG.tokenServerUrl === '') {
+      console.log('⚠️ Testing Mode: Using null token (certificate disabled)');
+      return null;
+    }
 
     // Call Cloud Function to generate token
     if (AGORA_CONFIG.tokenServerUrl) {

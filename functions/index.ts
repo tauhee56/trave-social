@@ -7,6 +7,7 @@
  */
 
 const functions = require('firebase-functions');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 
 admin.initializeApp();
@@ -54,8 +55,6 @@ exports.generateUserFeed = functions.https.onCall(async (data: any, context: any
     // Fetch posts from followings
     let query = db.collection('posts')
       .where('authorId', 'in', followingIds)
-      .orderBy('createdAt', 'desc')
-      .limit(limit);
 
     if (lastPostId) {
       const lastPost = await db.collection('posts').doc(lastPostId).get();
@@ -253,10 +252,8 @@ exports.calculatePostStats = functions.https.onCall(async (data: any, context: a
  * Clean up old/expired data periodically
  * Runs daily to maintain database efficiency
  */
-exports.cleanupExpiredData = functions.pubsub
-  .schedule('every 24 hours')
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  .onRun(async (context: any) => {
+import { ScheduledEvent } from 'firebase-functions/v2/scheduler';
+exports.cleanupExpiredData = onSchedule('every 24 hours', async (event: ScheduledEvent): Promise<void> => {
     try {
       // Delete notifications older than 30 days
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -287,10 +284,10 @@ exports.cleanupExpiredData = functions.pubsub
       }
 
       console.log('Cleanup completed');
-      return { success: true };
+      return;
     } catch (error) {
       console.error('Cleanup error:', error);
-      return { success: false, error };
+      return;
     }
   });
 
@@ -360,7 +357,10 @@ exports.generateAgoraToken = functions.https.onRequest(async (req: any, res: any
   try {
     const { channelName, uid, role } = req.method === 'GET' ? req.query : req.body;
 
-    console.log('🎫 Token request:', { channelName, uid, role });
+      console.log('🎫 Token request received:');
+      console.log('  channelName:', channelName);
+      console.log('  uid:', uid);
+      console.log('  role:', role);
 
     if (!channelName) {
       res.status(400).json({ error: 'Missing channelName' });
@@ -371,9 +371,15 @@ exports.generateAgoraToken = functions.https.onRequest(async (req: any, res: any
       return;
     }
 
-    // Agora credentials
-    const appId = '29320482381a43498eb8ca3e222b6e34';
-    const appCertificate = 'e8372567e0334d75add0ec3f597fb67b';
+    // Agora credentials from runtime config or environment
+    // Prefer Firebase Functions config: firebase functions:config:set agora.app_id="..." agora.app_certificate="..."
+    const appId = functions.config().agora?.app_id || process.env.AGORA_APP_ID || '';
+    const appCertificate = functions.config().agora?.app_certificate || process.env.AGORA_APP_CERTIFICATE || '';
+
+    if (!appId) {
+      res.status(500).json({ error: 'Agora App ID not configured' });
+      return;
+    }
 
     // Import agora-token package
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -396,7 +402,14 @@ exports.generateAgoraToken = functions.https.onRequest(async (req: any, res: any
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
 
-    // Generate token
+    // In Testing Mode (no certificate), tokens are not required
+    if (!appCertificate) {
+      console.log('ℹ️ Agora in testing mode: returning null token');
+      res.status(200).json({ success: true, token: null, testingMode: true, expiresIn: expirationTimeInSeconds });
+      return;
+    }
+
+    // Generate token for production use (certificate required)
     const token = RtcTokenBuilder.buildTokenWithUid(
       appId,
       appCertificate,
@@ -407,13 +420,8 @@ exports.generateAgoraToken = functions.https.onRequest(async (req: any, res: any
       privilegeExpiredTs
     );
 
-    console.log('✅ Token generated successfully for channel:', channelName);
-
-    res.status(200).json({
-      success: true,
-      token: token,
-      expiresIn: expirationTimeInSeconds,
-    });
+      console.log('✅ Token generated successfully');
+    res.status(200).json({ success: true, token, expiresIn: expirationTimeInSeconds });
 
   } catch (error: any) {
     console.error('❌ Agora token generation error:', error);

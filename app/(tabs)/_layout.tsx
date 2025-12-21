@@ -2,6 +2,16 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { Tabs, useFocusEffect, useRouter, useSegments } from "expo-router";
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+let RtcSurfaceView: any = null;
+let VideoSourceType: any = null;
+let RenderModeType: any = null;
+try {
+  const AgoraSDK = require('react-native-agora');
+  RtcSurfaceView = AgoraSDK.RtcSurfaceView;
+  VideoSourceType = AgoraSDK.VideoSourceType;
+  RenderModeType = AgoraSDK.RenderModeType;
+} catch {}
+// Minimize overlay removed
 import { SafeAreaView } from "react-native-safe-area-context";
 import { logAnalyticsEvent, setAnalyticsUserId } from '../../lib/analytics';
 import { getCurrentUser } from '../../lib/firebaseHelpers';
@@ -355,7 +365,7 @@ function TopMenu() {
             activeOpacity={1} 
             onPress={() => setMenuVisible(false)} 
           />
-          <SafeAreaView style={{ width: '100%' }} edges={["bottom"]}>
+          <View style={{ width: '100%' }}>
             <View style={styles.igSheet}> 
               {/* Handle */}
               <View style={styles.handleContainer}>
@@ -421,17 +431,33 @@ function TopMenu() {
                     <Feather name="chevron-right" size={CHEVRON_SIZE} color="#ccc" style={styles.chevron} />
                   </TouchableOpacity>
 
+                </View>
+
+                {/* Legal Group */}
+                <View style={styles.menuGroup}>
+                  <TouchableOpacity 
+                    style={styles.igItem} 
+                    activeOpacity={0.7} 
+                    onPress={() => { logAnalyticsEvent('open_privacy'); setMenuVisible(false); router.push('/legal/privacy'); }}
+                  >
+                    <View style={styles.iconContainer}>
+                      <Feather name="shield" size={ICON_SIZE} color="#667eea" />
+                    </View>
+                    <Text style={styles.igText}>Privacy Policy</Text>
+                    <Feather name="chevron-right" size={CHEVRON_SIZE} color="#ccc" style={styles.chevron} />
+                  </TouchableOpacity>
+
                   <View style={styles.separator} />
 
                   <TouchableOpacity 
                     style={styles.igItem} 
                     activeOpacity={0.7} 
-                    onPress={() => { logAnalyticsEvent('open_highlight'); setMenuVisible(false); router.push('/highlight/1'); }}
+                    onPress={() => { logAnalyticsEvent('open_terms'); setMenuVisible(false); router.push('/legal/terms'); }}
                   >
                     <View style={styles.iconContainer}>
-                      <Feather name="star" size={ICON_SIZE} color="#667eea" />
+                      <Feather name="file-text" size={ICON_SIZE} color="#667eea" />
                     </View>
-                    <Text style={styles.igText}>Highlights</Text>
+                    <Text style={styles.igText}>Terms of Service</Text>
                     <Feather name="chevron-right" size={CHEVRON_SIZE} color="#ccc" style={styles.chevron} />
                   </TouchableOpacity>
                 </View>
@@ -471,9 +497,10 @@ function TopMenu() {
                 </TouchableOpacity>
               </View>
             </View>
-          </SafeAreaView>
+          </View>
         </View>
       )}
+      {/* Mini stream overlay removed as per request */}
     </View>
   );
 }
@@ -520,8 +547,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
     borderTopLeftRadius: isSmallDevice ? 18 : 24,
     borderTopRightRadius: isSmallDevice ? 18 : 24,
-    paddingTop: 8,
-    paddingBottom: isSmallDevice ? 16 : 20,
+    paddingTop: isSmallDevice ? 40 : 48,
+    paddingBottom: isSmallDevice ? 24 : 32,
     maxHeight: SCREEN_HEIGHT * 0.85,
     shadowColor: '#000',
     shadowOpacity: 0.2,
@@ -620,4 +647,35 @@ const styles = StyleSheet.create({
     fontSize: isSmallDevice ? 15 : (isLargeDevice ? 17 : 16),
     fontWeight: '600',
   },
+  miniOverlay: {
+    position: 'absolute',
+    bottom: isSmallDevice ? 90 : 100,
+    right: isSmallDevice ? 12 : 16,
+    width: isSmallDevice ? 160 : 180,
+    height: isSmallDevice ? 280 : 320,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 10,
+    zIndex: 1000,
+  },
+  miniHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  miniBtn: { padding: 4 },
 });
+
+// MiniStreamOverlay removed
