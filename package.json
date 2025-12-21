@@ -76,7 +76,6 @@
     "react-native-google-places-autocomplete": "^2.6.1",
     "react-native-maps": "^1.26.20",
     "react-native-reanimated": "^4.2.0",
-    "react-native-pip-android": "^1.0.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "^4.18.0",
     "react-native-snapkit": "^0.0.0",

@@ -5,20 +5,21 @@ import { useRouter } from 'expo-router';
 import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    BackHandler,
-    Dimensions,
-    FlatList,
-    Image,
-    KeyboardAvoidingView,
-    PermissionsAndroid,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  AppState,
+  BackHandler,
+  Dimensions,
+  FlatList,
+  Image,
+  KeyboardAvoidingView,
+  PermissionsAndroid,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,6 +28,7 @@ import { AGORA_CONFIG, getAgoraToken } from '../config/agora';
 // @ts-ignore
 import { auth, db } from '../config/firebase';
 import { logger } from '../utils/logger';
+// Minimize functionality removed
 
 
   // Utility: sanitize coordinates for MapView/Marker
@@ -112,6 +114,9 @@ export default function GoLiveScreen() {
   // Refs to always have latest values for cleanup
   const isStreamingRef = useRef(isStreaming);
   const channelNameRef = useRef(channelName);
+  const isExplicitlyEndingRef = useRef<boolean>(false);
+  const networkRetryCountRef = useRef<number>(0);
+  const appStateRef = useRef<string>(AppState.currentState);
 
   useEffect(() => {
     isStreamingRef.current = isStreaming;
@@ -121,26 +126,9 @@ export default function GoLiveScreen() {
     channelNameRef.current = channelName;
   }, [channelName]);
 
-  // Cleanup: End stream if unmounting while streaming (always use latest refs)
-  useEffect(() => {
-    return () => {
-      const channel = channelNameRef.current;
-      if (channel) {
-        // Always mark stream as ended in Firebase
-        const streamRef = doc(db, 'liveStreams', channel);
-        setDoc(streamRef, {
-          isLive: false,
-          endedAt: serverTimestamp()
-        }, { merge: true });
-        // Leave Agora channel if needed
-        if (agoraEngineRef.current) {
-          agoraEngineRef.current.leaveChannel();
-          agoraEngineRef.current.release();
-          agoraEngineRef.current = null;
-        }
-      }
-    };
-  }, []);
+  // Professional stream management: No automatic cleanup on navigation
+  // Stream continues in background when user navigates away
+  // Only explicit end or critical failure will stop the stream
   // ...existing code...
   
   // User state
@@ -205,34 +193,110 @@ export default function GoLiveScreen() {
     getLocation();
   }, []);
 
-  // Handle back button
+  // AppState listener for background mode support
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App came to foreground
+        console.log('📱 App returned to foreground, stream still live');
+        // Check if stream is still live in Firebase
+        if (isStreamingRef.current && channelNameRef.current) {
+          const streamRef = doc(db, 'liveStreams', channelNameRef.current);
+          getDoc(streamRef).then(docSnap => {
+            if (docSnap.exists() && !docSnap.data()?.isLive) {
+              // Stream ended while in background
+              console.log('⚠️ Stream ended while in background');
+              if (agoraEngineRef.current) {
+                agoraEngineRef.current.leaveChannel();
+                agoraEngineRef.current.release();
+                agoraEngineRef.current = null;
+              }
+              setIsStreaming(false);
+              Alert.alert('Stream Ended', 'Your stream was ended', [{
+                text: 'OK',
+                onPress: () => router.back()
+              }]);
+            }
+          });
+        }
+      } else if (nextAppState.match(/inactive|background/)) {
+        // App going to background - stream continues
+        console.log('📱 App going to background, stream continues...');
+        if (isStreamingRef.current) {
+          // Show notification that stream is continuing
+          // Stream audio/video continues in background
+        }
+      }
+      appStateRef.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  // Handle back button - Professional behavior like Google Meet
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (isStreamingRef.current) {
         Alert.alert(
-          'End Stream',
-          'Do you want to end the live stream?',
+          'Live Stream',
+          'What would you like to do?',
           [
-            { text: 'Cancel', style: 'cancel', onPress: () => {} },
+            { 
+              text: 'Minimize', 
+              onPress: () => {
+                // Android: Native PiP is enabled via manifest plugin
+                // The system will automatically offer PiP gesture or menu
+                if (Platform.OS === 'android') {
+                  Alert.alert('Picture-in-Picture', 'You can minimize this stream using the device navigation or PiP gesture.');
+                } else {
+                  Alert.alert('Minimize', 'This feature is available on Android devices.');
+                }
+              }
+            },
+            { text: 'Cancel', style: 'cancel' },
             {
-              text: 'End',
+              text: 'End Stream',
               style: 'destructive',
               onPress: async () => {
-                const channel = channelNameRef.current;
-                if (channel) {
-                  const streamRef = doc(db, 'liveStreams', channel);
-                  await setDoc(streamRef, {
-                    isLive: false,
-                    endedAt: serverTimestamp()
-                  }, { merge: true });
-                  if (agoraEngineRef.current) {
-                    await agoraEngineRef.current.leaveChannel();
-                    agoraEngineRef.current.release();
-                    agoraEngineRef.current = null;
+                try {
+                  isExplicitlyEndingRef.current = true;
+                  const channel = channelNameRef.current;
+                  
+                  // Leave Agora
+                  try {
+                    if (agoraEngineRef.current) {
+                      await agoraEngineRef.current.leaveChannel();
+                      await agoraEngineRef.current.release();
+                      agoraEngineRef.current = null;
+                    }
+                  } catch (err) {
+                    console.log('Agora error:', err);
                   }
+                  
+                  // Delete stream
+                  try {
+                    if (channel) {
+                      const streamRef = doc(db, 'liveStreams', channel);
+                      await setDoc(streamRef, {
+                        isLive: false,
+                        endedAt: serverTimestamp()
+                      }, { merge: true });
+                    }
+                  } catch (err) {
+                    console.log('Firebase error:', err);
+                  }
+                  
+                  setIsStreaming(false);
+                  setTimeout(() => {
+                    router.replace('/(tabs)/profile' as any);
+                  }, 300);
+                } catch (error) {
+                  console.error('End stream error:', error);
+                  setIsStreaming(false);
+                  router.replace('/(tabs)/profile' as any);
                 }
-                setIsStreaming(false);
-                router.back();
               }
             }
           ]
@@ -242,7 +306,7 @@ export default function GoLiveScreen() {
       return false;
     });
     return () => backHandler.remove();
-  }, [channelName]);
+  }, []);
 
   // Initialize Agora engine
   const initAgoraEngine = useCallback(async () => {
@@ -291,6 +355,7 @@ export default function GoLiveScreen() {
       
       // Enable video
       await engine.enableVideo();
+      await engine.enableAudio();
       
       // Set video encoder configuration for full screen without stretching
       await engine.setVideoEncoderConfiguration({
@@ -314,6 +379,54 @@ export default function GoLiveScreen() {
           console.log('✅ Host joined channel successfully, elapsed:', elapsed);
           setIsStreaming(true);
           setIsInitializing(false);
+        },
+        onConnectionStateChanged: (state: number, reason: number) => {
+          console.log('🌐 [Agora] Connection state changed:', state, 'reason:', reason);
+          // state: 1=Disconnected, 2=Connecting, 3=Connected, 4=Reconnecting, 5=Failed
+          if (state === 5) {
+            // Connection failed - try to recover
+            console.log('❌ Connection FAILED!');
+            networkRetryCountRef.current++;
+            
+            if (networkRetryCountRef.current >= 3) {
+              // After 3 failed attempts, end stream gracefully
+              console.log('🚨 Multiple connection failures, ending stream');
+              Alert.alert(
+                'Connection Lost',
+                'Unable to maintain connection. Stream will end.',
+                [{
+                  text: 'OK',
+                  onPress: async () => {
+                    isExplicitlyEndingRef.current = true;
+                    const channel = channelNameRef.current;
+                    if (channel) {
+                      const streamRef = doc(db, 'liveStreams', channel);
+                      await setDoc(streamRef, {
+                        isLive: false,
+                        endedAt: serverTimestamp()
+                      }, { merge: true });
+                    }
+                    if (agoraEngineRef.current) {
+                      await agoraEngineRef.current.leaveChannel();
+                      agoraEngineRef.current.release();
+                      agoraEngineRef.current = null;
+                    }
+                    setIsStreaming(false);
+                    router.back();
+                  }
+                }]
+              );
+            } else {
+              // Show reconnecting message
+              Alert.alert('Connection Lost', 'Attempting to reconnect...', [{ text: 'OK' }]);
+            }
+          } else if (state === 3) {
+            console.log('✅ Connection ESTABLISHED!');
+            // Reset retry counter on successful connection
+            networkRetryCountRef.current = 0;
+          } else if (state === 4) {
+            console.log('🔄 Reconnecting...');
+          }
         },
         onError: (err: number, msg: string) => {
           console.error('❌ Agora error:', err, msg);
@@ -420,12 +533,22 @@ export default function GoLiveScreen() {
       console.log('📡 Channel:', channel);
       console.log('🎫 Token:', token ? 'Yes (secure)' : 'No (dev mode - null token)');
       console.log('🎯 UID:', broadcasterUid);
+      console.log('🌐 Conn state before join:', agoraEngineRef.current?.getConnectionState?.());
 
       await engine.joinChannel(token || '', channel, broadcasterUid, {
         clientRoleType: ClientRoleType?.ClientRoleBroadcaster,
         publishMicrophoneTrack: true,
         publishCameraTrack: true, // CRITICAL: Must publish camera track!
       });
+
+      // Force enable after join (some builds need explicit re-enable)
+      await engine.enableAudio();
+      await engine.enableVideo();
+      console.log('🌐 Conn state after join:', agoraEngineRef.current?.getConnectionState?.());
+
+      // KR LOGGING: Channel aur UID ki value check karain
+      console.log('🔎 [KR LOG] Channel Name:', channel);
+      console.log('🔎 [KR LOG] Broadcaster UID:', broadcasterUid);
 
       console.log('✅ Broadcaster joined channel successfully');
 
@@ -449,11 +572,19 @@ export default function GoLiveScreen() {
         })) as Viewer[];
         setViewers(viewersList);
         setViewerCount(viewersList.length);
+        // KR LOGGING: Token ki value check karain
+        if (token) {
+          console.log('🔎 [KR LOG] Token mil gaya:', token);
+        } else {
+          console.log('❌ [KR LOG] Token nahi mila, null hai!');
+        }
       });
 
       // Cleanup listeners on unmount
       return () => {
         unsubComments();
+        // KR LOGGING: JoinChannel call se pehle sab values confirm karain
+        console.log('🔎 [KR LOG] joinChannel call kar rahe hain, Channel:', channel, 'UID:', broadcasterUid, 'Token:', token);
         unsubViewers();
       };
 
@@ -465,7 +596,7 @@ export default function GoLiveScreen() {
     }
   };
 
-  // End streaming
+  // End streaming - Explicit end action
   const handleEndStream = async () => {
     Alert.alert(
       'End Stream',
@@ -477,21 +608,44 @@ export default function GoLiveScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              if (agoraEngineRef.current) {
-                await agoraEngineRef.current.leaveChannel();
-                agoraEngineRef.current.release();
-                agoraEngineRef.current = null;
+              isExplicitlyEndingRef.current = true;
+              
+              // Leave Agora channel first
+              try {
+                if (agoraEngineRef.current) {
+                  console.log('Leaving Agora channel...');
+                  await agoraEngineRef.current.leaveChannel();
+                  await agoraEngineRef.current.release();
+                  agoraEngineRef.current = null;
+                  console.log('✅ Agora channel left');
+                }
+              } catch (agoraErr) {
+                console.log('Agora cleanup error (non-critical):', agoraErr);
               }
 
-              if (channelName) {
-                await deleteDoc(doc(db, 'liveStreams', channelName));
+              // Delete stream from Firebase
+              try {
+                if (channelName) {
+                  console.log('Deleting stream from Firebase...');
+                  await deleteDoc(doc(db, 'liveStreams', channelName));
+                  console.log('✅ Stream deleted from Firebase');
+                }
+              } catch (dbErr) {
+                console.log('Firebase cleanup error (non-critical):', dbErr);
               }
 
               setIsStreaming(false);
-              router.back();
+              // Use replace instead of back to prevent stack issues
+              setTimeout(() => {
+                router.replace('/(tabs)/profile' as any);
+              }, 500);
             } catch (error) {
-              logger.error('Error ending stream:', error);
-              router.back();
+              console.error('Error ending stream:', error);
+              setIsStreaming(false);
+              // Navigate away even on error
+              setTimeout(() => {
+                router.replace('/(tabs)/profile' as any);
+              }, 500);
             }
           },
         },
