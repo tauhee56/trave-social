@@ -1,5 +1,7 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, orderBy, query, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import { chatPollingService } from '../chatPolling';
+import { isCostMode } from '../cost';
 
 /**
  * React to a message with an emoji (Instagram-style)
@@ -37,21 +39,17 @@ export async function reactToMessage(conversationId: string, messageId: string, 
  * Fixed: Prevent duplicate messages by getting fresh snapshot each time
  */
 export function subscribeToMessages(conversationId: string, callback: (messages: any[]) => void) {
+  // In cost mode, switch to polling to reduce reads
+  if (isCostMode()) {
+    return chatPollingService.startMessagesPolling(conversationId, callback, 5000);
+  }
+
   const messagesRef = collection(db, 'conversations', conversationId, 'messages');
   const q = query(messagesRef, orderBy('createdAt', 'desc'));
 
   const unsub = onSnapshot(q, (snapshot) => {
-    // Get all messages from snapshot (fresh data each time)
-    const messages = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-
-    // Remove duplicates by ID (just in case)
-    const uniqueMessages = Array.from(
-      new Map(messages.map(msg => [msg.id, msg])).values()
-    );
-
+    const messages = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const uniqueMessages = Array.from(new Map(messages.map(msg => [msg.id, msg])).values());
     callback(uniqueMessages);
   }, (error) => {
     console.error('❌ subscribeToMessages error:', error);

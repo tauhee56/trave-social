@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getUserErrorMessage } from '../../lib/errorHandler';
 import { signInUser } from '../../lib/firebaseHelpers';
 import { handleSocialAuthResult, signInWithApple, signInWithGoogle, signInWithSnapchat, signInWithTikTok } from '../../services/socialAuthService';
 import CustomButton from '../_components/auth/CustomButton';
@@ -57,10 +58,10 @@ export default function EmailLoginScreen() {
         // Successfully logged in - navigate to home
         router.replace('/(tabs)/home');
       } else {
-        setError(result.error || 'Login failed');
+        setError(getUserErrorMessage(result.error || 'Login failed'));
       }
     } catch (err: any) {
-      setError(err.message || 'Login failed');
+      setError(getUserErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -86,11 +87,11 @@ export default function EmailLoginScreen() {
         await handleSocialAuthResult(result.user, provider);
         router.replace('/(tabs)/home');
       } else {
-        setError(result?.error || 'Login failed');
+        setError(getUserErrorMessage(result?.error || 'Login failed'));
       }
     } catch (err: any) {
       console.error(`${provider} login error:`, err);
-      setError(err.message || `${provider} login failed`);
+      setError(getUserErrorMessage(err));
     } finally {
       setLoading(false);
     }

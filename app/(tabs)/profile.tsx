@@ -13,6 +13,7 @@ import { followUser, sendFollowRequest, unfollowUser } from '../../lib/firebaseH
 import { getUserSectionsSorted } from '../../lib/firebaseHelpers/getUserSectionsSorted';
 import { likePost, unlikePost } from '../../lib/firebaseHelpers/post';
 import { getUserHighlights, getUserPosts, getUserProfile, getUserStories } from '../../lib/firebaseHelpers/user';
+import { getOptimizedImageUrl } from '../../lib/imageHelpers';
 import { fetchBlockedUserIds, filterOutBlocked } from '../../services/moderation';
 import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
 import { CommentSection } from '../_components/CommentSection';
@@ -67,23 +68,44 @@ const ProfilePostMarker: React.FC<{ lat: number; lon: number; imageUrl: string; 
   const [avatarLoaded, setAvatarLoaded] = useState(false);
 
   useEffect(() => {
-    const timeout = setTimeout(() => setTracks(false), 1500);
+    const timeout = setTimeout(() => setTracks(false), 20000); // allow very slow networks to finish
     return () => clearTimeout(timeout);
   }, []);
 
   useEffect(() => {
     if (imgLoaded && avatarLoaded) setTracks(false);
   }, [imgLoaded, avatarLoaded]);
+  
+  // Use thumbnail for profile map markers (200px for small markers)
+  const markerImageUrl = getOptimizedImageUrl(imageUrl, 'map-marker');
+  const markerAvatarUrl = getOptimizedImageUrl(avatarUrl, 'thumbnail');
 
   return (
     <Marker coordinate={{ latitude: lat, longitude: lon }} tracksViewChanges={tracks} onPress={onPress}>
       <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={{ backgroundColor: 'transparent' }}>
         <View style={{ position: 'relative', width: 48, height: 48 }}>
           <View style={{ width: 48, height: 48, borderRadius: 12, borderWidth: 2, borderColor: '#ffa726', overflow: 'hidden', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 }}>
-            <ExpoImage source={{ uri: imageUrl }} style={{ width: 44, height: 44, borderRadius: 10 }} contentFit="cover" cachePolicy="memory-disk" priority="high" transition={150} onLoad={() => setImgLoaded(true)} />
+            <ExpoImage
+              source={{ uri: markerImageUrl }}
+              style={{ width: 44, height: 44, borderRadius: 10 }}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              priority="high"
+              transition={150}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => setImgLoaded(true)}
+            />
           </View>
           <View style={{ position: 'absolute', top: -2, right: -2, width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#fff', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 4 }}>
-            <ExpoImage source={{ uri: avatarUrl }} style={{ width: 16, height: 16, borderRadius: 8 }} contentFit="cover" cachePolicy="memory-disk" priority="high" onLoad={() => setAvatarLoaded(true)} />
+            <ExpoImage
+              source={{ uri: markerAvatarUrl }}
+              style={{ width: 16, height: 16, borderRadius: 8 }}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              priority="high"
+              onLoad={() => setAvatarLoaded(true)}
+              onError={() => setAvatarLoaded(true)}
+            />
           </View>
         </View>
       </TouchableOpacity>
@@ -794,8 +816,6 @@ export default function Profile({ userIdProp }: any) {
                 latitudeDelta: 0.0922,
                 longitudeDelta: 0.0421,
               }}
-              showsUserLocation={true}
-              showsMyLocationButton={true}
               customMapStyle={standardMapStyle}
             >
               {posts.filter(p => {

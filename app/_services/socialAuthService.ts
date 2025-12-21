@@ -1,6 +1,6 @@
 import { authorize } from 'react-native-app-auth';
 // @ts-ignore
-import { tiktokConfig } from '.././config/tiktokAuth';
+import { tiktokConfig } from '../../legacy_config/tiktokAuth';
 let SnapKit: any = null;
 try {
   SnapKit = require('react-native-snapkit');

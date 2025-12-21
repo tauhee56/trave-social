@@ -1,15 +1,17 @@
-import 'react-native-reanimated';
-import 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import * as Font from 'expo-font';
 import { Stack, useRouter, useSegments } from "expo-router";
 import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, LogBox, Text as RNText, View } from "react-native";
+import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { auth } from "../config/firebase";
-import { UserProvider } from "./_components/UserContext";
+import 'react-native-reanimated';
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { auth } from "../config/firebase";
+// import { initSentry } from "../lib/sentry";
+import { updateUserPresence } from "../lib/userPresence";
+import { UserProvider } from "./_components/UserContext";
 // Suppress non-critical warnings
 LogBox.ignoreLogs([
   'Unable to activate keep awake',
@@ -31,6 +33,8 @@ if (!__DEV__) {
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   console.timeEnd = noop as any;
 }
+
+// initSentry();
 
 export default function RootLayout() {
   const [user, setUser] = useState<any>(null);
@@ -63,6 +67,12 @@ export default function RootLayout() {
 
       const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         setUser(currentUser);
+        
+        // Update user presence when they log in
+        if (currentUser?.uid) {
+          updateUserPresence(currentUser.uid);
+        }
+        
         setLoading(false);
       }, (error) => {
         console.error('Auth state change error:', error);

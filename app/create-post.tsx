@@ -1,6 +1,5 @@
 import { Feather } from '@expo/vector-icons';
 import { ResizeMode, Video } from 'expo-av';
-import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library';
 import { useRouter } from 'expo-router';
@@ -11,6 +10,9 @@ import VerifiedBadge from './_components/VerifiedBadge';
 // import {} from '../lib/firebaseHelpers';
 import { GOOGLE_MAPS_CONFIG } from '../config/environment';
 import { createPost, DEFAULT_CATEGORIES, ensureDefaultCategories, getCategories, getCurrentUser, getPassportTickets, searchUsers } from '../lib/firebaseHelpers/index';
+import { compressImage } from '../lib/imageCompressor';
+import { extractHashtags, trackHashtag } from '../lib/mentions';
+import { startTrace } from '../lib/perf';
 import { mapService } from '../services';
 import { getKeyboardOffset, getModalHeight } from '../utils/responsive';
 
@@ -44,6 +46,9 @@ export default function CreatePostScreen() {
   const router = useRouter();
   const [step, setStep] = useState<'picker' | 'details'>('picker');
   const [caption, setCaption] = useState<string>('');
+  const [hashtags, setHashtags] = useState<string[]>([]);
+  const [hashtagInput, setHashtagInput] = useState<string>('');
+  const [mentions, setMentions] = useState<string[]>([]);
   const [location, setLocation] = useState<LocationType | null>(null);
   const [verifiedLocation, setVerifiedLocation] = useState<LocationType | null>(null);
   const [taggedUsers, setTaggedUsers] = useState<UserType[]>([]);
@@ -149,6 +154,15 @@ export default function CreatePostScreen() {
   const [userResults, setUserResults] = useState<UserType[]>([]);
   const [loadingUserResults, setLoadingUserResults] = useState<boolean>(false);
 
+  const handleHashtagInputChange = (text: string) => {
+    setHashtagInput(text);
+    const parsed = extractHashtags(text);
+    if (Array.isArray(parsed)) {
+      const unique = Array.from(new Set(parsed.map(hashtag => hashtag.tag.toLowerCase())));
+      setHashtags(unique);
+    }
+  };
+
   // Verified location options: current device location + passport tickets
   const [verifiedOptions, setVerifiedOptions] = useState<LocationType[]>([]);
 
@@ -195,7 +209,7 @@ export default function CreatePostScreen() {
               locationAddress = addressParts.join(', ');
             }
           } catch (geoError) {
-            logger.error('Reverse geocoding failed:', geoError);
+            console.error('Reverse geocoding failed:', geoError);
           }
 
           options.push({
@@ -314,44 +328,84 @@ export default function CreatePostScreen() {
         }
       }
       // Priority 2: If only location exists (not verified)
-      else if (location && location.placeId) {
-        const placeDetails = await getPlaceDetails(location.placeId);
-        if (placeDetails) {
+      else if (location) {
+        if (location.placeId) {
+          const placeDetails = await getPlaceDetails(location.placeId);
+          if (placeDetails) {
+            locationData = {
+              name: location.name,
+              address: location.address || '',
+              lat: placeDetails.lat ?? 0,
+              lon: placeDetails.lon ?? 0,
+              verified: false
+            };
+          } else {
+            // If placeDetails fetch fails, still use location with default coords
+            locationData = {
+              name: location.name,
+              address: location.address || '',
+              lat: location.lat ?? 0,
+              lon: location.lon ?? 0,
+              verified: false
+            };
+          }
+        } else {
+          // No placeId: Use location directly
           locationData = {
             name: location.name,
             address: location.address || '',
-            lat: placeDetails.lat ?? 0,
-            lon: placeDetails.lon ?? 0,
+            lat: location.lat ?? 0,
+            lon: location.lon ?? 0,
             verified: false
           };
         }
       }
       const user = getCurrentUser() as { uid?: string } | null;
       if (!user) throw new Error('User not found');
+      
+      console.log('📍 Location Debug:', {
+        location,
+        verifiedLocation,
+        locationData,
+        finalLocation: locationData?.name || 'No location selected'
+      });
+      
+      // Extract hashtags and mentions from caption + manual input
+      const extractedHashtags = Array.from(new Set([
+        ...extractHashtags(caption),
+        ...hashtags,
+      ]));
+      const extractedMentions = caption.match(/@[\w]+/g) || [];
+      
       // Save selected category with post
       const selectedCategory = selectedCategories.length > 0 ? selectedCategories[0] : null;
-      // Compress images before upload
+      
+      const trace = await startTrace('create_post_flow');
+
+      // Compress images before upload using optimized compression
       let uploadImages = selectedImages;
       if (mediaType === 'image') {
         const compressedImages: string[] = [];
         for (const imgUri of selectedImages) {
           try {
-            const manipResult = await ImageManipulator.manipulateAsync(
-              imgUri,
-              [{ resize: { width: 1080 } }],
-              { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-            );
-            compressedImages.push(manipResult.uri);
-          } catch {
+            // Use optimized compression with 80% quality & 2048px max width
+            const compressed = await compressImage(imgUri, 0.8, 2048);
+            compressedImages.push(compressed.uri);
+            console.log(`✅ Image compressed: ${(compressed.size / 1024).toFixed(0)}KB`);
+          } catch (error) {
+            console.warn(`⚠️ Compression failed, using original: ${error}`);
             compressedImages.push(imgUri);
           }
         }
         uploadImages = compressedImages;
       }
+      
       console.log('📤 Creating post with params:', {
         userId: user?.uid,
         imagesCount: uploadImages.length,
         caption: caption.substring(0, 50),
+        hashtags: extractedHashtags,
+        mentions: extractedMentions,
         mediaType,
         location: locationData?.name,
         category: selectedCategory?.name
@@ -365,10 +419,31 @@ export default function CreatePostScreen() {
         mediaType,
         locationData || null,
         taggedUsers.map(u => u.uid),
-        selectedCategory?.name || ''
+        selectedCategory?.name || '',
+        extractedHashtags.map(h => typeof h === 'string' ? h : h.tag), // Convert to string array
+        extractedMentions
       ) as { success: boolean; postId?: string; error?: string };
 
+      trace?.end({
+        success: result?.success ? 1 : 0,
+        images: uploadImages.length,
+        mediaType,
+      });
+
       console.log('📥 Post creation result:', result);
+      
+      // Track hashtags if post created successfully
+      if (result && result.success && extractedHashtags.length > 0) {
+        for (const hashtag of extractedHashtags) {
+          try {
+            // trackHashtag expects just the hashtag string
+            const hashtagStr = typeof hashtag === 'string' ? hashtag : hashtag.tag;
+            await trackHashtag(hashtagStr);
+          } catch (error) {
+            console.warn(`⚠️ Failed to track hashtag ${hashtag}:`, error);
+          }
+        }
+      }
 
       if (result && result.success) {
         console.log('✅ Post created successfully! ID:', result.postId);
@@ -402,7 +477,7 @@ export default function CreatePostScreen() {
       }
       return null;
     } catch (err) {
-      logger.error('Google Places API error:', err);
+      console.error('Google Places API error:', err);
       return null;
     }
   };
@@ -554,12 +629,21 @@ export default function CreatePostScreen() {
                 onChangeText={setCaption}
               />
               <TextInput
-                style={{ fontSize: 15, color: '#111', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}
-                placeholder="#addtags"
+                style={{ fontSize: 15, color: '#111', marginBottom: 8, borderBottomWidth: 1, borderBottomColor: '#eee' }}
+                placeholder="#hashtags (space or comma separated)"
                 placeholderTextColor="#888"
-                value={taggedUsers.map(u => u.displayName || u.userName).join(', ')}
-                editable={false}
+                value={hashtagInput}
+                onChangeText={handleHashtagInputChange}
               />
+              {hashtags.length > 0 && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                  {hashtags.map(tag => (
+                    <View key={tag} style={{ backgroundColor: '#f0f0f0', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 }}>
+                      <Text style={{ color: '#667eea', fontWeight: '600' }}>#{tag}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
             {/* Options & Selected Summary */}
             <View style={{ backgroundColor: '#fff', paddingHorizontal: 16 }}>

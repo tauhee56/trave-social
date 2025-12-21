@@ -7,9 +7,9 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 // Mock Firebase
 jest.mock('./config/firebase', () => ({
-  auth: {},
+  auth: { currentUser: null },
   db: {},
-  storage: {},
+  storage: { app: { options: { storageBucket: 'test-bucket' } } },
 }));
 
 // Mock Expo modules
@@ -29,8 +29,26 @@ jest.mock('expo-image-manipulator', () => ({
 }));
 
 jest.mock('expo-file-system/legacy', () => ({
+  cacheDirectory: '/tmp/',
   getInfoAsync: jest.fn(() => Promise.resolve({ exists: true, size: 1024 * 1024 })),
+  readAsStringAsync: jest.fn(() => Promise.resolve('base64-data')),
+  copyAsync: jest.fn(() => Promise.resolve()),
+  downloadAsync: jest.fn((_url, dest) => Promise.resolve({ status: 200, uri: dest })),
 }));
+
+jest.mock('firebase/storage', () => ({
+  ref: jest.fn((_storage, path) => ({ path })),
+  getDownloadURL: jest.fn(async () => 'https://cdn.example.com/1.jpg'),
+  deleteObject: jest.fn(async () => undefined),
+}));
+
+// Polyfills
+if (typeof global.atob === 'undefined') {
+  global.atob = (data) => Buffer.from(data, 'base64').toString('binary');
+}
+if (typeof global.fetch === 'undefined') {
+  global.fetch = jest.fn(async () => ({ ok: true, status: 200, text: async () => '' }));
+}
 
 // Mock NetInfo
 jest.mock('@react-native-community/netinfo', () => ({

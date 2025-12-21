@@ -1,9 +1,10 @@
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { debounce } from 'lodash';
 import React, { useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getAllPosts, searchUsers } from '../lib/firebaseHelpers/index';
+import { getPostsByHashtag, getTrendingHashtags } from '../lib/mentions';
 
 // Cache for search results
 const searchCache = new Map<string, { users: any[], posts: any[], timestamp: number }>();
@@ -11,12 +12,34 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export default function SearchScreen() {
   const router = useRouter();
-  const [query, setQuery] = useState('');
+  const params = useLocalSearchParams();
+  const [query, setQuery] = useState(params?.query ? String(params.query) : '');
+  const [searchType, setSearchType] = useState(params?.type ? String(params.type) : 'posts');
   const [loading, setLoading] = useState(false);
   const [userResults, setUserResults] = useState<any[]>([]);
   const [postResults, setPostResults] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'posts' | 'users'>('posts');
+  const [trendingHashtags, setTrendingHashtags] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'posts' | 'users' | 'hashtags'>(
+    searchType === 'hashtag' ? 'hashtags' : 'posts'
+  );
   const [allPosts, setAllPosts] = useState<any[]>([]);
+
+  // Load trending hashtags on mount
+  React.useEffect(() => {
+    let mounted = true;
+    const loadTrendingHashtags = async () => {
+      try {
+        const trending = await getTrendingHashtags(10);
+        if (mounted) {
+          setTrendingHashtags(trending);
+        }
+      } catch (error) {
+        console.warn('Failed to load trending hashtags:', error);
+      }
+    };
+    loadTrendingHashtags();
+    return () => { mounted = false; };
+  }, []);
 
   // Load all posts once on mount (with limit)
   React.useEffect(() => {
@@ -42,7 +65,7 @@ export default function SearchScreen() {
 
   // Debounced search handler with cache
   const debouncedSearch = useRef(
-    debounce(async (text: string, tab: 'posts' | 'users') => {
+    debounce(async (text: string, tab: 'posts' | 'users' | 'hashtags') => {
       if (!text.trim()) {
         setUserResults([]);
         setPostResults([]);
@@ -54,6 +77,7 @@ export default function SearchScreen() {
       const cached = searchCache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
         if (tab === 'users') setUserResults(cached.users);
+        else if (tab === 'hashtags') setPostResults(cached.posts);
         else setPostResults(cached.posts);
         setLoading(false);
         return;
@@ -62,17 +86,23 @@ export default function SearchScreen() {
       setLoading(true);
       try {
         if (tab === 'users') {
-          const result = await searchUsers(text, 15); // Reduced limit
+          const result = await searchUsers(text, 15);
           const users = result.success ? result.data : [];
           setUserResults(users);
           searchCache.set(cacheKey, { users, posts: [], timestamp: Date.now() });
+        } else if (tab === 'hashtags') {
+          // Search for posts with this hashtag
+          const cleanHashtag = text.replace(/^#+/, ''); // Remove leading # if present
+          const posts = await getPostsByHashtag(cleanHashtag);
+          setPostResults(posts);
+          searchCache.set(cacheKey, { posts, users: [], timestamp: Date.now() });
         } else {
-          // Search in cached posts (client-side filtering)
+          // Search in cached posts
           const filtered = allPosts.filter((post: any) =>
             post.caption?.toLowerCase().includes(text.toLowerCase()) ||
             post.userName?.toLowerCase().includes(text.toLowerCase()) ||
             post.location?.name?.toLowerCase().includes(text.toLowerCase())
-          ).slice(0, 20); // Limit results
+          ).slice(0, 20);
           setPostResults(filtered);
           searchCache.set(cacheKey, { posts: filtered, users: [], timestamp: Date.now() });
         }
@@ -81,20 +111,27 @@ export default function SearchScreen() {
       } finally {
         setLoading(false);
       }
-    }, 500) // Increased debounce time
+    }, 500)
   ).current;
 
   const handleSearch = (text: string) => {
     setQuery(text);
     if (text.trim()) {
       setLoading(true);
-      debouncedSearch(text, activeTab);
+      debouncedSearch(text, activeTab as any);
     } else {
       setUserResults([]);
       setPostResults([]);
       setLoading(false);
     }
   };
+  
+  // Handle initial search if coming from hashtag tap
+  React.useEffect(() => {
+    if (query.trim() && searchType === 'hashtag') {
+      handleSearch(query);
+    }
+  }, []);
 
   React.useEffect(() => {
     if (query.trim()) {
@@ -107,7 +144,7 @@ export default function SearchScreen() {
     }
   }, [activeTab]);
 
-  const handleTabSwitch = (tab: 'posts' | 'users') => {
+  const handleTabSwitch = (tab: 'posts' | 'users' | 'hashtags') => {
     setActiveTab(tab);
   };
 
@@ -116,7 +153,7 @@ export default function SearchScreen() {
       <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
         <TextInput
           style={{ flex: 1, fontSize: 16, backgroundColor: '#f7f7f7', borderRadius: 8, padding: 10 }}
-          placeholder={activeTab === 'users' ? 'Search users...' : 'Search posts...'}
+          placeholder={activeTab === 'users' ? 'Search users...' : activeTab === 'hashtags' ? 'Search hashtags...' : 'Search posts...'}
           value={query}
           onChangeText={handleSearch}
         />
@@ -130,6 +167,9 @@ export default function SearchScreen() {
         </TouchableOpacity>
         <TouchableOpacity onPress={() => handleTabSwitch('users')} style={[styles.tabBtn, activeTab === 'users' && styles.tabActive]}>
           <Text style={[styles.tabText, activeTab === 'users' && styles.tabTextActive]}>Users</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => handleTabSwitch('hashtags')} style={[styles.tabBtn, activeTab === 'hashtags' && styles.tabActive]}>
+          <Text style={[styles.tabText, activeTab === 'hashtags' && styles.tabTextActive]}>#Tags</Text>
         </TouchableOpacity>
       </View>
       {loading ? (
@@ -156,6 +196,45 @@ export default function SearchScreen() {
           windowSize={7}
           removeClippedSubviews={true}
         />
+      ) : activeTab === 'hashtags' ? (
+        query.trim() ? (
+          <FlatList
+            data={postResults}
+            keyExtractor={item => item.id}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={styles.row} onPress={() => router.push({ pathname: '/highlight/[id]', params: { id: item.id } })}>
+                <Image source={{ uri: item.imageUrl || item.imageUrls?.[0] || 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d' }} style={styles.postImg} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.name}>{item.userName || 'User'}</Text>
+                  <Text style={styles.caption} numberOfLines={1}>{item.caption}</Text>
+                </View>
+                <Feather name="chevron-right" size={20} color="#ccc" />
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={<Text style={{ color: '#888', marginTop: 32, textAlign: 'center' }}>No posts with this hashtag</Text>}
+          />
+        ) : (
+          <FlatList
+            data={trendingHashtags}
+            keyExtractor={(item, idx) => `${item.hashtag}-${idx}`}
+            renderItem={({ item }) => (
+              <TouchableOpacity 
+                style={styles.hashtagRow}
+                onPress={() => {
+                  setQuery(item.hashtag);
+                  handleSearch(item.hashtag);
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.hashtagName}>#{item.hashtag}</Text>
+                  <Text style={styles.hashtagCount}>{item.postCount || 0} posts</Text>
+                </View>
+                <Feather name="chevron-right" size={20} color="#ccc" />
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={<Text style={{ color: '#888', marginTop: 32, textAlign: 'center' }}>No trending hashtags</Text>}
+          />
+        )
       ) : (
         <FlatList
           data={postResults}
@@ -238,6 +317,25 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 13,
     marginTop: 2,
+  },
+  hashtagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fff',
+  },
+  hashtagName: {
+    fontWeight: '700',
+    fontSize: 16,
+    color: '#667eea',
+  },
+  hashtagCount: {
+    color: '#888',
+    fontSize: 13,
+    marginTop: 4,
   },
 });
 

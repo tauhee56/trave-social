@@ -340,53 +340,41 @@ export async function signInWithTikTok() {
         throw new Error('No authorization code received');
       }
       
-      // Exchange code for access token
-      // Add timeout to token exchange
+      // Exchange code for access token via Cloud Function (secure)
+      console.log('🔐 Exchanging code via Cloud Function...');
+      const cloudFunctionUrl = 'https://us-central1-travel-app-3da72.cloudfunctions.net/tiktokAuth';
+
       const tokenAbort = new AbortController();
-      const tokenTimeout = setTimeout(() => tokenAbort.abort(), 12000);
-      const tokenResponse = await fetch(discovery.tokenEndpoint, {
+      const tokenTimeout = setTimeout(() => tokenAbort.abort(), 15000);
+
+      const tokenResponse = await fetch(cloudFunctionUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          client_key: TIKTOK_CLIENT_KEY_VAL,
-          client_secret: TIKTOK_CLIENT_SECRET_VAL,
-          code: code,
-          grant_type: 'authorization_code',
-          redirect_uri: redirectUri,
-        }).toString(),
-        signal: tokenAbort.signal,
-      });
-      clearTimeout(tokenTimeout);
-      
-      const tokenData = await tokenResponse.json();
-      
-      if (!tokenData.access_token) {
-        throw new Error('Failed to get access token');
-      }
-      
-      // Get user info from TikTok
-      // Add timeout to user info fetch
-      const userAbort = new AbortController();
-      const userTimeout = setTimeout(() => userAbort.abort(), 12000);
-      const userResponse = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${tokenData.access_token}`,
           'Content-Type': 'application/json',
         },
-        signal: userAbort.signal,
+        body: JSON.stringify({
+          code: code,
+          redirectUri: redirectUri,
+        }),
+        signal: tokenAbort.signal,
       });
-      clearTimeout(userTimeout);
-      
-      const userData = await userResponse.json();
-      
-      if (!userData.data || !userData.data.user) {
-        throw new Error('Failed to get user info');
+
+      clearTimeout(tokenTimeout);
+      const tokenData = await tokenResponse.json();
+
+      if (!tokenData.success || !tokenData.openId) {
+        throw new Error(tokenData.error || 'Failed to get TikTok user data');
       }
-      
-      const tiktokUser = userData.data.user;
+
+      console.log('✅ TikTok user data received:', tokenData.displayName);
+
+      // User data from Cloud Function (already includes user info)
+      const tiktokUser = {
+        open_id: tokenData.openId,
+        union_id: tokenData.unionId,
+        display_name: tokenData.displayName,
+        avatar_url: tokenData.avatarUrl,
+      };
       
       // Create custom token in Firebase (you'll need Cloud Function for this)
       // For now, use email/password with TikTok ID
@@ -451,13 +439,6 @@ export async function signInWithTikTok() {
       return {
         success: true,
         user: firebaseUser,
-      };
-    } else if (result.type === 'cancel' || result.type === 'dismiss') {
-      // User explicitly canceled
-      console.log('TikTok sign-in canceled by user');
-      return {
-        success: false,
-        error: 'Sign-in canceled',
       };
     }
     

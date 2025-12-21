@@ -1,7 +1,9 @@
 import { Feather } from '@expo/vector-icons';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
+import { getFormattedActiveStatus, subscribeToUserPresence, UserPresence } from '../../lib/userPresence';
 import { useUserProfile } from '../_hooks/useUserProfile';
+import MessageBubble from './MessageBubble';
 
 export default function InboxRow({ item, router, unread, formatTime, DEFAULT_AVATAR_URL }: any) {
   // Use the hook to fetch the other user's profile
@@ -14,8 +16,25 @@ export default function InboxRow({ item, router, unread, formatTime, DEFAULT_AVA
     otherUserId = item.participants.find((uid: string) => uid !== item.currentUserId) || '';
   }
   const { username, avatar, loading } = useUserProfile(otherUserId);
+  
+  // Track user's active status
+  const [presence, setPresence] = useState<UserPresence | null>(null);
+  
+  useEffect(() => {
+    if (!otherUserId) return;
+    
+    const unsubscribe = subscribeToUserPresence(otherUserId, (p) => {
+      setPresence(p);
+    });
+    
+    return () => unsubscribe?.();
+  }, [otherUserId]);
+  
   // Fallback for avatar
   const safeAvatar = typeof avatar === 'string' && avatar.trim() !== '' ? avatar : DEFAULT_AVATAR_URL;
+  
+  // Get active status text
+  const activeStatusText = getFormattedActiveStatus(presence);
 
   return (
     <TouchableOpacity
@@ -48,13 +67,27 @@ export default function InboxRow({ item, router, unread, formatTime, DEFAULT_AVA
       </View>
       <View style={{ flex: 1, borderBottomWidth: 0, paddingRight: 8 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={[{ fontWeight: '700', fontSize: 15, color: '#111', flex: 1 }, unread > 0 && { color: '#111' }]} numberOfLines={1}>{username}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <Text style={[{ fontWeight: '700', fontSize: 15, color: '#111', flex: 1 }, unread > 0 && { color: '#111' }]} numberOfLines={1}>{username}</Text>
+            {presence?.isOnline && (
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#31a24c', marginLeft: 6 }} />
+            )}
+          </View>
           <Text style={{ color: '#888', fontSize: 12, marginLeft: 8 }}>{formatTime(item.lastMessageAt)}</Text>
         </View>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-          <Text style={[{ color: '#666', flex: 1 }, unread > 0 && { color: '#111', fontWeight: '600' }]} numberOfLines={1}>
-            {typeof item.lastMessage === 'string' && item.lastMessage.trim() !== '' ? item.lastMessage : 'No messages yet'}
-          </Text>
+          <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+            <MessageBubble
+              text={(typeof item.lastMessage === 'string' && item.lastMessage.trim() !== '') ? item.lastMessage : 'No messages yet'}
+              imageUrl={null}
+              createdAt={item.lastMessageAt}
+              isSelf={false}
+              editedAt={null}
+              formatTime={formatTime}
+              compact={true}
+              showTail={false}
+            />
+          </View>
           {unread > 0 ? (
             <View style={{ backgroundColor: '#e0245e', minWidth: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}><Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{unread > 9 ? '9+' : unread}</Text></View>
           ) : (

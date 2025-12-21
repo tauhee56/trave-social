@@ -9,7 +9,9 @@ import MapView, { Marker, Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PostLocationModal } from '../components/PostLocationModal';
 import { db } from '../config/firebase';
-import { getAllPosts } from '../lib/firebaseHelpers';
+import { getAllPosts, getCurrentUser } from '../lib/firebaseHelpers';
+import { addComment } from '../lib/firebaseHelpers/comments';
+import { getOptimizedImageUrl } from '../lib/imageHelpers';
 
 // Standard Google Maps style (clean, default look)
 const standardMapStyle = [
@@ -27,6 +29,7 @@ const standardMapStyle = [
 ];
 
 const { width } = Dimensions.get('window');
+const IMAGE_PLACEHOLDER = 'L5H2EC=PM+yV0g-mq.wG9c010J}I';
 
 interface PostType {
   id: string;
@@ -132,9 +135,33 @@ export default function MapScreen() {
       }
       async function handleModalComment(post: PostType) {
         if (!modalComment[post.id] || !modalComment[post.id].trim()) return;
-        // TODO: Call addComment API here
+
+        const currentUser = getCurrentUser();
+        if (!currentUser) {
+          console.log('❌ User not logged in');
+          return;
+        }
+
+        const commentText = modalComment[post.id].trim();
+
+        // Optimistic UI update
         setModalCommentsCount(c => ({...c, [post.id]: (c[post.id] ?? post.commentsCount ?? 0) + 1}));
         setModalComment(c => ({...c, [post.id]: ''}));
+
+        // Add comment to Firebase
+        const result = await addComment(
+          post.id,
+          currentUser.uid,
+          currentUser.displayName || 'User',
+          currentUser.photoURL || DEFAULT_AVATAR_URL,
+          commentText
+        );
+
+        if (!result.success) {
+          console.error('❌ Failed to add comment:', result.error);
+          // Revert optimistic update on error
+          setModalCommentsCount(c => ({...c, [post.id]: Math.max(0, (c[post.id] ?? post.commentsCount ?? 0) - 1)}));
+        }
       }
     // Default avatar from Firebase Storage
     const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
@@ -354,7 +381,7 @@ export default function MapScreen() {
       const timeout = setTimeout(() => {
         setTracks(false);
         console.log('⏱️ Marker timeout for post:', post.id);
-      }, 2000); // Increased to 2 seconds
+      }, 20000); // Allow very slow networks to finish image fetch
       return () => clearTimeout(timeout);
     }, []);
 
@@ -372,8 +399,12 @@ export default function MapScreen() {
     };
 
     // Ensure valid image URL
-    const imageUrl = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls[0]) || '';
+    const imageUrl = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls[0]) || DEFAULT_AVATAR_URL;
     const avatarUrl = post.userAvatar || DEFAULT_AVATAR_URL;
+
+    // Use thumbnail for map markers (200px is plenty for small markers)
+    const markerImageUrl = getOptimizedImageUrl(imageUrl, 'map-marker');
+    const markerAvatarUrl = getOptimizedImageUrl(avatarUrl, 'thumbnail');
 
     console.log('🗺️ Rendering marker for post:', post.id, 'imageUrl:', imageUrl?.substring(0, 50));
 
@@ -389,16 +420,18 @@ export default function MapScreen() {
           <View style={styles.postImageWrapper}>
             {imageUrl ? (
               <ExpoImage
-                source={{ uri: imageUrl }}
+                source={{ uri: markerImageUrl }}
                 style={styles.postImage}
                 contentFit="cover"
                 cachePolicy="memory-disk"
                 priority="high"
+                placeholder={IMAGE_PLACEHOLDER}
                 transition={150}
                 onLoad={() => {
                   console.log('📸 Post image loaded:', post.id);
                   setImgLoaded(true);
                 }}
+                onLoadEnd={() => setImgLoaded(true)}
                 onError={(error) => {
                   console.error('❌ Post image error:', post.id, error);
                   setImgLoaded(true); // Stop tracking even on error
@@ -410,15 +443,18 @@ export default function MapScreen() {
           </View>
           <View style={styles.postAvatarOutside}>
             <ExpoImage
-              source={{ uri: avatarUrl }}
+              source={{ uri: markerAvatarUrl }}
               style={styles.postAvatarImgFixed}
               contentFit="cover"
               cachePolicy="memory-disk"
               priority="high"
+              placeholder={IMAGE_PLACEHOLDER}
+              transition={120}
               onLoad={() => {
                 console.log('👤 Avatar loaded:', post.id);
                 setAvatarLoaded(true);
               }}
+              onLoadEnd={() => setAvatarLoaded(true)}
               onError={(error) => {
                 console.error('❌ Avatar error:', post.id, error);
                 setAvatarLoaded(true); // Stop tracking even on error
@@ -461,6 +497,8 @@ export default function MapScreen() {
               style={styles.liveAvatarNew}
               contentFit="cover"
               cachePolicy="memory-disk"
+              placeholder={IMAGE_PLACEHOLDER}
+              transition={120}
             />
           </View>
         </View>

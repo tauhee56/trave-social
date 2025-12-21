@@ -16,6 +16,8 @@ import {
     sendMessage,
     subscribeToMessages
 } from '../lib/firebaseHelpers/index';
+import { getFormattedActiveStatus, subscribeToUserPresence, updateUserOffline, updateUserPresence, UserPresence } from '../lib/userPresence';
+import MessageBubble from './_components/MessageBubble';
 import { useUserProfile } from './_hooks/useUserProfile';
 
 const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
@@ -53,6 +55,9 @@ export default function DM() {
   const [editText, setEditText] = useState('');
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [replyingTo, setReplyingTo] = useState<{ id: string; text: string; senderId: string } | null>(null);
+  
+  // Track other user's active status
+  const [otherUserPresence, setOtherUserPresence] = useState<UserPresence | null>(null);
 
   // Emoji reactions list (Instagram style)
   const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
@@ -72,6 +77,26 @@ export default function DM() {
   useEffect(() => {
     initializeConversation();
     checkMessagingPermission();
+    
+    // Update current user's presence when entering DM
+    if (currentUserTyped?.uid && conversationId) {
+      updateUserPresence(currentUserTyped.uid, conversationId);
+    }
+    
+    // Subscribe to other user's presence
+    if (realOtherUserId) {
+      const unsubscribe = subscribeToUserPresence(realOtherUserId as string, (presence) => {
+        setOtherUserPresence(presence);
+      });
+      
+      // Cleanup: update current user offline when leaving DM
+      return () => {
+        unsubscribe?.();
+        if (currentUserTyped?.uid) {
+          updateUserOffline(currentUserTyped.uid);
+        }
+      };
+    }
   }, []);
 
   async function checkMessagingPermission() {
@@ -207,6 +232,9 @@ export default function DM() {
     setSending(true);
 
     try {
+      // Update user as active when sending message
+      await updateUserPresence(currentUserTyped.uid, conversationId);
+      
       await sendMessage(conversationId, currentUserTyped.uid, messageText, undefined, replyData);
       // Send notification to recipient
       if (otherUserId && otherUserId !== currentUserTyped.uid) {
@@ -320,42 +348,25 @@ export default function DM() {
             style={styles.msgAvatar}
           />
         )}
-        <View style={{ maxWidth: '75%' }}>
-          {/* Reply preview bubble */}
-          {hasReply && (
-            <View style={[styles.replyPreview, isSelf ? styles.replyPreviewSelf : styles.replyPreviewOther]}>
-              <View style={styles.replyLine} />
-              <View style={styles.replyContent}>
-                <Text style={styles.replyName}>
-                  {isReplyFromSelf ? 'You' : username}
-                </Text>
-                <Text style={styles.replyText} numberOfLines={1}>
-                  {item.replyTo.text}
-                </Text>
-              </View>
-            </View>
-          )}
-          <View style={isSelf ? styles.msgBubbleRight : styles.msgBubbleLeft}>
-            {item.imageUrl && (
-              <Image source={{ uri: item.imageUrl }} style={styles.msgImage} />
-            )}
-            <Text style={isSelf ? styles.msgTextSelf : styles.msgText}>{item.text}</Text>
-            <View style={styles.msgFooter}>
-              <Text style={isSelf ? styles.msgTimeSelf : styles.msgTime}>{formatTime(item.createdAt)}</Text>
-              {item.editedAt && (
-                <Text style={[isSelf ? styles.msgTimeSelf : styles.msgTime, styles.editedLabel]}> · edited</Text>
-              )}
-            </View>
+        <MessageBubble
+          text={item.text}
+          imageUrl={item.imageUrl}
+          createdAt={item.createdAt}
+          editedAt={item.editedAt}
+          isSelf={isSelf}
+          formatTime={formatTime}
+          replyTo={item.replyTo}
+          username={username}
+          currentUserId={currentUserTyped?.uid}
+        />
+        {/* Reactions display */}
+        {reactionsList.length > 0 && (
+          <View style={[styles.reactionsContainer, isSelf ? styles.reactionsSelf : styles.reactionsOther]}>
+            {reactionsList.map(([userId, emoji], index) => (
+              <Text key={`${item.id}_${userId}_${index}`} style={styles.reactionEmoji}>{emoji as string}</Text>
+            ))}
           </View>
-          {/* Reactions display */}
-          {reactionsList.length > 0 && (
-            <View style={[styles.reactionsContainer, isSelf ? styles.reactionsSelf : styles.reactionsOther]}>
-              {reactionsList.map(([userId, emoji], index) => (
-                <Text key={`${item.id}_${userId}_${index}`} style={styles.reactionEmoji}>{emoji as string}</Text>
-              ))}
-            </View>
-          )}
-        </View>
+        )}
       </TouchableOpacity>
     );
   }
@@ -390,7 +401,7 @@ export default function DM() {
             <Image source={{ uri: avatar }} style={styles.avatar} />
             <View>
               <Text style={styles.title}>{username}</Text>
-              <Text style={styles.activeText}>Active now</Text>
+              <Text style={styles.activeText}>{getFormattedActiveStatus(otherUserPresence)}</Text>
             </View>
           </TouchableOpacity>
           <View style={{ width: 40 }} />
@@ -417,19 +428,15 @@ export default function DM() {
               }}
               onEndReachedThreshold={0.2}
               removeClippedSubviews={true}
-              maxToRenderPerBatch={10}
-              windowSize={10}
+              maxToRenderPerBatch={12}
+              windowSize={7}
               extraData={messages.length}
-              initialNumToRender={20}
+              initialNumToRender={12}
               ListFooterComponent={hasMoreMessages ? (
                 <TouchableOpacity style={{ alignSelf: 'center', marginVertical: 10 }} onPress={loadMessagesPage}>
                   <Text style={{ color: '#007aff', fontSize: 15 }}>Load more messages</Text>
                 </TouchableOpacity>
               ) : null}
-                initialNumToRender={12}
-                windowSize={7}
-                maxToRenderPerBatch={12}
-                removeClippedSubviews={true}
             />
           )}
         </View>
@@ -746,14 +753,14 @@ const styles = StyleSheet.create({
   msgRow: {
     flexDirection: 'row',
     marginBottom: 4,
-    marginHorizontal: 12,
+    marginHorizontal: 0,
     justifyContent: 'flex-start',
     alignItems: 'flex-end',
   },
   msgRowSelf: {
     flexDirection: 'row',
     marginBottom: 4,
-    marginHorizontal: 12,
+    marginHorizontal: 0,
     justifyContent: 'flex-end',
   },
   msgAvatar: {
@@ -763,19 +770,46 @@ const styles = StyleSheet.create({
     marginRight: 8,
     backgroundColor: '#eee',
   },
-  msgBubbleLeft: {
-    backgroundColor: '#efefef',
-    borderRadius: 20,
+  msgBubble: {
+    position: 'relative',
+    borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    maxWidth: '75%',
+    maxWidth: '78%',
+    // subtle shadow
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  msgBubbleLeft: {
+    backgroundColor: '#efefef',
   },
   msgBubbleRight: {
     backgroundColor: '#3797f0',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    maxWidth: '75%',
+  },
+  tailLeft: {
+    position: 'absolute',
+    left: -6,
+    bottom: 8,
+    width: 0,
+    height: 0,
+    borderTopWidth: 6,
+    borderRightWidth: 6,
+    borderTopColor: 'transparent',
+    borderRightColor: '#efefef',
+  },
+  tailRight: {
+    position: 'absolute',
+    right: -6,
+    bottom: 8,
+    width: 0,
+    height: 0,
+    borderTopWidth: 6,
+    borderLeftWidth: 6,
+    borderTopColor: 'transparent',
+    borderLeftColor: '#3797f0',
   },
   msgText: {
     color: '#222',

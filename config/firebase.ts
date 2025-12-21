@@ -40,6 +40,11 @@ try {
   auth = getAuth(app);
 }
 
+// Export Firestore helpers
+export {
+    arrayRemove, arrayUnion, FieldValue, serverTimestamp
+} from 'firebase/firestore';
+
 export { auth, db };
 export const storage: FirebaseStorage = getStorage(app);
 

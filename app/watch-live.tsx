@@ -421,7 +421,8 @@ export default function WatchLiveScreen() {
         }
       });
 
-      const token = await getAgoraToken(channelName as string, uidRef.current);
+      // Get token with 'subscriber' role for viewer
+      const token = await getAgoraToken(channelName as string, uidRef.current, 'subscriber');
       console.log('🎫 Got Agora token:', token ? 'Yes (secure)' : 'No (dev mode - null token)');
 
       console.log('📡 Joining channel:', channelName, 'with uid:', uidRef.current);
@@ -605,7 +606,6 @@ export default function WatchLiveScreen() {
             latitudeDelta: 10,
             longitudeDelta: 10,
           }}
-          showsUserLocation
           loadingEnabled={true}
           loadingIndicatorColor="#00c853"
           liteMode={false}
@@ -634,7 +634,7 @@ export default function WatchLiveScreen() {
                 )}
                 <View style={styles.viewerMarker}>
                   <Image
-                    source={{ uri: currentUser?.avatar || currentUser?.photoURL || DEFAULT_AVATAR_URL }}
+                    source={{ uri: (currentUser as any)?.avatar || currentUser?.photoURL || DEFAULT_AVATAR_URL }}
                     style={styles.viewerMarkerAvatar}
                   />
                 </View>
@@ -854,7 +854,6 @@ export default function WatchLiveScreen() {
               latitudeDelta: 0.05,
               longitudeDelta: 0.05,
             }}
-            showsUserLocation
             loadingEnabled={true}
             loadingIndicatorColor="#00c853"
             cacheEnabled={true}

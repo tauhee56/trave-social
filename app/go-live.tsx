@@ -309,14 +309,31 @@ export default function GoLiveScreen() {
       console.log('Camera preview started successfully');
       setIsCameraReady(true);
 
-      engine.addListener('onJoinChannelSuccess', (_connection: any, _elapsed: number) => {
-        console.log('Host joined channel');
-        setIsStreaming(true);
-        setIsInitializing(false);
-      });
-
-      engine.addListener('onError', (err: any, msg: string) => {
-        console.error('Agora error:', err, msg);
+      engine.registerEventHandler({
+        onJoinChannelSuccess: (_connection: any, elapsed: number) => {
+          console.log('✅ Host joined channel successfully, elapsed:', elapsed);
+          setIsStreaming(true);
+          setIsInitializing(false);
+        },
+        onError: (err: number, msg: string) => {
+          console.error('❌ Agora error:', err, msg);
+        },
+        onUserJoined: (_connection: any, uid: number) => {
+          console.log('👤 Viewer joined:', uid);
+        },
+        onUserOffline: (_connection: any, uid: number, reason: number) => {
+          console.log('👋 Viewer left:', uid, 'reason:', reason);
+        },
+        onLocalVideoStateChanged: (_connection: any, state: number, error: number) => {
+          console.log('📹 Local video state changed:', state, 'error:', error);
+          // state 1 = capturing, 2 = encoding, 3 = failed
+          if (state === 3) {
+            console.error('❌ Local video failed with error:', error);
+          }
+        },
+        onRemoteVideoStateChanged: (_connection: any, uid: number, state: number, reason: number) => {
+          console.log('📹 Remote video state changed:', uid, 'state:', state, 'reason:', reason);
+        },
       });
 
       return engine;
@@ -370,6 +387,10 @@ export default function GoLiveScreen() {
       const channel = `live_${auth.currentUser?.uid}_${Date.now()}`;
       setChannelName(channel);
 
+      // Generate broadcaster UID (must be numeric for Agora)
+      const broadcasterUid = Math.floor(Math.random() * 100000);
+      console.log('🎯 Broadcaster UID:', broadcasterUid);
+
       // Create stream document in Firebase (include listing-friendly fields)
       const streamRef = doc(db, 'liveStreams', channel);
       await setDoc(streamRef, {
@@ -381,6 +402,7 @@ export default function GoLiveScreen() {
         userAvatar: currentUser?.avatar || currentUser?.profileImage || '',
         title: streamTitle,
         channelName: channel,
+        broadcasterUid: broadcasterUid, // Store broadcaster UID for viewers
         viewerCount: 0,
         isLive: true,
         location: location,
@@ -391,12 +413,21 @@ export default function GoLiveScreen() {
       // Set as broadcaster
       await engine.setClientRole(ClientRoleType?.ClientRoleBroadcaster);
 
-      // Join channel with token (null for dev if no token server)
-      const token = await getAgoraToken(channel, auth.currentUser?.uid || 0);
-      await engine.joinChannel(token || '', channel, auth.currentUser?.uid || 0, {
+      // Join channel with token - pass 'publisher' role for broadcaster
+      const token = await getAgoraToken(channel, broadcasterUid, 'publisher');
+
+      console.log('🎥 Joining channel as BROADCASTER with video + audio publishing...');
+      console.log('📡 Channel:', channel);
+      console.log('🎫 Token:', token ? 'Yes (secure)' : 'No (dev mode - null token)');
+      console.log('🎯 UID:', broadcasterUid);
+
+      await engine.joinChannel(token || '', channel, broadcasterUid, {
         clientRoleType: ClientRoleType?.ClientRoleBroadcaster,
         publishMicrophoneTrack: true,
+        publishCameraTrack: true, // CRITICAL: Must publish camera track!
       });
+
+      console.log('✅ Broadcaster joined channel successfully');
 
       // Listen to comments (limit to last 50 for performance)
       const commentsRef = collection(db, 'liveStreams', channel, 'comments');
@@ -599,7 +630,6 @@ export default function GoLiveScreen() {
             latitudeDelta: 0.05,
             longitudeDelta: 0.05,
           }}
-          showsUserLocation
           loadingEnabled={true}
           loadingIndicatorColor="#00c853"
           liteMode={false}

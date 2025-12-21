@@ -160,22 +160,22 @@ export default function EmailSignUpScreen() {
         <View style={styles.socialSection}>
           <SocialButton
             provider="google"
-            onPress={() => handleSocialSignUp('google')}
+            onPress={() => router.push('/auth/welcome')}
             style={styles.socialButton}
           />
           <SocialButton
             provider="apple"
-            onPress={() => handleSocialSignUp('apple')}
+            onPress={() => router.push('/auth/welcome')}
             style={styles.socialButton}
           />
           <SocialButton
             provider="tiktok"
-            onPress={() => handleSocialSignUp('tiktok')}
+            onPress={() => router.push('/auth/welcome')}
             style={styles.socialButton}
           />
           <SocialButton
             provider="snapchat"
-            onPress={() => handleSocialSignUp('snapchat')}
+            onPress={() => router.push('/auth/welcome')}
             style={styles.socialButton}
           />
         </View>

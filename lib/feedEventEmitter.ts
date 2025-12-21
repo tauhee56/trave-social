@@ -1,7 +1,8 @@
-import { EventEmitter } from 'events';
+// @ts-ignore - fbemitter types not available
+import { EventEmitter } from 'fbemitter';
 
 // Event types
-export type FeedEventType = 
+export type FeedEventType =
   | 'POST_DELETED'
   | 'POST_CREATED'
   | 'POST_UPDATED'
@@ -21,7 +22,7 @@ class FeedEventEmitter extends EventEmitter {
 
   private constructor() {
     super();
-    this.setMaxListeners(50); // Increase max listeners to avoid warnings
+    // this.setMaxListeners(50); // Not supported in fbemitter
   }
 
   static getInstance(): FeedEventEmitter {
@@ -34,13 +35,15 @@ class FeedEventEmitter extends EventEmitter {
   // Emit feed update event
   emitFeedUpdate(event: FeedEvent) {
     console.log('📢 Feed event emitted:', event.type, event);
+    // @ts-ignore - EventEmitter methods
     this.emit('feedUpdate', event);
   }
 
   // Subscribe to feed updates
   onFeedUpdate(callback: (event: FeedEvent) => void) {
-    this.on('feedUpdate', callback);
-    return () => this.off('feedUpdate', callback);
+    // @ts-ignore - EventEmitter methods
+    const subscription = this.addListener('feedUpdate', callback);
+    return () => subscription.remove();
   }
 
   // Specific event emitters

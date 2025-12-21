@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { logAnalyticsEvent } from '../../lib/analytics';
 import CustomButton from '../_components/auth/CustomButton';
 
 export default function EmailOTPScreen() {
@@ -18,6 +19,10 @@ export default function EmailOTPScreen() {
   const [error, setError] = useState('');
 
   const inputRefs = useRef<Array<TextInput | null>>([]);
+
+  useEffect(() => {
+    logAnalyticsEvent('auth_email_otp_open', { flow });
+  }, []);
 
   const handleOtpChange = (value: string, index: number) => {
     if (value.length > 1) {
@@ -54,6 +59,7 @@ export default function EmailOTPScreen() {
   };
 
   const handleVerify = async () => {
+    logAnalyticsEvent('auth_email_otp_verify_click');
     const otpCode = otp.join('');
 
     if (otpCode.length !== 6) {
@@ -103,8 +109,10 @@ export default function EmailOTPScreen() {
               }
             ]
           );
+          logAnalyticsEvent('auth_email_otp_signup_success');
         } else {
           setError(result.error || 'Signup failed');
+          logAnalyticsEvent('auth_email_otp_signup_error', { error: result.error });
         }
       } else {
         // For login flow
@@ -118,15 +126,18 @@ export default function EmailOTPScreen() {
             }
           ]
         );
+        logAnalyticsEvent('auth_email_otp_verify_success');
       }
     } catch (err: any) {
       setError(err.message || 'Verification failed. Please try again.');
+      logAnalyticsEvent('auth_email_otp_verify_error', { message: err?.message });
     } finally {
       setLoading(false);
     }
   };
 
   const handleResend = async () => {
+    logAnalyticsEvent('auth_email_otp_resend');
     try {
       // Generate new OTP
       const newOtp = Math.floor(100000 + Math.random() * 900000).toString();

@@ -1,22 +1,21 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./*"]
     },
-    "jsx": "react-native",
-    "lib": ["es2015", "dom"],
-    "moduleResolution": "node",
-    "esModuleInterop": true,
+    "types": ["jest"],
     "typeRoots": ["./types", "./node_modules/@types"]
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
+    "app",
+    "lib",
+    "config",
+    "scripts",
+    "__tests__",
     "types"
   ]
 }

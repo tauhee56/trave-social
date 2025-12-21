@@ -62,7 +62,7 @@ export default function PostScreen() {
       if (permission.granted) {
         // For demo, we'll use placeholder images
         // In production, you'd fetch actual gallery images
-        setGalleryImages([]);
+        // setGalleryImages([]);
       }
     } catch (err) {
       console.warn('Gallery permission error', err);

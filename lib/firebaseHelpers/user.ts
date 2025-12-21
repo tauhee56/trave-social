@@ -114,6 +114,7 @@ export async function getHighlightStories(highlightId: string) {
 import { getAuth, updateProfile } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, limit, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import { getCached } from '../requestCache';
 import { userProfileCache } from '../userProfileCache';
 
 /**
@@ -224,8 +225,10 @@ export async function updateUserProfile(uid: string, data: any) {
 export async function searchUsers(queryText: string, resultLimit: number = 20) {
   try {
     const usersRef = collection(db, 'users');
-    const q = query(usersRef, limit(50));
-    const snapshot = await getDocs(q);
+    // Reduce reads by limiting to requested resultLimit (default 20)
+    const q = query(usersRef, limit(Math.max(1, Math.min(50, resultLimit))));
+    const cacheKey = `searchUsers:${queryText.trim().toLowerCase()}:${resultLimit}`;
+    const snapshot = await getCached(cacheKey, 15000, async () => getDocs(q));
     let results = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()

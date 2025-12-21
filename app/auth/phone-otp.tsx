@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { logAnalyticsEvent } from '../../lib/analytics';
 import CustomButton from '../_components/auth/CustomButton';
 
 export default function PhoneOTPScreen() {
@@ -16,6 +17,10 @@ export default function PhoneOTPScreen() {
   const [error, setError] = useState('');
   
   const inputRefs = useRef<Array<TextInput | null>>([]);
+
+  useEffect(() => {
+    logAnalyticsEvent('auth_phone_otp_open', { flow });
+  }, []);
 
   const handleOtpChange = (value: string, index: number) => {
     if (value.length > 1) {
@@ -52,6 +57,7 @@ export default function PhoneOTPScreen() {
   };
 
   const handleVerify = async () => {
+    logAnalyticsEvent('auth_phone_otp_verify_click');
     const otpCode = otp.join('');
     
     if (otpCode.length !== 6) {
@@ -81,14 +87,17 @@ export default function PhoneOTPScreen() {
           }
         ]
       );
+      logAnalyticsEvent('auth_phone_otp_verify_success');
     } catch (err: any) {
       setError(err.message || 'Verification failed. Please try again.');
+      logAnalyticsEvent('auth_phone_otp_verify_error', { message: err?.message });
     } finally {
       setLoading(false);
     }
   };
 
   const handleResend = async () => {
+    logAnalyticsEvent('auth_phone_otp_resend');
     Alert.alert(
       'OTP Resent! ✅', 
       `A new verification code has been sent to ${phone}`,
@@ -110,6 +119,7 @@ export default function PhoneOTPScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          
           <View style={styles.content}>
             {/* Header */}
             <View style={styles.header}>

@@ -1,6 +1,8 @@
 // Conversation and DM helpers
 import { addDoc, collection, doc, getDoc, getDocs, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import { chatPollingService } from '../chatPolling';
+import { isCostMode } from '../cost';
 
 // Get or create a conversation between two users
 export async function getOrCreateConversation(userId1: string, userId2: string) {
@@ -45,6 +47,11 @@ export async function getOrCreateConversation(userId1: string, userId2: string) 
 // Subscribe to user's conversations with real-time updates
 // Fixed: Prevent duplicate conversations by getting fresh snapshot
 export function subscribeToConversations(userId: string, callback: (convos: any[]) => void) {
+  // In cost mode, switch to polling to reduce reads
+  if (isCostMode()) {
+    return chatPollingService.startConversationsPolling(userId, callback, 10000);
+  }
+
   const convRef = collection(db, 'conversations');
   const q = query(
     convRef,

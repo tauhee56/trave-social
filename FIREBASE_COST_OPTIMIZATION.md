@@ -182,3 +182,36 @@ firebase firestore:indexes
 
 Check Firebase Console → Usage tab for real-time costs.
 
+
+---
+
+## 🟢 Lean Mode (Till 50K Users)
+
+Use a conservative config to keep spend minimal until you cross 50K users. These switches are now wired into the app:
+
+- **app.json → extra**
+  - `costMode: true` → Enables lean behavior globally
+  - `analyticsEnabled: true` → Allows only essential realtime analytics in lean mode
+  - `dailyCounterSampleRate: 0.05` → Writes only 5% of daily counters to Firestore
+
+- **Realtime Analytics**
+  - Allowed events in lean mode: `app_open`, `login`, `signup`, `otp_verify_success`, `otp_verify_error`, `tab_press_*`
+  - All other events are suppressed to avoid noisy writes
+
+- **Firestore Daily Counters**
+  - Sampled at `dailyCounterSampleRate` to track trends at low cost
+  - Stored in `analytics_daily/<event>_<YYYY-MM-DD>` with compact payload
+
+- **General Guidelines**
+  - Prefer polling (10–30s) over `onSnapshot` except where absolutely necessary
+  - Paginate everywhere (20 items/page) and cache aggressively (5–15 min)
+  - Only create composite indexes for the top 10 queries; audit monthly
+  - Avoid BigQuery export for Analytics until you have clear ROI
+
+### Budget Targets (Lean Mode)
+- 0–5K users: $10–20/month
+- 5K–12K users: $30–60/month
+- 12K–50K users: $150–300/month
+
+When MAU consistently exceeds 50K, start Phase 3 migration (hybrid backend) to keep costs predictable.
+

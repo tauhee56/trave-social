@@ -1,16 +1,18 @@
 // Post feed helper for search
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import { getCached } from '../requestCache';
 
 /**
  * Get all posts with pagination
  * OPTIMIZATION: Added limit to prevent fetching all posts (expensive!)
  */
-export async function getAllPosts(limitCount: number = 100) {
+export async function getAllPosts(limitCount: number = 50) {
 	   try {
 		   const postsRef = collection(db, 'posts');
 		   const q = query(postsRef, orderBy('createdAt', 'desc'), limit(limitCount));
-		   const snapshot = await getDocs(q);
+		   const cacheKey = `getAllPosts:${limitCount}`;
+		   const snapshot = await getCached(cacheKey, 15000, async () => getDocs(q));
 		   console.log('getAllPosts: snapshot.docs.length =', snapshot.docs.length);
 		   const posts = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
 		   console.log('getAllPosts: mapped posts =', posts);

@@ -566,7 +566,9 @@ export async function createPost(
   mediaType: 'image' | 'video' = 'image',
   locationData?: { name: string; address: string; lat: number; lon: number; verified?: boolean } | null,
   taggedUserIds?: string[],
-  category?: string
+  category?: string,
+  hashtags?: string[],
+  mentions?: string[]
 ) {
   try {
     const { getUserProfile } = await import('./firebaseHelpers/user');
@@ -610,6 +612,8 @@ export async function createPost(
       caption,
       location: (location && typeof location === 'string' && location.trim()) ? location : (locationData?.name || 'Unknown'),
       category: category || '',
+      hashtags: hashtags || [],
+      mentions: mentions || [],
       likes: [],
       likesCount: 0,
       commentsCount: 0,

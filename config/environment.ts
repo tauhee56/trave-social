@@ -1,42 +1,61 @@
 /**
  * Environment Configuration
  * Load all environment variables from .env file using Expo Constants
+ * NEVER commit actual keys - use .env.local or environment secrets
  */
 
 import Constants from 'expo-constants';
 
 // Get environment variables
-const env = Constants.expoConfig?.extra || {};
+const env = Constants.expoConfig?.extra || process.env;
+
+// Ensure keys are loaded from environment (fail loudly if missing in production)
+const isDevelopment = process.env.NODE_ENV !== 'production';
+
+function getEnvVar(key: string, defaultValue?: string): string {
+  const value = env[key] || process.env[key];
+  if (!value && !isDevelopment) {
+    throw new Error(`Missing critical environment variable: ${key}`);
+  }
+  return value || defaultValue || '';
+}
 
 // Firebase Configuration
 export const FIREBASE_CONFIG = {
-  apiKey: env.FIREBASE_API_KEY || 'AIzaSyC_0pHFGAK5YySB--8hL3Ctz-u1cx4vaCk',
-  authDomain: env.FIREBASE_AUTH_DOMAIN || 'travel-app-3da72.firebaseapp.com',
-  projectId: env.FIREBASE_PROJECT_ID || 'travel-app-3da72',
-  storageBucket: env.FIREBASE_STORAGE_BUCKET || 'travel-app-3da72.firebasestorage.app',
-  messagingSenderId: env.FIREBASE_MESSAGING_SENDER_ID || '709095117662',
-  appId: env.FIREBASE_APP_ID || '1:709095117662:web:5f00f45bb4e392ee17f5cf',
-  measurementId: env.FIREBASE_MEASUREMENT_ID || 'G-PFZRL4FDFD',
+  apiKey: getEnvVar('EXPO_PUBLIC_FIREBASE_API_KEY'),
+  authDomain: getEnvVar('EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN'),
+  projectId: getEnvVar('EXPO_PUBLIC_FIREBASE_PROJECT_ID'),
+  storageBucket: getEnvVar('EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: getEnvVar('EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
+  appId: getEnvVar('EXPO_PUBLIC_FIREBASE_APP_ID'),
+  measurementId: getEnvVar('EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID', ''),
 } as const;
 
 // Google Maps Configuration
 export const GOOGLE_MAPS_CONFIG = {
-  apiKey: env.GOOGLE_MAP_API_KEY || 'AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c',
+  apiKey: getEnvVar('EXPO_PUBLIC_GOOGLE_MAP_API_KEY'),
   provider: 'google' as const,
 } as const;
 
-// Agora Configuration
+// Agora Configuration (app ID is semi-public, but certificate is NOT)
 export const AGORA_CONFIG = {
-  appId: env.AGORA_APP_ID || '29320482381a43498eb8ca3e222b6e34',
-  appCertificate: env.AGORA_APP_CERTIFICATE || 'e8372567e0334d75add0ec3f597fb67b',
-  tokenServerUrl: '',
+  appId: getEnvVar('EXPO_PUBLIC_AGORA_APP_ID'),
+  // Certificate should NEVER be in frontend - request tokens from backend only
+  tokenServerUrl: getEnvVar('EXPO_PUBLIC_AGORA_TOKEN_URL', ''),
 } as const;
 
 // App Configuration
 export const APP_CONFIG = {
   name: 'Travel Social',
   version: '1.0.0',
-  environment: 'development',
+  environment: process.env.NODE_ENV || 'development',
+} as const;
+
+// Rate Limiting
+export const RATE_LIMITS = {
+  postsPerHour: parseInt(getEnvVar('EXPO_PUBLIC_RATE_LIMIT_POSTS_PER_HOUR', '10'), 10),
+  commentsPerHour: parseInt(getEnvVar('EXPO_PUBLIC_RATE_LIMIT_COMMENTS_PER_HOUR', '50'), 10),
+  messagesPerMinute: parseInt(getEnvVar('EXPO_PUBLIC_RATE_LIMIT_MESSAGES_PER_MINUTE', '30'), 10),
 } as const;
 
 // Feature Flags

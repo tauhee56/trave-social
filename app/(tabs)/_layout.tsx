@@ -3,6 +3,7 @@ import { Tabs, useFocusEffect, useRouter, useSegments } from "expo-router";
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from "react-native-safe-area-context";
+import { logAnalyticsEvent, setAnalyticsUserId } from '../../lib/analytics';
 import { getCurrentUser } from '../../lib/firebaseHelpers';
 import { getUserConversations } from '../../lib/firebaseHelpers/conversation';
 import { getUserNotifications } from '../../lib/firebaseHelpers/notification';
@@ -29,6 +30,7 @@ const HomeTabButton = (props: any) => {
       {...props}
       onPress={() => {
         tabEvent?.emitHomeTabPress();
+        logAnalyticsEvent('tab_home_press', { selected: props.accessibilityState?.selected === true });
         router.push('/(tabs)/home');
       }}
       style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
@@ -45,12 +47,42 @@ const SearchTabButton = (props: any) => {
   return (
     <TouchableOpacity
       {...props}
-      onPress={() => router.push('/search-modal')}
+      onPress={() => { logAnalyticsEvent('tab_search_press'); router.push('/search-modal'); }}
       style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
       activeOpacity={0.7}
     >
       <Ionicons name="search-outline" size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
       <Text style={{ fontSize: 10, color: '#777', marginTop: 2 }}>Search</Text>
+    </TouchableOpacity>
+  );
+};
+
+const MapTabButton = (props: any) => {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      {...props}
+      onPress={() => { logAnalyticsEvent('tab_map_press'); router.push('/(tabs)/map'); }}
+      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+      activeOpacity={0.7}
+    >
+      <Ionicons name={props.accessibilityState?.selected ? 'map' : 'map-outline'} size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
+      <Text style={{ fontSize: 10, color: props.accessibilityState?.selected ? '#f39c12' : '#777', marginTop: 2 }}>Map</Text>
+    </TouchableOpacity>
+  );
+};
+
+const ProfileTabButton = (props: any) => {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      {...props}
+      onPress={() => { logAnalyticsEvent('tab_profile_press'); router.push('/(tabs)/profile'); }}
+      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+      activeOpacity={0.7}
+    >
+      <Ionicons name={props.accessibilityState?.selected ? 'person' : 'person-outline'} size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
+      <Text style={{ fontSize: 10, color: props.accessibilityState?.selected ? '#f39c12' : '#777', marginTop: 2 }}>Profile</Text>
     </TouchableOpacity>
   );
 };
@@ -138,7 +170,7 @@ export default function TabsLayout() {
               // Only pass valid TouchableOpacityProps
               return (
                 <TouchableOpacity
-                  onPress={() => router.push('/create-post')}
+                  onPress={() => { logAnalyticsEvent('tab_post_press'); router.push('/create-post'); }}
                   style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
                   activeOpacity={0.7}
                 >
@@ -159,6 +191,7 @@ export default function TabsLayout() {
             tabBarLabel: ({ focused }) => (
               <Text style={{ fontSize: 10, color: focused ? '#f39c12' : '#777', marginTop: 2 }}>Map</Text>
             ),
+            tabBarButton: (props) => <MapTabButton {...props} />,
           }}
         />
         <Tabs.Screen
@@ -168,6 +201,7 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, focused }) => (
               <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
             ),
+            tabBarButton: (props) => <ProfileTabButton {...props} />,
           }}
         />
       </Tabs>
@@ -185,6 +219,11 @@ function TopMenu() {
   const [logoLoading, setLogoLoading] = useState(true);
   const segments = useSegments();
   const isProfileScreen = segments[segments.length - 1] === 'profile';
+
+  useEffect(() => {
+    const u = getCurrentUser() as { uid: string } | null;
+    if (u?.uid) setAnalyticsUserId(u.uid);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -236,7 +275,7 @@ function TopMenu() {
       </View>
       {isProfileScreen ? (
         <View style={{ flexDirection: 'row' }}>
-          <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/notifications' as any)}>
+          <TouchableOpacity style={styles.topBtn} onPress={() => { logAnalyticsEvent('open_notifications'); router.push('/notifications' as any); }}>
             <Feather name="bell" size={ICON_SIZE} color="#333" />
             {unreadNotif > 0 && (
               <View style={{
@@ -263,13 +302,13 @@ function TopMenu() {
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.topBtn, { zIndex: 101 }]} onPress={() => setMenuVisible(true)}>
+          <TouchableOpacity style={[styles.topBtn, { zIndex: 101 }]} onPress={() => { logAnalyticsEvent('open_menu'); setMenuVisible(true); }}>
             <Feather name="more-vertical" size={ICON_SIZE} color="#333" />
           </TouchableOpacity>
         </View>
       ) : (
         <View style={{ flexDirection: 'row' }}>
-          <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/inbox' as any)}>
+          <TouchableOpacity style={styles.topBtn} onPress={() => { logAnalyticsEvent('open_inbox'); router.push('/inbox' as any); }}>
             <Feather name="message-square" size={18} color="#333" />
             {unreadMsg > 0 && (
               <View style={{
@@ -287,7 +326,7 @@ function TopMenu() {
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/notifications' as any)}>
+          <TouchableOpacity style={styles.topBtn} onPress={() => { logAnalyticsEvent('open_notifications'); router.push('/notifications' as any); }}>
             <Feather name="bell" size={18} color="#333" />
             {unreadNotif > 0 && (
               <View style={{
@@ -330,7 +369,7 @@ function TopMenu() {
                   <TouchableOpacity 
                     style={styles.igItem} 
                     activeOpacity={0.7} 
-                    onPress={() => { setMenuVisible(false); router.push('/settings'); }}
+                    onPress={() => { logAnalyticsEvent('open_settings'); setMenuVisible(false); router.push('/settings'); }}
                   >
                     <View style={styles.iconContainer}>
                       <Feather name="settings" size={ICON_SIZE} color="#667eea" />
@@ -344,7 +383,7 @@ function TopMenu() {
                   <TouchableOpacity 
                     style={styles.igItem} 
                     activeOpacity={0.7} 
-                    onPress={() => { setMenuVisible(false); router.push('/friends'); }}
+                    onPress={() => { logAnalyticsEvent('open_friends'); setMenuVisible(false); router.push('/friends'); }}
                   >
                     <View style={styles.iconContainer}>
                       <Feather name="users" size={ICON_SIZE} color="#667eea" />
@@ -359,7 +398,7 @@ function TopMenu() {
                   <TouchableOpacity 
                     style={styles.igItem} 
                     activeOpacity={0.7} 
-                    onPress={() => { setMenuVisible(false); router.push('/saved'); }}
+                    onPress={() => { logAnalyticsEvent('open_saved'); setMenuVisible(false); router.push('/saved'); }}
                   >
                     <View style={styles.iconContainer}>
                       <Feather name="bookmark" size={ICON_SIZE} color="#667eea" />
@@ -373,7 +412,7 @@ function TopMenu() {
                   <TouchableOpacity 
                     style={styles.igItem} 
                     activeOpacity={0.7} 
-                    onPress={() => { setMenuVisible(false); router.push('/archive'); }}
+                    onPress={() => { logAnalyticsEvent('open_archive'); setMenuVisible(false); router.push('/archive'); }}
                   >
                     <View style={styles.iconContainer}>
                       <Feather name="archive" size={ICON_SIZE} color="#667eea" />
@@ -387,7 +426,7 @@ function TopMenu() {
                   <TouchableOpacity 
                     style={styles.igItem} 
                     activeOpacity={0.7} 
-                    onPress={() => { setMenuVisible(false); router.push('/highlight/1'); }}
+                    onPress={() => { logAnalyticsEvent('open_highlight'); setMenuVisible(false); router.push('/highlight/1'); }}
                   >
                     <View style={styles.iconContainer}>
                       <Feather name="star" size={ICON_SIZE} color="#667eea" />
@@ -404,6 +443,7 @@ function TopMenu() {
                   onPress={async () => { 
                     setMenuVisible(false);
                     try {
+                      logAnalyticsEvent('logout');
                       const { signOut } = await import('firebase/auth');
                       const { auth } = await import('../../config/firebase');
                       await signOut(auth);
@@ -425,7 +465,7 @@ function TopMenu() {
                 <TouchableOpacity 
                   style={styles.cancelButton} 
                   activeOpacity={0.7} 
-                  onPress={() => setMenuVisible(false)}
+                  onPress={() => { logAnalyticsEvent('close_menu'); setMenuVisible(false); }}
                 >
                   <Text style={styles.cancelText}>Cancel</Text>
                 </TouchableOpacity>

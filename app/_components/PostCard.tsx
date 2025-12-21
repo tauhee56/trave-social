@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { getLocationVisitCount, likePost, unlikePost } from "../../lib/firebaseHelpers";
+import { getOptimizedImageUrl } from "../../lib/imageHelpers";
 import { CommentSection } from "./CommentSection";
 import SaveButton from "./SaveButton";
 import { useUser } from "./UserContext";
@@ -13,6 +14,7 @@ import VerifiedBadge from "./VerifiedBadge";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isSmallDevice = SCREEN_WIDTH < 375;
+const IMAGE_PLACEHOLDER = 'L5H2EC=PM+yV0g-mq.wG9c010J}I';
 
 // Props type for PostCard
 interface PostCardProps {
@@ -149,6 +151,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 2,
     color: "#333",
+  },
+  hashtags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 8,
+    gap: 6,
+  },
+  hashtag: {
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  hashtagText: {
+    color: '#667eea',
+    fontSize: 12,
+    fontWeight: '600',
   },
   commentPreview: {
     paddingHorizontal: 12,
@@ -661,6 +682,9 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 console.log('No location available for this post');
               }
             }}
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel={liked ? 'Unlike post' : 'Like post'}
           >
             <View style={styles.locationRow}>
               {/* Show verified badge if location is verified, otherwise show map pin */}
@@ -700,6 +724,8 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
               source={{ uri: currentAvatar }}
               style={styles.avatar}
               contentFit="cover"
+              placeholder={IMAGE_PLACEHOLDER}
+              transition={150}
             />
           </TouchableOpacity>
         </View>
@@ -708,9 +734,11 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
         {showImages && (
           <View style={styles.imageWrap} {...carouselPanResponder.panHandlers}>
             <ExpoImage
-              source={{ uri: images[mediaIndex] || 'https://via.placeholder.com/600x600.png?text=No+Image' }}
+              source={{ uri: getOptimizedImageUrl(images[mediaIndex] || 'https://via.placeholder.com/600x600.png?text=No+Image', 'feed') }}
               style={styles.image}
               contentFit="cover"
+              placeholder={IMAGE_PLACEHOLDER}
+              transition={200}
             />
             {/* Left/Right tap areas for navigation */}
             {images.length > 1 && (
@@ -929,6 +957,8 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
               source={{ uri: 'https://via.placeholder.com/600x600.png?text=No+Media' }}
               style={styles.image}
               contentFit="cover"
+              placeholder={IMAGE_PLACEHOLDER}
+              transition={150}
             />
           </View>
         )}
@@ -995,7 +1025,13 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
             )}
             <Text style={{ marginLeft: 6, fontWeight: '700', color: appColors.text, fontSize: 15 }}>{typeof likesCount === 'number' || typeof likesCount === 'string' ? String(likesCount) : ''}</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowCommentsModal(true)} style={{ marginRight: 24 }}>
+          <TouchableOpacity
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Open comments"
+            onPress={() => setShowCommentsModal(true)}
+            style={{ marginRight: 24 }}
+          >
             <Feather name="message-circle" size={22} color={appColors.icon} />
           </TouchableOpacity>
           <TouchableOpacity 
@@ -1044,6 +1080,28 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
             return username ? `${username} ${caption}`.trim() : caption;
           })()}
         </Text>
+        
+        {/* Hashtags Display */}
+        {post?.hashtags && Array.isArray(post.hashtags) && post.hashtags.length > 0 && (
+          <View style={styles.hashtags}>
+            {post.hashtags.map((hashtag: string, idx: number) => (
+              <TouchableOpacity 
+                key={`${hashtag}-${idx}`}
+                style={styles.hashtag}
+                onPress={() => {
+                  // Navigate to hashtag search
+                  router.push({
+                    pathname: '/search',
+                    params: { query: hashtag, type: 'hashtag' }
+                  });
+                }}
+              >
+                <Text style={styles.hashtagText}>#{hashtag}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+        
         {/* Comments Preview */}
         <TouchableOpacity onPress={() => setShowCommentsModal(true)}>
           <Text style={[styles.commentPreview, { color: appColors.muted }]}>{`View all ${commentCount} comments`}</Text>

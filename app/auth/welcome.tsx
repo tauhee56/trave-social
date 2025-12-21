@@ -140,13 +140,29 @@ export default function WelcomeScreen() {
         <View style={styles.footer}>
           <Text style={styles.footerText}>
             You have an account?{' '}
-            <Text 
+            <Text
               style={styles.footerLink}
               onPress={() => router.push('/auth/login-options')}
             >
               Log in
             </Text>
           </Text>
+
+          <View style={styles.legalLinks}>
+            <Text
+              style={styles.legalLink}
+              onPress={() => router.push('/legal/privacy' as any)}
+            >
+              Privacy Policy
+            </Text>
+            <Text style={styles.legalSeparator}> • </Text>
+            <Text
+              style={styles.legalLink}
+              onPress={() => router.push('/legal/terms' as any)}
+            >
+              Terms of Service
+            </Text>
+          </View>
         </View>
         </View>
       </ScrollView>
@@ -226,5 +242,20 @@ const styles = StyleSheet.create({
   footerLink: {
     color: '#f39c12',
     fontWeight: '600',
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  legalLink: {
+    fontSize: 12,
+    color: '#007AFF',
+    textDecorationLine: 'underline',
+  },
+  legalSeparator: {
+    fontSize: 12,
+    color: '#999',
+    marginHorizontal: 8,
   },
 });

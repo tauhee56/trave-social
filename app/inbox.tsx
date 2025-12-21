@@ -5,33 +5,41 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCurrentUser, getUserConversations, subscribeToConversations } from '../lib/firebaseHelpers/index';
+import { getCurrentUser, getUserConversations } from '../lib/firebaseHelpers/index';
 // import {} from '../lib/firebaseHelpers';
 // @ts-ignore
 import { archiveConversation } from '../lib/firebaseHelpers/archive';
 import InboxRow from './_components/InboxRow';
+import { useInboxPolling } from '../hooks/useInboxPolling';
 
 export default function Inbox() {
     // Default avatar from Firebase Storage
     const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
   const router = useRouter();
   const navigation = useNavigation();
-  const currentUserData = getCurrentUser();
-    const currentUserTyped = getCurrentUser() as { uid?: string } | null;
+  const currentUserTyped = getCurrentUser() as { uid?: string } | null;
+  
+  // Use optimized polling instead of real-time listeners (saves 70-80% on costs)
+  const { conversations: polledConversations, loading: polledLoading } = useInboxPolling(currentUserTyped?.uid || null, {
+    pollingInterval: 15000, // Poll every 15 seconds instead of real-time
+    autoStart: true
+  });
+
   const [conversations, setConversations] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(polledLoading);
+
+  useEffect(() => {
+    setLoading(polledLoading);
+  }, [polledLoading]);
 
   useEffect(() => {
     if (!currentUserTyped || !currentUserTyped.uid) {
-      setLoading(false);
       setConversations([]);
       return;
     }
-    setLoading(true);
-    const unsubscribe = subscribeToConversations(currentUserTyped.uid, async (convos: any) => {
-      console.log('Inbox subscribeToConversations:', convos);
-      
-      // Filter out private accounts that user is not approved follower of
+    
+    // Filter out private accounts that user is not approved follower of
+    const filterPrivateAccounts = async (convos: any) => {
       const filteredConvos = Array.isArray(convos) ? await Promise.all(
         convos.map(async (convo: any) => {
           const otherUser = convo.otherUser;
@@ -53,49 +61,14 @@ export default function Inbox() {
         })
       ).then(results => results.filter(c => c !== null)) : [];
       
-      setConversations(filteredConvos);
-      setLoading(false);
-    });
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      } else {
-        // fallback to no-op
-      }
+      return filteredConvos;
     };
-  }, []);
 
-  async function loadConversations() {
-    if (!currentUserTyped || !currentUserTyped.uid) {
-      setLoading(false);
-      return;
-    }
-    const result = await getUserConversations(currentUserTyped.uid);
-    if (Array.isArray(result)) {
-      // Filter out private accounts that user is not approved follower of
-      const filteredConvos = await Promise.all(
-        result.map(async (convo: any) => {
-          const otherUser = convo.otherUser;
-          if (!otherUser) return convo;
-          
-          // If other user has private account
-          if (otherUser.isPrivate) {
-            // Check if current user is in their followers list (approved)
-            const followers = otherUser.followers || [];
-            const isApproved = followers.includes(currentUserTyped.uid);
-            
-            // Only show if approved follower
-            return isApproved ? convo : null;
-          }
-          
-          return convo;
-        })
-      ).then(results => results.filter(c => c !== null));
-      
-      setConversations(filteredConvos);
-    }
-    setLoading(false);
-  }
+    // Apply filtering to polled conversations
+    filterPrivateAccounts(polledConversations).then(filtered => {
+      setConversations(filtered);
+    });
+  }, [polledConversations, currentUserTyped?.uid]);
 
   function formatTime(timestamp: any) {
     if (!timestamp) return '';
