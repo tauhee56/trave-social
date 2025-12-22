@@ -1,11 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, onSnapshot } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../config/firebase';
-import { ErrorBoundary } from './_components/ErrorBoundary';
-import PostCard from './_components/PostCard';
+import ErrorBoundary from '../src/_components/ErrorBoundary';
+import PostCard from '../src/_components/PostCard';
 
 export default function PostScreen() {
   const router = useRouter();
@@ -24,20 +22,15 @@ export default function PostScreen() {
   useEffect(() => {
     if (!postId) return;
     setLoading(true);
-    const postIdStr = typeof postId === 'string' ? postId : Array.isArray(postId) ? postId[0] : '';
-    const postRef = doc(db, 'posts', postIdStr);
-    const unsub = onSnapshot(postRef,
-      (docSnap) => {
-        setPost(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
-        setLoading(false);
-      },
-      (err) => {
-        setLoading(false);
-      }
-    );
-    return () => {
-      unsub && unsub();
-    };
+    
+    // TODO: Implement backend API to fetch post by ID
+    // const postIdStr = typeof postId === 'string' ? postId : Array.isArray(postId) ? postId[0] : '';
+    // const response = await fetch(`/api/posts/${postIdStr}`);
+    // const post = await response.json();
+    // setPost(post);
+    
+    setPost(null);
+    setLoading(false);
   }, [postId]);
 
   // Helper to fetch comment text by commentId
@@ -48,20 +41,13 @@ export default function PostScreen() {
   React.useEffect(() => {
     if (commentId && postId && post) {
       setShowCommentsModal(true);
-      // Fetch comment text from Firestore
-      import('firebase/firestore').then(firestore => {
-        const postIdStr = typeof postId === 'string' ? postId : Array.isArray(postId) ? postId[0] : '';
-        const commentIdStr = typeof commentId === 'string' ? commentId : Array.isArray(commentId) ? commentId[0] : '';
-        const commentRef = firestore.doc(db, 'posts', postIdStr, 'comments', commentIdStr);
-        firestore.getDoc(commentRef).then(docSnap => {
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            setHighlightedComment(data.text || null);
-          } else {
-            setHighlightedComment(null);
-          }
-        });
-      });
+      // TODO: Implement backend API to fetch comment text
+      // const postIdStr = typeof postId === 'string' ? postId : Array.isArray(postId) ? postId[0] : '';
+      // const commentIdStr = typeof commentId === 'string' ? commentId : Array.isArray(commentId) ? commentId[0] : '';
+      // const response = await fetch(`/api/posts/${postIdStr}/comments/${commentIdStr}`);
+      // const data = await response.json();
+      // setHighlightedComment(data.text);
+      setHighlightedComment(null);
     } else {
       setHighlightedComment(null);
       setShowCommentsModal(false);

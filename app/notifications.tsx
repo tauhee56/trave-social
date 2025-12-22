@@ -1,46 +1,32 @@
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { collection, getDocs, query } from 'firebase/firestore';
 import React from 'react';
 import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../config/firebase';
-import { getCurrentUser } from '../lib/firebaseHelpers';
-import AcceptDeclineButtons from './_components/AcceptDeclineButtons';
+import { auth } from '../config/firebase';
+import AcceptDeclineButtons from '../src/_components/AcceptDeclineButtons';
 
 export default function NotificationsScreen() {
     // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+    const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
   const router = useRouter();
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
-  // Removed legacy globalThis/firebase usage
 
-  // OPTIMIZATION: One-time fetch instead of real-time listener (saves Firebase reads)
+  // Fetch notifications from backend or return empty
   const fetchNotifications = async () => {
-    const user = getCurrentUser();
-    if (!user) {
-      setLoading(false);
-      setNotifications([]);
-      return;
-    }
-
     setLoading(true);
     try {
-      const notifRef = collection(db, 'users', user.uid, 'notifications');
-      const q = query(notifRef);
-      const snapshot = await getDocs(q);
+      const user = auth.currentUser;
+      if (!user) {
+        setNotifications([]);
+        setLoading(false);
+        return;
+      }
 
-      const notifs = snapshot.docs.map((doc: any) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt || null,
-        };
-      });
-
-      setNotifications(notifs);
+      // For now, return empty notifications as backend endpoint not yet created
+      // TODO: Create /api/users/:uid/notifications endpoint
+      setNotifications([]);
       setLoading(false);
     } catch (error) {
       console.log('Notification fetch error:', error);
@@ -176,15 +162,8 @@ export default function NotificationsScreen() {
           style={{ backgroundColor: '#007aff', padding: 8, borderRadius: 8 }}
           onPress={async () => {
             try {
-              // Mark all notifications as read
-              const { db } = await import('../config/firebase');
-              const { collection, getDocs, updateDoc, doc } = await import('firebase/firestore');
-              const user = getCurrentUser();
-              if (!user) return;
-              const notifRef = collection(db, 'users', user.uid, 'notifications');
-              const snap = await getDocs(notifRef);
-              await Promise.all(snap.docs.map(d => updateDoc(doc(db, 'users', user.uid, 'notifications', d.id), { read: true })));
-              alert('All notifications marked as read');
+              // TODO: Implement backend API call to mark all notifications as read
+              alert('Feature coming soon - backend API needed');
             } catch (err) {
               alert('Error marking all as read');
             }
@@ -196,15 +175,8 @@ export default function NotificationsScreen() {
           style={{ backgroundColor: '#FF3B30', padding: 8, borderRadius: 8 }}
           onPress={async () => {
             try {
-              // Delete all notifications
-              const { db } = await import('../config/firebase');
-              const { collection, getDocs, deleteDoc, doc } = await import('firebase/firestore');
-              const user = getCurrentUser();
-              if (!user) return;
-              const notifRef = collection(db, 'users', user.uid, 'notifications');
-              const snap = await getDocs(notifRef);
-              await Promise.all(snap.docs.map(d => deleteDoc(doc(db, 'users', user.uid, 'notifications', d.id))));
-              alert('All notifications deleted');
+              // TODO: Implement backend API call to delete all notifications
+              alert('Feature coming soon - backend API needed');
             } catch (err) {
               alert('Error deleting all notifications');
             }

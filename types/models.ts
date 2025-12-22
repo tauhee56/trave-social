@@ -3,7 +3,7 @@
  * Centralized type definitions for the entire app
  */
 
-import { Timestamp } from 'firebase/firestore';
+type Timestamp = Date;
 
 // ==================== USER MODELS ====================
 

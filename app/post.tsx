@@ -1,10 +1,8 @@
 import { useLocalSearchParams } from 'expo-router';
-import { doc, onSnapshot } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../config/firebase';
-import { ErrorBoundary } from './_components/ErrorBoundary';
+import ErrorBoundary from '../src/_components/ErrorBoundary';
 
 export default function PostScreen() {
   const { postId, commentId, mentionId, tagId } = useLocalSearchParams();
@@ -21,19 +19,14 @@ export default function PostScreen() {
   useEffect(() => {
     if (!postId) return;
     setLoading(true);
-    const postRef = doc(db, 'posts', typeof postId === 'string' ? postId : Array.isArray(postId) ? postId[0] : '');
-    const unsub = onSnapshot(postRef,
-      (docSnap) => {
-        setPost(docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null);
-        setLoading(false);
-      },
-      (err) => {
-        setLoading(false);
-      }
-    );
-    return () => {
-      unsub && unsub();
-    };
+    
+    // TODO: Implement backend API to fetch post by ID
+    // const response = await fetch(`/api/posts/${postId}`);
+    // const post = await response.json();
+    // setPost(post);
+    
+    setPost(null);
+    setLoading(false);
   }, [postId]);
 
   React.useEffect(() => {

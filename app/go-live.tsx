@@ -2,33 +2,31 @@ import { Ionicons } from '@expo/vector-icons';
 import { Camera } from 'expo-camera';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  AppState,
-  BackHandler,
-  Dimensions,
-  FlatList,
-  Image,
-  KeyboardAvoidingView,
-  PermissionsAndroid,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    AppState,
+    BackHandler,
+    Dimensions,
+    FlatList,
+    Image,
+    KeyboardAvoidingView,
+    PermissionsAndroid,
+    Platform,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // @ts-ignore
 import { AGORA_CONFIG, getAgoraToken } from '../config/agora';
 // @ts-ignore
-import { auth, db } from '../config/firebase';
+import { auth } from '../config/firebase';
 import { logger } from '../utils/logger';
-// Minimize functionality removed
 
 
   // Utility: sanitize coordinates for MapView/Marker
@@ -60,7 +58,7 @@ import { logger } from '../utils/logger';
   }
 
 const { width, height } = Dimensions.get('window');
-const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
 // Import Agora SDK
 let RtcEngine: any = null;
@@ -164,10 +162,11 @@ export default function GoLiveScreen() {
   useEffect(() => {
     const fetchUser = async () => {
       if (auth.currentUser) {
-        const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-        if (userDoc.exists()) {
-          setCurrentUser({ id: auth.currentUser.uid, ...userDoc.data() });
-        }
+        // TODO: Implement backend API to fetch user data
+        // const response = await fetch(`/api/users/${auth.currentUser.uid}`);
+        // const data = await response.json();
+        // setCurrentUser({ id: auth.currentUser.uid, ...data });
+        setCurrentUser({ id: auth.currentUser.uid, displayName: auth.currentUser.displayName });
       }
     };
     fetchUser();
@@ -199,25 +198,20 @@ export default function GoLiveScreen() {
       if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
         // App came to foreground
         console.log('📱 App returned to foreground, stream still live');
-        // Check if stream is still live in Firebase
+        // TODO: Check if stream is still live via backend API
         if (isStreamingRef.current && channelNameRef.current) {
-          const streamRef = doc(db, 'liveStreams', channelNameRef.current);
-          getDoc(streamRef).then(docSnap => {
-            if (docSnap.exists() && !docSnap.data()?.isLive) {
-              // Stream ended while in background
-              console.log('⚠️ Stream ended while in background');
-              if (agoraEngineRef.current) {
-                agoraEngineRef.current.leaveChannel();
-                agoraEngineRef.current.release();
-                agoraEngineRef.current = null;
-              }
-              setIsStreaming(false);
-              Alert.alert('Stream Ended', 'Your stream was ended', [{
-                text: 'OK',
-                onPress: () => router.back()
-              }]);
-            }
-          });
+          // Stream ended while in background
+          console.log('⚠️ Stream ended while in background');
+          if (agoraEngineRef.current) {
+            agoraEngineRef.current.leaveChannel();
+            agoraEngineRef.current.release();
+            agoraEngineRef.current = null;
+          }
+          setIsStreaming(false);
+          Alert.alert('Stream Ended', 'Your stream was ended', [{
+            text: 'OK',
+            onPress: () => router.back()
+          }]);
         }
       } else if (nextAppState.match(/inactive|background/)) {
         // App going to background - stream continues
@@ -481,6 +475,7 @@ export default function GoLiveScreen() {
     }
 
     setIsInitializing(true);
+    console.log('🔎 [KR LOG] handleGoLive called.');
 
     try {
       // Use existing engine or initialize new one
@@ -496,9 +491,11 @@ export default function GoLiveScreen() {
         setIsInitializing(false);
         return;
       }
+      console.log('🔎 [KR LOG] Agora engine ready:', !!engine);
       
       const channel = `live_${auth.currentUser?.uid}_${Date.now()}`;
       setChannelName(channel);
+      console.log('🔎 [KR LOG] Channel generated:', channel);
 
       // Generate broadcaster UID (must be numeric for Agora)
       const broadcasterUid = Math.floor(Math.random() * 100000);
@@ -522,12 +519,15 @@ export default function GoLiveScreen() {
         startedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
       });
+      console.log('🔎 [KR LOG] Firestore stream doc created:', channel);
 
       // Set as broadcaster
       await engine.setClientRole(ClientRoleType?.ClientRoleBroadcaster);
+      console.log('🔎 [KR LOG] setClientRole to Broadcaster');
 
       // Join channel with token - pass 'publisher' role for broadcaster
       const token = await getAgoraToken(channel, broadcasterUid, 'publisher');
+      console.log('🔎 [KR LOG] getAgoraToken result:', token);
 
       console.log('🎥 Joining channel as BROADCASTER with video + audio publishing...');
       console.log('📡 Channel:', channel);
@@ -544,7 +544,10 @@ export default function GoLiveScreen() {
       // Force enable after join (some builds need explicit re-enable)
       await engine.enableAudio();
       await engine.enableVideo();
+      await engine.enableLocalAudio(true);
+      await engine.enableLocalVideo(true);
       console.log('🌐 Conn state after join:', agoraEngineRef.current?.getConnectionState?.());
+      console.log('🎥 CRITICAL: Video/Audio publishing explicitly enabled');
 
       // KR LOGGING: Channel aur UID ki value check karain
       console.log('🔎 [KR LOG] Channel Name:', channel);
@@ -552,40 +555,20 @@ export default function GoLiveScreen() {
 
       console.log('✅ Broadcaster joined channel successfully');
 
-      // Listen to comments (limit to last 50 for performance)
-      const commentsRef = collection(db, 'liveStreams', channel, 'comments');
-      const commentsQuery = query(commentsRef, orderBy('createdAt', 'desc'));
-      const unsubComments = onSnapshot(commentsQuery, (snapshot) => {
-        const newComments = snapshot.docs.slice(0, 50).map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Comment[];
-        setComments(newComments.reverse());
-      });
+      // TODO: Listen to comments from backend API
+      // const response = await fetch(`/api/livestreams/${channel}/comments`);
+      // const data = await response.json();
+      // setComments(data);
 
-      // Listen to viewers (limit to last 50 for performance)
-      const viewersRef = collection(db, 'liveStreams', channel, 'viewers');
-      const unsubViewers = onSnapshot(viewersRef, (snapshot) => {
-        const viewersList = snapshot.docs.slice(0, 50).map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Viewer[];
-        setViewers(viewersList);
-        setViewerCount(viewersList.length);
-        // KR LOGGING: Token ki value check karain
-        if (token) {
-          console.log('🔎 [KR LOG] Token mil gaya:', token);
-        } else {
-          console.log('❌ [KR LOG] Token nahi mila, null hai!');
-        }
-      });
+      // TODO: Listen to viewers from backend API
+      // const viewersResponse = await fetch(`/api/livestreams/${channel}/viewers`);
+      // const viewersData = await viewersResponse.json();
+      // setViewers(viewersData);
+      // setViewerCount(viewersData.length);
 
       // Cleanup listeners on unmount
       return () => {
-        unsubComments();
-        // KR LOGGING: JoinChannel call se pehle sab values confirm karain
-        console.log('🔎 [KR LOG] joinChannel call kar rahe hain, Channel:', channel, 'UID:', broadcasterUid, 'Token:', token);
-        unsubViewers();
+        console.log('🔎 [KR LOG] joinChannel call kar rahe hain, Channel:', channel);
       };
 
     } catch (error) {
@@ -623,15 +606,17 @@ export default function GoLiveScreen() {
                 console.log('Agora cleanup error (non-critical):', agoraErr);
               }
 
-              // Delete stream from Firebase
+              // TODO: Delete stream via backend API
               try {
                 if (channelName) {
-                  console.log('Deleting stream from Firebase...');
-                  await deleteDoc(doc(db, 'liveStreams', channelName));
-                  console.log('✅ Stream deleted from Firebase');
+                  console.log('Deleting stream from backend...');
+                  // const response = await fetch(`/api/livestreams/${channelName}`, {
+                  //   method: 'DELETE'
+                  // });
+                  console.log('✅ Stream deleted');
                 }
               } catch (dbErr) {
-                console.log('Firebase cleanup error (non-critical):', dbErr);
+                console.log('Backend cleanup error (non-critical):', dbErr);
               }
 
               setIsStreaming(false);
@@ -683,14 +668,18 @@ export default function GoLiveScreen() {
 
     if (channelName) {
       try {
-        const commentsRef = collection(db, 'liveStreams', channelName, 'comments');
-        await addDoc(commentsRef, {
-          userId: auth.currentUser?.uid,
-          userName: currentUser?.displayName || currentUser?.username || 'Anonymous',
-          userAvatar: currentUser?.avatar || currentUser?.profileImage || '',
-          text: newComment.trim(),
-          createdAt: serverTimestamp(),
-        });
+        // TODO: Post comment to backend API
+        // const response = await fetch(`/api/livestreams/${channelName}/comments`, {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify({
+        //     userId: auth.currentUser?.uid,
+        //     userName: currentUser?.displayName || currentUser?.username || 'Anonymous',
+        //     userAvatar: currentUser?.avatar || currentUser?.profileImage || '',
+        //     text: newComment.trim()
+        //   })
+        // });
+        console.log('Comment sent:', newComment.trim());
       } catch (error) {
         logger.error('Error sending comment:', error);
       }

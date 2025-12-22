@@ -8,9 +8,7 @@
  * - For presence: Poll every 2-3 seconds
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { apiService } from '../app/_services/apiService';
 
 export interface PollingConfig {
   interval: number; // milliseconds
@@ -44,23 +42,7 @@ export async function startConversationsPolling(
 
   const poll = async () => {
     try {
-      const q = query(
-        collection(db, 'conversations'),
-        where('participants', 'array-contains', userId),
-        orderBy('lastMessageAt', 'desc')
-      );
-
-      const snapshot = await getDocs(q);
-
-      // Ensure participants exists and is array
-      const conversations = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          participants: Array.isArray(data.participants) ? data.participants : [],
-        };
-      });
+      const conversations = await apiService.get('/conversations', { userId });
 
       // Batch fetch user profiles for all conversations
       const uniqueUserIds = new Set(
@@ -137,16 +119,7 @@ export async function startMessagesPolling(
 
   const poll = async () => {
     try {
-      const q = query(
-        collection(db, 'conversations', conversationId, 'messages'),
-        orderBy('createdAt', 'desc')
-      );
-
-      const snapshot = await getDocs(q);
-      const messages = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const messages = await apiService.get(`/conversations/${conversationId}/messages`);
 
       callback(messages.reverse());
 
@@ -197,16 +170,7 @@ export async function startNotificationsPolling(
 
   const poll = async () => {
     try {
-      const q = query(
-        collection(db, 'users', userId, 'notifications'),
-        orderBy('createdAt', 'desc')
-      );
-
-      const snapshot = await getDocs(q);
-      const notifications = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const notifications = await apiService.get(`/notifications/${userId}`);
 
       callback(notifications);
 

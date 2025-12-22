@@ -12,7 +12,7 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCurrentUser } from '../lib/firebaseHelpers';
+// import { getCurrentUser } from '../lib/firebaseHelpers';
 import { addPassportTicket, getPassportTickets } from '../lib/firebaseHelpers/passport';
 
 // Conditionally import location service
@@ -39,8 +39,9 @@ interface PassportStamp {
 export default function PassportScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const userId = (params.user as string) || getCurrentUser()?.uid;
-  const currentUser = getCurrentUser();
+  // const userId = (params.user as string) || getCurrentUser()?.uid;
+  // const currentUser = getCurrentUser();
+  // TODO: Use user from context or props
   const isOwner = currentUser?.uid === userId;
 
   const [stamps, setStamps] = useState<PassportStamp[]>([]);

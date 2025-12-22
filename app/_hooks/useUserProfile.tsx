@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getUserProfile } from '../../lib/firebaseHelpers/index';
 
-const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
 export interface UserProfile {
   id: string;

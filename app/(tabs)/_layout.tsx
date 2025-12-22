@@ -14,10 +14,10 @@ try {
 // Minimize overlay removed
 import { SafeAreaView } from "react-native-safe-area-context";
 import { logAnalyticsEvent, setAnalyticsUserId } from '../../lib/analytics';
-import { getCurrentUser } from '../../lib/firebaseHelpers';
+
 import { getUserConversations } from '../../lib/firebaseHelpers/conversation';
 import { getUserNotifications } from '../../lib/firebaseHelpers/notification';
-import { fetchLogoUrl } from '../_services/brandingService';
+import fetchLogoUrl from '../../src/_services/brandingService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isSmallDevice = SCREEN_WIDTH < 375;
@@ -231,7 +231,7 @@ function TopMenu() {
   const isProfileScreen = segments[segments.length - 1] === 'profile';
 
   useEffect(() => {
-    const u = getCurrentUser() as { uid: string } | null;
+    const u = null;
     if (u?.uid) setAnalyticsUserId(u.uid);
   }, []);
 
@@ -250,7 +250,7 @@ function TopMenu() {
   useFocusEffect(
     React.useCallback(() => {
       async function fetchCounts() {
-        const user = getCurrentUser() as { uid: string } | null;
+        const user = null;
         if (!user || !user.uid) return;
         // Notifications
           const notifRes = await getUserNotifications(user.uid);
@@ -276,7 +276,7 @@ function TopMenu() {
           <ActivityIndicator size="small" color="#f39c12" style={{ marginVertical: 2, marginLeft: 0, marginRight: 0, height: 54, width: 130 }} />
         ) : (
           <Image
-            source={{ uri: logoUrl || 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2Flogo.png?alt=media&token=e1db7a0b-4fb0-464a-82bc-44255729d46e' }}
+            source={{ uri: logoUrl || 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/logo/logo.png' }}
             style={[styles.logoImg, { marginLeft: 0, marginRight: 16, alignSelf: 'flex-start' }]}
             resizeMode="contain"
             accessibilityLabel="App Logo"

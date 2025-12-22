@@ -6,10 +6,10 @@ import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import VerifiedBadge from './_components/VerifiedBadge';
+import VerifiedBadge from '../src/_components/VerifiedBadge';
 // import {} from '../lib/firebaseHelpers';
 import { GOOGLE_MAPS_CONFIG } from '../config/environment';
-import { createPost, DEFAULT_CATEGORIES, ensureDefaultCategories, getCategories, getCurrentUser, getPassportTickets, searchUsers } from '../lib/firebaseHelpers/index';
+import { createPost, DEFAULT_CATEGORIES, ensureDefaultCategories, getCategories, searchUsers } from '../lib/firebaseHelpers/index';
 import { compressImage } from '../lib/imageCompressor';
 import { extractHashtags, trackHashtag } from '../lib/mentions';
 import { startTrace } from '../lib/perf';
@@ -168,8 +168,9 @@ export default function CreatePostScreen() {
 
   useEffect(() => {
     async function fetchVerifiedOptions() {
-      const user = getCurrentUser() as { uid?: string } | null;
-      if (!user) return;
+      // const user = getCurrentUser() as { uid?: string } | null;
+      // if (!user) return;
+      // TODO: Use user from context or props
       let options: LocationType[] = [];
       // Get current device location
       try {
@@ -360,8 +361,9 @@ export default function CreatePostScreen() {
           };
         }
       }
-      const user = getCurrentUser() as { uid?: string } | null;
-      if (!user) throw new Error('User not found');
+      // const user = getCurrentUser() as { uid?: string } | null;
+      // if (!user) throw new Error('User not found');
+      // TODO: Use user from context or props
       
       console.log('📍 Location Debug:', {
         location,

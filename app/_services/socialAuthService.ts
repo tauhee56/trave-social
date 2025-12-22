@@ -38,12 +38,12 @@ export async function handleSocialAuthResult(result: any, router: any): Promise<
     let avatar = result.user?.avatar || result.user?.profileImage || result.avatar || result.picture || '';
     let provider = result.provider || (result.accessToken ? 'tiktok' : 'snapchat');
 
-    // Create/update user in Firestore
+    // Create/update user in backend (was Firestore)
     try {
       const { createOrUpdateUserFromSocial } = await import('./userService');
       await createOrUpdateUserFromSocial({ uid, name, avatar, provider });
     } catch (err) {
-      console.error('Error saving user to Firestore:', err);
+      console.error('Error saving user to backend:', err);
     }
     router.replace('/'); // Navigate to home or dashboard
   } else {

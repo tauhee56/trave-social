@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
 import { getFormattedActiveStatus, subscribeToUserPresence, UserPresence } from '../../lib/userPresence';
-import { useUserProfile } from '../_hooks/useUserProfile';
+import useUserProfile from '../../src/_hooks/useUserProfile';
 import MessageBubble from './MessageBubble';
 
 export default function InboxRow({ item, router, unread, formatTime, DEFAULT_AVATAR_URL }: any) {

@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+// Firestore imports removed
 import React, { useEffect, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { db } from '../../config/firebase';
+import { getActiveLiveStreams } from '../../lib/firebaseHelpers';
 
-const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
 interface LiveStream {
   id: string;
@@ -26,18 +26,7 @@ function LiveStreamsRowComponent() {
   useEffect(() => {
     const fetchLiveStreams = async () => {
       try {
-        const liveStreamsRef = collection(db, 'liveStreams');
-        const liveQuery = query(liveStreamsRef, where('isLive', '==', true));
-        const snapshot = await getDocs(liveQuery);
-
-        const streams: LiveStream[] = [];
-        snapshot.forEach((doc) => {
-          streams.push({
-            id: doc.id,
-            ...doc.data()
-          } as LiveStream);
-        });
-
+        const streams = await getActiveLiveStreams();
         // Sort by viewer count
         streams.sort((a, b) => (b.viewerCount || 0) - (a.viewerCount || 0));
         setLiveStreams(streams);

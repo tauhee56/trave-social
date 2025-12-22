@@ -6,7 +6,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Dimensions, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import {} from "../../lib/firebaseHelpers";
-import { createStory, getAllStoriesForFeed, getCurrentUser, getUserProfile } from "../../lib/firebaseHelpers/index";
+import { createStory, getAllStoriesForFeed, getUserProfile } from "../../lib/firebaseHelpers/index";
 import { useUser } from './UserContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -54,9 +54,10 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
   const [locationSuggestions, setLocationSuggestions] = useState<any[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
   // Default avatar from Firebase Storage
-  const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
-  const currentUser = getCurrentUser();
-  const currentUserTyped = getCurrentUser() as { uid?: string } | null;
+  const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+  // const currentUser = getCurrentUser();
+  // const currentUserTyped = getCurrentUser() as { uid?: string } | null;
+  // Use authUser from context instead
   const authUser = useUser();
 
   useEffect(() => {
@@ -93,8 +94,8 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
   const loadCurrentUserAvatar = async () => {
     if (authUser?.photoURL) {
       setCurrentUserAvatar(authUser.photoURL);
-    } else if (currentUserTyped && currentUserTyped.uid) {
-      const res = await getUserProfile(currentUserTyped.uid);
+    } else if (authUser && authUser.uid) {
+      const res = await getUserProfile(authUser.uid);
       if (res && res.success && 'data' in res && res.data) {
         setCurrentUserAvatar(res.data.avatar);
       }
@@ -179,7 +180,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
   }
 
   // Check if current user has a story
-  const hasMyStory = currentUserTyped && currentUserTyped.uid ? storyUsers.some(u => u.userId === currentUserTyped.uid) : false;
+  const hasMyStory = authUser && authUser.uid ? storyUsers.some(u => u.userId === authUser.uid) : false;
   return (
     <View style={styles.container}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12 }}>
@@ -190,7 +191,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => {
-                  const myUser = storyUsers.find(u => u.userId === currentUserTyped?.uid);
+                  const myUser = storyUsers.find(u => u.userId === authUser?.uid);
                   if (myUser && onStoryPress) onStoryPress(myUser.stories, 0);
                 }}
               >
@@ -235,7 +236,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
           <Text style={styles.userName} numberOfLines={1}>{hasMyStory ? 'Your Story' : 'Add Story'}</Text>
         </View>
         {/* Other users' stories */}
-        {currentUserTyped && currentUserTyped.uid ? storyUsers.filter(u => u.userId !== currentUserTyped.uid).map((user, idx) => (
+        {authUser && authUser.uid ? storyUsers.filter(u => u.userId !== authUser.uid).map((user, idx) => (
           <View style={styles.storyWrapper} key={user.userId}>
             <TouchableOpacity
               style={styles.storyButton}
@@ -464,7 +465,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
 
                   // Pass location data to createStory
                   const storyRes = await createStory(
-                    typeof currentUserTyped?.uid === 'string' ? currentUserTyped.uid : '',
+                    typeof authUser?.uid === 'string' ? authUser.uid : '',
                     uploadUri,
                     mediaType,
                     selectedMedia.locationData // Pass location data

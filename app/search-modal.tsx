@@ -27,16 +27,16 @@ type User = {
   bio?: string;
 };
 
-const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
 // Default regions (fallback if Firebase fetch fails)
 const defaultRegions: Region[] = [
-  { id: 'world', name: 'World', image: 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/regions%2Fworld.png?alt=media' },
-  { id: 'us', name: 'United States', image: 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/regions%2Fus.png?alt=media&token=bf3e398e-ed7f-46c6-a714-303d84dce0b4' },
-  { id: 'eastasia', name: 'East Asia', image: 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/regions%2Feastasia.png?alt=media' },
-  { id: 'me', name: 'Middle East', image: 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/regions%2Fmiddleeast.png?alt=media' },
-  { id: 'sea', name: 'South Asia', image: 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/regions%2Fsoutheastasia.png?alt=media&token=974aa2c8-501c-4a8b-a602-6d56c768d245' },
-  { id: 'japan', name: 'Japan', image: 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/regions%2FJapan.png?alt=media&token=4071a57a-1e9f-469d-a02a-8c42a6f709ab' },
+  { id: 'world', name: 'World', image: 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/regions/world.png' },
+  { id: 'us', name: 'United States', image: 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/regions/us.png' },
+  { id: 'eastasia', name: 'East Asia', image: 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/regions/eastasia.png' },
+  { id: 'me', name: 'Middle East', image: 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/regions/middleeast.png' },
+  { id: 'sea', name: 'South Asia', image: 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/regions/southeastasia.png' },
+  { id: 'japan', name: 'Japan', image: 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/regions/Japan.png' },
 ];
 
 export default function SearchModal() {

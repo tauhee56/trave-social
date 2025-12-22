@@ -5,19 +5,19 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCurrentUser, getUserConversations } from '../lib/firebaseHelpers/index';
 // import {} from '../lib/firebaseHelpers';
 // @ts-ignore
-import { archiveConversation } from '../lib/firebaseHelpers/archive';
-import InboxRow from './_components/InboxRow';
 import { useInboxPolling } from '../hooks/useInboxPolling';
+import { archiveConversation } from '../lib/firebaseHelpers/archive';
+import InboxRow from '../src/_components/InboxRow';
 
 export default function Inbox() {
     // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+    const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
   const router = useRouter();
   const navigation = useNavigation();
-  const currentUserTyped = getCurrentUser() as { uid?: string } | null;
+  // const currentUserTyped = getCurrentUser() as { uid?: string } | null;
+  // TODO: Use user from context or props
   
   // Use optimized polling instead of real-time listeners (saves 70-80% on costs)
   const { conversations: polledConversations, loading: polledLoading } = useInboxPolling(currentUserTyped?.uid || null, {

@@ -1,7 +1,7 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { getCurrentUser } from "../../lib/firebaseHelpers";
+// import { getCurrentUser } from "../../lib/firebaseHelpers";
 import { addComment, addCommentReaction, addCommentReply, deleteComment, deleteCommentReply, editComment, editCommentReply, getPostComments } from "../../lib/firebaseHelpers/comments";
 import CommentAvatar from "./CommentAvatar";
 
@@ -46,7 +46,8 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   const [showReactions, setShowReactions] = useState<string | null>(null);
   
   const scrollRef = useRef<ScrollView>(null);
-  const currentUser = getCurrentUser();
+  // const currentUser = getCurrentUser();
+  // TODO: Use user from context or props
 
   useEffect(() => {
     loadComments();

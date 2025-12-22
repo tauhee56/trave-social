@@ -5,8 +5,8 @@ import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { getLocationVisitCount, likePost, unlikePost } from "../../lib/firebaseHelpers";
 import { feedEventEmitter } from '../../lib/feedEventEmitter';
+import { getLocationVisitCount, likePost, unlikePost } from "../../lib/firebaseHelpers";
 import { getOptimizedImageUrl } from "../../lib/imageHelpers";
 import { CommentSection } from "./CommentSection";
 import SaveButton from "./SaveButton";
@@ -509,7 +509,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
     setCommentCount(post?.commentCount || 0);
   }, [post?.commentCount]);
   
-  const [currentAvatar, setCurrentAvatar] = useState<string>("https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d");
+  const [currentAvatar, setCurrentAvatar] = useState<string>("https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg");
     useEffect(() => {
       async function fetchAvatar() {
         if (post?.userId) {
@@ -520,7 +520,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
               setCurrentAvatar(res.data.avatar);
             }
           } catch {
-            setCurrentAvatar("https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d");
+            setCurrentAvatar("https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg");
           }
         }
       }
@@ -1189,7 +1189,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 <CommentSection
                   postId={post.id}
                   postOwnerId={post.userId}
-                  currentAvatar={user?.photoURL || "https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d"}
+                  currentAvatar={user?.photoURL || "https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg"}
                   maxHeight={undefined}
                   showInput={true}
                   highlightedCommentId={highlightedCommentId}

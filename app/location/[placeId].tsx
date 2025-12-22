@@ -1,16 +1,14 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { collection, getDocs } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Dimensions, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../../config/firebase';
-import PostCard from '../_components/PostCard';
-import StoriesViewer from '../_components/StoriesViewer';
-import VerifiedBadge from '../_components/VerifiedBadge';
+import PostCard from '../../src/_components/PostCard';
+import StoriesViewer from '../../src/_components/StoriesViewer';
+import VerifiedBadge from '../../src/_components/VerifiedBadge';
 
 const { width } = Dimensions.get('window');
-const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
 type Post = {
   id: string;
@@ -129,73 +127,20 @@ export default function LocationDetailsScreen() {
 
   const fetchLocationPosts = async (searchLocationName: string) => {
     try {
-      // Fetch all posts from Firebase
-      const postsRef = collection(db, 'posts');
-      const postsSnapshot = await getDocs(postsRef);
-
-      const locationPosts: Post[] = [];
-      const subLocationMap: { [key: string]: Post[] } = {};
-
-      postsSnapshot.forEach((doc) => {
-        const postData = doc.data() as Post;
-        const post = { ...postData, id: doc.id };
-
-        // Check if post's location matches current location
-        if (post.locationData) {
-          const postLocationName = post.locationData.name || '';
-          const postLocationAddress = post.locationData.address || '';
-
-          // Check if this post belongs to current location (exact match or contains)
-          const fullLocation = `${postLocationName}, ${postLocationAddress}`.toLowerCase();
-          const searchLower = searchLocationName.toLowerCase();
-
-          if (fullLocation.includes(searchLower) || postLocationName.toLowerCase().includes(searchLower)) {
-            locationPosts.push(post);
-
-            // Extract sub-location (city/area name)
-            const subLocationName = extractSubLocationName(postLocationName, postLocationAddress);
-            if (subLocationName && subLocationName !== searchLocationName) {
-              if (!subLocationMap[subLocationName]) {
-                subLocationMap[subLocationName] = [];
-              }
-              subLocationMap[subLocationName].push(post);
-            }
-          }
-        }
-      });
-
-      // Sort posts by likes (most liked first)
-      locationPosts.sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0));
-
-      // Get most liked post image for header
-      if (locationPosts.length > 0) {
-        setMostLikedPostImage(locationPosts[0].imageUrl || locationPosts[0].imageUrls?.[0] || '');
-      }
-
-      // Create sub-locations array
-      const subLocs: SubLocation[] = Object.keys(subLocationMap).map(name => {
-        const posts = subLocationMap[name];
-        // Sort by likes to get most liked post for thumbnail
-        posts.sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0));
-        return {
-          name,
-          count: posts.length,
-          thumbnail: posts[0]?.imageUrl || posts[0]?.imageUrls?.[0] || '',
-          posts
-        };
-      });
-
-      // Sort sub-locations by post count
-      subLocs.sort((a, b) => b.count - a.count);
-
-      setAllPosts(locationPosts);
-      setFilteredPosts(locationPosts);
-      setSubLocations(subLocs);
-
-      // Calculate visits
-      setTotalVisits(locationPosts.length);
-      setVerifiedVisits(locationPosts.filter(p => p.locationData?.verified).length);
-
+      // TODO: Implement backend API to fetch posts by location
+      // const response = await fetch(`/api/locations/${encodeURIComponent(searchLocationName)}/posts`);
+      // const data = await response.json();
+      // setAllPosts(data.posts);
+      // setFilteredPosts(data.posts);
+      // setSubLocations(data.subLocations);
+      // setTotalVisits(data.posts.length);
+      // setVerifiedVisits(data.verifiedVisits);
+      
+      setAllPosts([]);
+      setFilteredPosts([]);
+      setSubLocations([]);
+      setTotalVisits(0);
+      setVerifiedVisits(0);
     } catch (error) {
       console.error('Error fetching location posts:', error);
     }
@@ -203,30 +148,12 @@ export default function LocationDetailsScreen() {
 
   const fetchLocationStories = async (searchLocationName: string) => {
     try {
-      // Fetch stories from Firebase
-      const storiesRef = collection(db, 'stories');
-      const storiesSnapshot = await getDocs(storiesRef);
-
-      const locationStories: Story[] = [];
-
-      storiesSnapshot.forEach((doc) => {
-        const storyData = doc.data() as Story;
-        const story = { ...storyData, id: doc.id };
-
-        // Check if story has location data matching current location
-        if (story.locationData) {
-          const storyLocationName = story.locationData.name || '';
-          const storyLocationAddress = story.locationData.address || '';
-          const fullLocation = `${storyLocationName}, ${storyLocationAddress}`.toLowerCase();
-          const searchLower = searchLocationName.toLowerCase();
-
-          if (fullLocation.includes(searchLower) || storyLocationName.toLowerCase().includes(searchLower)) {
-            locationStories.push(story);
-          }
-        }
-      });
-
-      setStories(locationStories);
+      // TODO: Implement backend API to fetch stories by location
+      // const response = await fetch(`/api/locations/${encodeURIComponent(searchLocationName)}/stories`);
+      // const data = await response.json();
+      // setStories(data.stories);
+      
+      setStories([]);
     } catch (error) {
       console.error('Error fetching location stories:', error);
     }

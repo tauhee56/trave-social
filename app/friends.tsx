@@ -1,15 +1,14 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../config/firebase';
+import { auth } from '../config/firebase';
 import { followUser, unfollowUser } from '../lib/firebaseHelpers/follow';
 import { useUser } from './_components/UserContext';
 
-const DEFAULT_AVATAR = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+const DEFAULT_AVATAR = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
 type UserItem = {
   uid: string;
@@ -52,105 +51,20 @@ export default function FriendsScreen() {
     setLoading(true);
     
     try {
-      // Fetch profile name
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        setProfileName(userData.name || userData.displayName || 'User');
-      }
+      // TODO: Implement backend API for fetching user's followers/following/friends/blocked
+      // For now, return empty lists
+      // const response = await fetch(`/api/users/${userId}/friends`);
+      // const data = await response.json();
+      // setFollowers(data.followers);
+      // setFollowing(data.following);
+      // setFriends(data.friends);
+      // setBlockedUsers(isOwnProfile ? data.blocked : []);
       
-      // Fetch followers
-      const userProfile = await getDoc(doc(db, 'users', userId));
-      const userData = userProfile.data();
-      const followerIds: string[] = userData?.followers || [];
-      const followingIds: string[] = userData?.following || [];
-      
-      // Fetch current user's following list
-      let myFollowingIds: string[] = [];
-      if (authUser?.uid) {
-        const myProfile = await getDoc(doc(db, 'users', authUser.uid));
-        myFollowingIds = myProfile.data()?.following || [];
-      }
-      
-      // Fetch follower details
-      const followerUsers: UserItem[] = [];
-      for (const fId of followerIds) {
-        try {
-          const fDoc = await getDoc(doc(db, 'users', fId));
-          if (fDoc.exists()) {
-            const fData = fDoc.data();
-            followerUsers.push({
-              uid: fId,
-              name: fData.name || fData.displayName || 'User',
-              username: fData.username || '',
-              avatar: fData.avatar || fData.photoURL || DEFAULT_AVATAR,
-              isFollowing: myFollowingIds.includes(fId),
-              isFollowingYou: followingIds.includes(fId),
-            });
-          }
-        } catch (e) {
-          console.warn('Error fetching follower:', e);
-        }
-      }
-      setFollowers(followerUsers);
-      
-      // Fetch following details
-      const followingUsers: UserItem[] = [];
-      for (const fId of followingIds) {
-        try {
-          const fDoc = await getDoc(doc(db, 'users', fId));
-          if (fDoc.exists()) {
-            const fData = fDoc.data();
-            followingUsers.push({
-              uid: fId,
-              name: fData.name || fData.displayName || 'User',
-              username: fData.username || '',
-              avatar: fData.avatar || fData.photoURL || DEFAULT_AVATAR,
-              isFollowing: myFollowingIds.includes(fId),
-              isFollowingYou: followerIds.includes(fId),
-            });
-          }
-        } catch (e) {
-          console.warn('Error fetching following:', e);
-        }
-      }
-      setFollowing(followingUsers);
-      
-      // Calculate Friends (mutual follows - Instagram style)
-      // Friends = people who follow you AND you follow them back
-      const mutualFriends: UserItem[] = followerUsers.filter(follower => 
-        followingIds.includes(follower.uid)
-      ).map(user => ({
-        ...user,
-        isFollowing: true,
-        isFollowingYou: true,
-      }));
-      setFriends(mutualFriends);
-      
-      // Fetch blocked users (only for own profile)
-      if (isOwnProfile && authUser?.uid) {
-        const blockedRef = collection(db, 'users', authUser.uid, 'blocked');
-        const blockedSnap = await getDocs(blockedRef);
-        const blockedList: UserItem[] = [];
-        
-        for (const bDoc of blockedSnap.docs) {
-          try {
-            const blockedUserDoc = await getDoc(doc(db, 'users', bDoc.id));
-            if (blockedUserDoc.exists()) {
-              const bData = blockedUserDoc.data();
-              blockedList.push({
-                uid: bDoc.id,
-                name: bData.name || bData.displayName || 'User',
-                username: bData.username || '',
-                avatar: bData.avatar || bData.photoURL || DEFAULT_AVATAR,
-              });
-            }
-          } catch (e) {
-            console.warn('Error fetching blocked user:', e);
-          }
-        }
-        setBlockedUsers(blockedList);
-      }
+      setFollowers([]);
+      setFollowing([]);
+      setFriends([]);
+      setBlockedUsers([]);
+      setProfileName('User');
       
     } catch (error) {
       console.error('Error fetching data:', error);

@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import CustomButton from '../_components/auth/CustomButton';
+import CustomButton from '../../src/_components/auth/CustomButton';
 
 export default function ResetOTPScreen() {
   const router = useRouter();

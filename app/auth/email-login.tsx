@@ -6,8 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserErrorMessage } from '../../lib/errorHandler';
 import { signInUser } from '../../lib/firebaseHelpers';
 import { handleSocialAuthResult, signInWithApple, signInWithGoogle, signInWithSnapchat, signInWithTikTok } from '../../services/socialAuthService';
-import CustomButton from '../_components/auth/CustomButton';
-import SocialButton from '../_components/auth/SocialButton';
+import CustomButton from '../../src/_components/auth/CustomButton';
+import SocialButton from '../../src/_components/auth/SocialButton';
 
 export default function EmailLoginScreen() {
   const router = useRouter();

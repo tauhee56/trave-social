@@ -13,19 +13,19 @@ describe('Image Helpers', () => {
     const fbUrl = 'https://firebasestorage.googleapis.com/v0/b/test/o/image.jpg?alt=media';
     const nonFbUrl = 'https://example.com/image.jpg';
 
-    it('should return feed thumbnail (600px) for feed context', () => {
+    it('should return original Firebase Storage URL for feed context', () => {
       const result = getOptimizedImageUrl(fbUrl, 'feed');
-      expect(result).toContain('w=600');
+      expect(result).toBe(fbUrl);
     });
 
-    it('should return map-marker thumbnail (200px) for map context', () => {
+    it('should return original Firebase Storage URL for map-marker context', () => {
       const result = getOptimizedImageUrl(fbUrl, 'map-marker');
-      expect(result).toContain('w=200');
+      expect(result).toBe(fbUrl);
     });
 
-    it('should return thumbnail size (150px) for thumbnail context', () => {
+    it('should return original Firebase Storage URL for thumbnail context', () => {
       const result = getOptimizedImageUrl(fbUrl, 'thumbnail');
-      expect(result).toContain('w=150');
+      expect(result).toBe(fbUrl);
     });
 
     it('should return original URL for detail context', () => {

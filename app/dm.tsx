@@ -8,7 +8,8 @@ import {
     addNotification,
     deleteMessage,
     editMessage,
-    getCurrentUser,
+    fetchMessages,
+    // getCurrentUser,
     getOrCreateConversation,
     getUserProfile, isApprovedFollower,
     markConversationAsRead,
@@ -17,10 +18,10 @@ import {
     subscribeToMessages
 } from '../lib/firebaseHelpers/index';
 import { getFormattedActiveStatus, subscribeToUserPresence, updateUserOffline, updateUserPresence, UserPresence } from '../lib/userPresence';
-import MessageBubble from './_components/MessageBubble';
-import { useUserProfile } from './_hooks/useUserProfile';
+import MessageBubble from '../src/_components/MessageBubble';
+import useUserProfile from '../src/_hooks/useUserProfile';
 
-const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
 export default function DM() {
   const { user: paramUser, conversationId: paramConversationId, otherUserId, id } = useLocalSearchParams();
@@ -45,8 +46,9 @@ export default function DM() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const flatListRef = useRef<FlatList>(null);
-  const currentUser = getCurrentUser();
-  const currentUserTyped = getCurrentUser() as { uid?: string } | null;
+  // const currentUser = getCurrentUser();
+  // const currentUserTyped = getCurrentUser() as { uid?: string } | null;
+  // TODO: Use user from context or props
 
   // Message edit/delete states
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
@@ -125,35 +127,18 @@ export default function DM() {
   useEffect(() => {
     if (!conversationId) return;
     setMessages([]);
-    setLastMessageDoc(null);
     setHasMoreMessages(true);
+    setLoading(true);
 
-    // Subscribe to real-time messages
-    const unsub = subscribeToMessages(conversationId, (msgs) => {
-      console.log('📨 Received messages:', msgs.length, 'IDs:', msgs.map(m => m.id));
-
-      // Only update if messages actually changed
-      setMessages(prevMessages => {
-        // Check if messages are different
-        if (prevMessages.length !== msgs.length) {
-          console.log('✅ Length changed:', prevMessages.length, '->', msgs.length);
-          return msgs;
-        }
-
-        // Check if any message ID is different
-        const prevIds = prevMessages.map(m => m.id).join(',');
-        const newIds = msgs.map(m => m.id).join(',');
-
-        if (prevIds !== newIds) {
-          console.log('✅ IDs changed');
-          return msgs;
-        }
-
-        console.log('⏭️ No change, skipping update');
-        // No change, return previous
-        return prevMessages;
-      });
+    // Fetch initial messages from backend
+    fetchMessages(conversationId).then(res => {
+      setMessages(res.messages || []);
       setLoading(false);
+    });
+
+    // Subscribe to real-time messages via socket
+    const unsub = subscribeToMessages(conversationId, (msg) => {
+      setMessages(prev => [...prev, msg]);
     });
 
     // Mark as read when opening conversation
@@ -167,38 +152,7 @@ export default function DM() {
     // eslint-disable-next-line
   }, [conversationId]);
 
-  const loadMessagesPage = async () => {
-    const { db } = await import('../config/firebase');
-    const { collection, query, orderBy, limit, startAfter, getDocs } = await import('firebase/firestore');
-    let messagesQuery = query(
-      collection(db, 'conversations', String(conversationId || ''), 'messages'),
-      orderBy('createdAt', 'desc'),
-      limit(MESSAGES_PAGE_SIZE)
-    );
-    if (lastMessageDoc) {
-      messagesQuery = query(
-        collection(db, 'conversations', String(conversationId || ''), 'messages'),
-        orderBy('createdAt', 'desc'),
-        startAfter(lastMessageDoc),
-        limit(MESSAGES_PAGE_SIZE)
-      );
-    }
-    const snap = await getDocs(messagesQuery);
-    const newMessages = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
-
-    // Merge with existing messages and remove duplicates
-    setMessages(prev => {
-      const allMessages = [...prev, ...newMessages];
-      const uniqueMessages = Array.from(
-        new Map(allMessages.map(msg => [msg.id, msg])).values()
-      );
-      return uniqueMessages;
-    });
-
-    setLastMessageDoc(snap.docs[snap.docs.length - 1] || lastMessageDoc);
-    setHasMoreMessages(newMessages.length === MESSAGES_PAGE_SIZE);
-    setLoading(false);
-  };
+  // Remove loadMessagesPage (pagination) for now; can be re-added with backend support
 
   async function initializeConversation() {
     if (!currentUserTyped || !currentUserTyped.uid || !realOtherUserId) {

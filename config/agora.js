@@ -11,11 +11,9 @@
 
 // Directly use config to avoid environment loading issues
 export const AGORA_CONFIG = {
-  appId: 'b3afe61e45af4fe3819dbdffbbcffbf3', // NEW Testing Mode App ID (no certificate)
-  appCertificate: '', // Testing Mode: certificate disabled, no token required
-  // VERIFY: Ensure appId and appCertificate match latest from Agora Console
-  // Cloud Function URL for token generation (production-ready)
-  tokenServerUrl: '', // Testing Mode: no token server needed (null token works)
+  appId: 'b3afe61e45af4fe3819dbdffbbcffbf3', // Your production App ID
+  // Set this to your deployed token server endpoint for production (e.g. https://yourdomain.com/agora-token)
+  tokenServerUrl: 'https://generateagoratoken-cpdurml7yq-uc.a.run.app', // Production token server URL
 };
 
 // Generate a channel name for live streaming

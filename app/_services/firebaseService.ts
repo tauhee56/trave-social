@@ -1,29 +1,20 @@
-import { followUser as followUserRaw, getCurrentUser, getUserPosts as getUserPostsRaw, getUserProfile as getUserProfileRaw, getUserSections as getUserSectionsRaw, getUserStories as getUserStoriesRaw, sendFollowRequest as sendFollowRequestRaw, unfollowUser as unfollowUserRaw } from '../../lib/firebaseHelpers/index';
+
+import { apiService } from './apiService';
+
 
 export async function getUserProfile(userId: string) {
-  return await getUserProfileRaw(userId);
+  return await apiService.get(`/users/${userId}`);
 }
+
 export async function getUserPosts(userId: string) {
-  return await getUserPostsRaw(userId);
+  return await apiService.get(`/posts`, { userId });
 }
+
+// Placeholder: implement sections/stories if backend supports
 export async function getUserSections(userId: string) {
-  return await getUserSectionsRaw(userId);
+  return [];
 }
 export async function getUserStories(userId: string) {
-  return await getUserStoriesRaw(userId);
+  return [];
 }
-export async function sendFollowRequest(userId: string) {
-  const currentUser = getCurrentUser() as { uid?: string } | null;
-  if (!currentUser || !currentUser.uid) throw new Error('No current user');
-  return await sendFollowRequestRaw(currentUser.uid, userId);
-}
-export async function unfollowUser(userId: string) {
-  const currentUser = getCurrentUser() as { uid?: string } | null;
-  if (!currentUser || !currentUser.uid) throw new Error('No current user');
-  return await unfollowUserRaw(currentUser.uid, userId);
-}
-export async function followUser(userId: string) {
-  const currentUser = getCurrentUser() as { uid?: string } | null;
-  if (!currentUser || !currentUser.uid) throw new Error('No current user');
-  return await followUserRaw(currentUser.uid, userId);
-}
+

@@ -1,45 +1,34 @@
 /**
  * Image optimization helpers for cost reduction + performance
- * Uses Firebase Storage native resizing + caching strategies
+ * Uses Cloudinary URL transformations for resizing + caching
  */
 
 /**
- * Generate a thumbnail URL from a Firebase Storage image URL
- * Supports width/height params for Firebase Storage optimization
- * @param imageUrl - Full image URL from Firebase Storage
+ * Generate a thumbnail URL from a Cloudinary image URL
+ * Inserts a transformation segment after /upload/ for resizing + format
+ * @param imageUrl - Full image URL from Cloudinary
  * @param width - Desired width (e.g., 400, 600)
  * @param height - Desired height (optional; defaults to width for square)
- * @returns Optimized thumbnail URL or original if not Firebase URL
+ * @returns Optimized thumbnail URL or original if not Cloudinary URL
  */
 export function getThumbnailUrl(imageUrl: string, width: number = 400, height?: number): string {
   if (!imageUrl || typeof imageUrl !== 'string') return imageUrl;
 
-  // Only optimize Firebase Storage URLs
-  if (!imageUrl.includes('firebasestorage.googleapis.com')) {
+  // Only optimize Cloudinary URLs that contain the upload segment
+  if (!imageUrl.includes('res.cloudinary.com') || !imageUrl.includes('/upload/')) {
     return imageUrl;
   }
 
   try {
     const url = new URL(imageUrl);
-    const h = height || width; // Square by default
-
-    // Firebase Storage supports these quality/format params
-    // Add alt=media to force download + resize behavior
-    if (!url.searchParams.has('alt')) {
-      url.searchParams.set('alt', 'media');
+    const h = height || width;
+    const [beforeUpload, afterUpload] = url.pathname.split('/upload/');
+    if (!afterUpload) {
+      return imageUrl;
     }
 
-    // Add cache-busting headers for CDN (if using imgproxy or similar)
-    // For Firebase Storage direct, we rely on CloudFlare/CDN in front
-    // Add width/height hints (not enforced by Firebase Storage directly,
-    // but signals intent for any intervening CDN/proxy)
-    if (!url.searchParams.has('w')) {
-      url.searchParams.set('w', width.toString());
-    }
-    if (!url.searchParams.has('h')) {
-      url.searchParams.set('h', h.toString());
-    }
-
+    const transformation = `c_fill,w_${width},h_${h},q_auto,f_auto`;
+    url.pathname = `${beforeUpload}/upload/${transformation}/${afterUpload}`;
     return url.toString();
   } catch (e) {
     console.warn('Failed to parse image URL for thumbnail:', imageUrl, e);
@@ -54,6 +43,11 @@ export function getThumbnailUrl(imageUrl: string, width: number = 400, height?: 
  */
 export function getOptimizedImageUrl(imageUrl: string, context: 'feed' | 'map-marker' | 'thumbnail' | 'detail' = 'feed'): string {
   if (!imageUrl) return imageUrl;
+
+  // If Firebase Storage URL, return original (no transformation)
+  if (imageUrl.includes('firebasestorage.googleapis.com')) {
+    return imageUrl;
+  }
 
   // Don't optimize for detail view; use original for best quality
   if (context === 'detail') {

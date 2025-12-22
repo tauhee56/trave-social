@@ -4,18 +4,7 @@
  */
 
 import * as FileSystem from 'expo-file-system';
-import {
-    collection,
-    deleteDoc,
-    doc,
-    getDoc,
-    getDocs,
-    query,
-    serverTimestamp,
-    updateDoc,
-    where,
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { apiService } from '../app/_services/apiService';
 
 // Get document directory with fallback to cache directory
 // @ts-ignore - directory paths are available at runtime
@@ -39,87 +28,21 @@ export interface UserDataExport {
 export async function exportUserData(userId: string): Promise<UserDataExport> {
   try {
     console.log('📊 Exporting data for user:', userId);
-
-    // Get user profile
-    const profileDoc = await getDoc(doc(db, 'users', userId));
-    const profile = profileDoc.exists() ? profileDoc.data() : null;
-
-    // Get user's posts
-    const postsQuery = query(
-      collection(db, 'posts'),
-      where('userId', '==', userId)
-    );
-    const postsSnapshot = await getDocs(postsQuery);
-    const posts = postsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    // Get user's comments
-    const commentsQuery = query(
-      collection(db, 'comments'),
-      where('userId', '==', userId)
-    );
-    const commentsSnapshot = await getDocs(commentsQuery);
-    const comments = commentsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    // Get user's messages (DMs)
-    const messagesQuery = query(
-      collection(db, 'conversations'),
-      where('participants', 'array-contains', userId)
-    );
-    const messagesSnapshot = await getDocs(messagesQuery);
-    const messages = await Promise.all(
-      messagesSnapshot.docs.map(async (convDoc) => {
-        const messagesSubquery = await getDocs(
-          collection(db, 'conversations', convDoc.id, 'messages')
-        );
-        return messagesSubquery.docs.map((msg) => ({
-          conversationId: convDoc.id,
-          ...msg.data(),
-        }));
-      })
-    );
-
-    // Get followers/following
-    const followersRef = doc(db, 'users', userId);
-    const followersData = await getDoc(followersRef);
-    const followers = followersData.data()?.followers || [];
-    const following = followersData.data()?.following || [];
-
-    // Get saved posts
-    const savedPostsRef = doc(db, 'users', userId);
-    const savedData = await getDoc(savedPostsRef);
-    const savedPosts = savedData.data()?.savedPosts || [];
-
-    // Get notifications
-    const notificationsQuery = query(
-      collection(db, 'notifications'),
-      where('userId', '==', userId)
-    );
-    const notificationsSnapshot = await getDocs(notificationsQuery);
-    const notifications = notificationsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    const exportData: UserDataExport = {
-      profile,
-      posts,
-      comments: comments.flat(),
-      messages: messages.flat(),
-      followers,
-      following,
-      savedPosts,
-      notifications,
-      exportedAt: new Date(),
+    const exportData = await apiService.get(`/gdpr/users/${userId}/export`);
+    const parsed: UserDataExport = {
+      profile: exportData?.profile || null,
+      posts: exportData?.posts || [],
+      comments: exportData?.comments || [],
+      messages: exportData?.messages || [],
+      followers: exportData?.followers || [],
+      following: exportData?.following || [],
+      savedPosts: exportData?.savedPosts || [],
+      notifications: exportData?.notifications || [],
+      exportedAt: new Date(exportData?.exportedAt || Date.now()),
     };
 
     console.log('✅ Data exported successfully');
-    return exportData;
+    return parsed;
   } catch (error) {
     console.error('Export error:', error);
     throw error;
@@ -155,16 +78,7 @@ export async function saveExportedData(
  */
 export async function requestAccountDeletion(userId: string): Promise<boolean> {
   try {
-    const userRef = doc(db, 'users', userId);
-
-    // Mark for deletion (30-day grace period)
-    await updateDoc(userRef, {
-      deletionRequested: true,
-      deletionRequestedAt: serverTimestamp(),
-      deletionScheduledFor: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      accountStatus: 'pending-deletion',
-    });
-
+    await apiService.post(`/gdpr/users/${userId}/deletion-request`);
     console.log('🗑️ Account deletion requested for:', userId);
     return true;
   } catch (error) {
@@ -178,15 +92,7 @@ export async function requestAccountDeletion(userId: string): Promise<boolean> {
  */
 export async function cancelAccountDeletion(userId: string): Promise<boolean> {
   try {
-    const userRef = doc(db, 'users', userId);
-
-    await updateDoc(userRef, {
-      deletionRequested: false,
-      deletionRequestedAt: null,
-      deletionScheduledFor: null,
-      accountStatus: 'active',
-    });
-
+    await apiService.post(`/gdpr/users/${userId}/deletion-cancel`);
     console.log('✅ Account deletion cancelled for:', userId);
     return true;
   } catch (error) {
@@ -202,64 +108,7 @@ export async function cancelAccountDeletion(userId: string): Promise<boolean> {
 export async function permanentlyDeleteAccount(userId: string): Promise<boolean> {
   try {
     console.log('🗑️ Permanently deleting account:', userId);
-
-    // Delete user document
-    await deleteDoc(doc(db, 'users', userId));
-
-    // Delete all user posts
-    const postsQuery = query(
-      collection(db, 'posts'),
-      where('userId', '==', userId)
-    );
-    const postsSnapshot = await getDocs(postsQuery);
-    for (const postDoc of postsSnapshot.docs) {
-      await deleteDoc(postDoc.ref);
-    }
-
-    // Delete all user comments
-    const commentsQuery = query(
-      collection(db, 'comments'),
-      where('userId', '==', userId)
-    );
-    const commentsSnapshot = await getDocs(commentsQuery);
-    for (const commentDoc of commentsSnapshot.docs) {
-      await deleteDoc(commentDoc.ref);
-    }
-
-    // Mark conversations as deleted instead of removing
-    const conversationsQuery = query(
-      collection(db, 'conversations'),
-      where('participants', 'array-contains', userId)
-    );
-    const conversationsSnapshot = await getDocs(conversationsQuery);
-    for (const convDoc of conversationsSnapshot.docs) {
-      await updateDoc(convDoc.ref, {
-        active: false,
-        deletedBy: userId,
-        deletedAt: serverTimestamp(),
-      });
-    }
-
-    // Delete notifications
-    const notificationsQuery = query(
-      collection(db, 'notifications'),
-      where('userId', '==', userId)
-    );
-    const notificationsSnapshot = await getDocs(notificationsQuery);
-    for (const notifDoc of notificationsSnapshot.docs) {
-      await deleteDoc(notifDoc.ref);
-    }
-
-    // Delete 2FA config
-    try {
-      await deleteDoc(doc(db, 'twoFactor', userId));
-    } catch {}
-
-    // Delete presence data
-    try {
-      await deleteDoc(doc(db, 'presence', userId));
-    } catch {}
-
+    await apiService.delete(`/gdpr/users/${userId}`);
     console.log('✅ Account permanently deleted');
     return true;
   } catch (error) {
@@ -279,19 +128,19 @@ export async function getDeletionStatus(
   daysRemaining?: number;
 } | null> {
   try {
-    const userDoc = await getDoc(doc(db, 'users', userId));
+    const status = await apiService.get(`/gdpr/users/${userId}/deletion-status`);
 
-    if (!userDoc.exists()) {
+    if (!status) {
       return null;
     }
 
-    const data = userDoc.data();
-
-    if (!data.deletionRequested) {
+    if (!status.requested) {
       return { requested: false };
     }
 
-    const scheduledFor = data.deletionScheduledFor?.toDate?.() || new Date();
+    const scheduledFor = status.scheduledFor
+      ? new Date(status.scheduledFor)
+      : new Date();
     const daysRemaining = Math.ceil(
       (scheduledFor.getTime() - Date.now()) / (24 * 60 * 60 * 1000)
     );

@@ -11,7 +11,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { auth } from "../config/firebase";
 // import { initSentry } from "../lib/sentry";
 import { updateUserPresence } from "../lib/userPresence";
-import { UserProvider } from "./_components/UserContext";
+import { UserProvider } from "../src/_components/UserContext";
 // Suppress non-critical warnings
 LogBox.ignoreLogs([
   'Unable to activate keep awake',

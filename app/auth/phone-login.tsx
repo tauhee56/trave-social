@@ -3,8 +3,8 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, FlatList, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import CustomButton from '../_components/auth/CustomButton';
-import SocialButton from '../_components/auth/SocialButton';
+import CustomButton from '../../src/_components/auth/CustomButton';
+import SocialButton from '../../src/_components/auth/SocialButton';
 
 // Popular countries list
 const COUNTRIES = [

@@ -180,7 +180,7 @@ export default function SearchScreen() {
           keyExtractor={item => item.uid || item.id}
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.row} onPress={() => router.push({ pathname: '/user-profile', params: { uid: item.uid || item.id } })}>
-              <Image source={{ uri: item.photoURL || item.avatar || 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d' }} style={styles.avatar} />
+              <Image source={{ uri: item.photoURL || item.avatar || 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg' }} style={styles.avatar} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{item.displayName || item.userName || 'User'}</Text>
                 <Text style={styles.email}>{item.email}</Text>
@@ -203,7 +203,7 @@ export default function SearchScreen() {
             keyExtractor={item => item.id}
             renderItem={({ item }) => (
               <TouchableOpacity style={styles.row} onPress={() => router.push({ pathname: '/highlight/[id]', params: { id: item.id } })}>
-                <Image source={{ uri: item.imageUrl || item.imageUrls?.[0] || 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d' }} style={styles.postImg} />
+                <Image source={{ uri: item.imageUrl || item.imageUrls?.[0] || 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg' }} style={styles.postImg} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name}>{item.userName || 'User'}</Text>
                   <Text style={styles.caption} numberOfLines={1}>{item.caption}</Text>

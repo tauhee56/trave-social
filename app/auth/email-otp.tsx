@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { logAnalyticsEvent } from '../../lib/analytics';
-import CustomButton from '../_components/auth/CustomButton';
+import CustomButton from '../../src/_components/auth/CustomButton';
 
 export default function EmailOTPScreen() {
   const router = useRouter();

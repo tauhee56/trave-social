@@ -3,8 +3,7 @@
  * Tracks when users are online, typing, active in DM, etc.
  */
 
-import { doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { apiService } from '../app/_services/apiService';
 
 export interface UserPresence {
   userId: string;
@@ -19,32 +18,15 @@ export interface UserPresence {
  */
 export async function updateUserPresence(userId: string, conversationId?: string) {
   try {
-    const userRef = doc(db, 'users', userId);
-    const presenceRef = doc(db, 'presence', userId);
-
-    // Update main user doc
-    await updateDoc(userRef, {
-      lastSeen: serverTimestamp(),
-      isOnline: true,
-      activeInConversation: conversationId || null,
-    }).catch(async () => {
-      // If doc doesn't exist, create it
-      await setDoc(userRef, {
-        lastSeen: serverTimestamp(),
-        isOnline: true,
-        activeInConversation: conversationId || null,
-      }, { merge: true });
-    });
-
-    // Also update presence collection for faster queries
-    await setDoc(presenceRef, {
+    await apiService.post('/presence/online', {
       userId,
-      isOnline: true,
-      lastSeen: serverTimestamp(),
-      activeInConversation: conversationId || null,
-    }, { merge: true });
+      conversationId: conversationId || null,
+    });
   } catch (error) {
-    console.error('Error updating presence:', error);
+    // Silently fail if backend not reachable - presence is not critical
+    if (__DEV__) {
+      console.log('Presence update skipped (backend not reachable)');
+    }
   }
 }
 
@@ -53,20 +35,7 @@ export async function updateUserPresence(userId: string, conversationId?: string
  */
 export async function updateUserOffline(userId: string) {
   try {
-    const userRef = doc(db, 'users', userId);
-    const presenceRef = doc(db, 'presence', userId);
-
-    await updateDoc(userRef, {
-      isOnline: false,
-      lastSeen: serverTimestamp(),
-      activeInConversation: null,
-    });
-
-    await updateDoc(presenceRef, {
-      isOnline: false,
-      lastSeen: serverTimestamp(),
-      activeInConversation: null,
-    });
+    await apiService.post('/presence/offline', { userId });
   } catch (error) {
     console.error('Error updating offline status:', error);
   }
@@ -76,27 +45,9 @@ export async function updateUserOffline(userId: string) {
  * Subscribe to user's online status - returns real-time updates
  */
 export function subscribeToUserPresence(userId: string, callback: (presence: UserPresence | null) => void) {
-  try {
-    const presenceRef = doc(db, 'presence', userId);
-    
-    return onSnapshot(presenceRef, (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
-        callback({
-          userId,
-          isOnline: data.isOnline || false,
-          lastSeen: data.lastSeen?.toDate?.() || new Date(),
-          activeInConversation: data.activeInConversation,
-          typing: data.typing || false,
-        });
-      } else {
-        callback(null);
-      }
-    });
-  } catch (error) {
-    console.error('Error subscribing to presence:', error);
-    return () => {};
-  }
+  // TODO: Replace with WebSocket/Socket.io real-time presence
+  console.warn('subscribeToUserPresence not implemented for REST backend. Use WebSocket.');
+  return () => {};
 }
 
 /**
@@ -104,20 +55,15 @@ export function subscribeToUserPresence(userId: string, callback: (presence: Use
  */
 export async function getUserPresence(userId: string): Promise<UserPresence | null> {
   try {
-    const presenceRef = doc(db, 'presence', userId);
-    const snapshot = await getDoc(presenceRef);
-    
-    if (snapshot.exists()) {
-      const data = snapshot.data();
-      return {
-        userId,
-        isOnline: data.isOnline || false,
-        lastSeen: data.lastSeen?.toDate?.() || new Date(),
-        activeInConversation: data.activeInConversation,
-        typing: data.typing || false,
-      };
-    }
-    return null;
+    const data = await apiService.get(`/presence/${userId}`);
+    if (!data) return null;
+    return {
+      userId,
+      isOnline: !!data.isOnline,
+      lastSeen: data.lastSeen ? new Date(data.lastSeen) : new Date(),
+      activeInConversation: data.activeInConversation,
+      typing: !!data.typing,
+    };
   } catch (error) {
     console.error('Error getting presence:', error);
     return null;

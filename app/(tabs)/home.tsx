@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { collection, doc, getDoc, getDocs, limit, orderBy, query } from 'firebase/firestore';
+// Firestore imports removed
 import React, { useCallback, useEffect, useState } from "react";
 import {
     ActivityIndicator,
@@ -16,15 +16,15 @@ import {
     TouchableOpacity,
     View
 } from "react-native";
-import { db } from '../../config/firebase';
-import { DEFAULT_CATEGORIES, getCategories, getCurrentUser, getUserNotifications } from "../../lib/firebaseHelpers/index";
-import { fetchBlockedUserIds, filterOutBlocked } from '../../services/moderation';
-import { logger } from '../../utils/logger';
+import LiveStreamsRow from '../../src/_components/LiveStreamsRow';
+import PostCard from '../../app/_components/PostCard';
+import StoriesRow from '../../src/_components/StoriesRow';
+import StoriesViewer from '../../src/_components/StoriesViewer';
 import { getResponsivePadding, scaleFontSize } from '../../utils/responsive';
-import LiveStreamsRow from "../_components/LiveStreamsRow";
-import PostCard from "../_components/PostCard";
-import StoriesRow from "../_components/StoriesRow";
-import StoriesViewer from "../_components/StoriesViewer";
+
+import { DEFAULT_CATEGORIES, getCategories } from '../../lib/firebaseHelpers/index';
+import { useAuthUser } from '../../src/_components/UserContext';
+import apiService from '../../src/_services/apiService';
 import { useTabEvent } from './_layout';
 
 const { width } = Dimensions.get("window");
@@ -44,6 +44,7 @@ export default function Home() {
   const router = useRouter();
   
   const [posts, setPosts] = useState<any[]>([]);
+  const authUser = useAuthUser();
   const padding = getResponsivePadding();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -111,7 +112,7 @@ export default function Home() {
 
   // Memoized render for FlatList items
   const renderPostItem = useCallback(({ item }: { item: any }) => {
-    const currentUser = getCurrentUser() as { uid?: string } | null;
+    const currentUser = null;
     
     // Fallback for missing media
     if (!item || (!item.imageUrl && (!item.imageUrls || item.imageUrls.length === 0)) && (!item.videoUrl && (!item.videoUrls || item.videoUrls.length === 0))) {
@@ -218,7 +219,7 @@ export default function Home() {
 
   useEffect(() => {
     async function fetchNotifications() {
-      const user = getCurrentUser() as { uid: string } | null;
+      const user = null;
       if (!user || !user.uid) return;
       const result = await getUserNotifications(user.uid);
       if (Array.isArray(result)) {
@@ -237,36 +238,13 @@ export default function Home() {
   const loadInitialFeed = async () => {
     setLoading(true);
     try {
-      const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(10)); // Reduced from 15 to 10
-      const querySnapshot = await getDocs(q);
-
-      const newPosts = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        locationName: doc.data().locationData?.name || doc.data().location || '',
-      }));
-
-      // OPTIMIZATION: Batch fetch user profiles for all posts at once
-      const uniqueUserIds = [...new Set(newPosts.map((p: any) => p.userId).filter(Boolean))];
-      if (uniqueUserIds.length > 0) {
-        const { getUserProfile } = await import('../../lib/firebaseHelpers/user');
-        await Promise.all(uniqueUserIds.map(userId => getUserProfile(userId)));
-        // Profiles are now cached, PostCard will use cached data
-      }
-
-      const currentUser = getCurrentUser() as { uid?: string } | null;
-      const blocked = currentUser?.uid ? await fetchBlockedUserIds(currentUser.uid) : new Set<string>();
-      const privacyFilteredPosts = await filterPostsByPrivacyWithUserCheck(newPosts, currentUser?.uid);
-      const moderationFilteredPosts = filterOutBlocked(privacyFilteredPosts, blocked);
-
-      setAllLoadedPosts(moderationFilteredPosts);
-      const mixedFeed = createMixedFeed(moderationFilteredPosts);
+      // Fetch posts from backend
+      const posts = await apiService.get('/posts');
+      setAllLoadedPosts(posts);
+      const mixedFeed = createMixedFeed(posts);
       setPosts(mixedFeed);
-
-      setLastVisible(querySnapshot.docs[querySnapshot.docs.length - 1]);
       setLoading(false);
     } catch (error) {
-      logger.error('Feed load error:', error);
       setLoading(false);
     }
   };
@@ -315,48 +293,18 @@ export default function Home() {
 
     // OPTIMIZATION: Fetch fresh posts (reduced from 30 to 10)
     try {
-      const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(10));
-      const snapshot = await getDocs(q);
-      const freshPosts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        locationName: doc.data().locationData?.name || doc.data().location || '',
-      }));
-
-      // OPTIMIZATION: Batch fetch user profiles
-      const uniqueUserIds = [...new Set(freshPosts.map((p: any) => p.userId).filter(Boolean))];
-      if (uniqueUserIds.length > 0) {
-        const { getUserProfile } = await import('../../lib/firebaseHelpers/user');
-        await Promise.all(uniqueUserIds.map(userId => getUserProfile(userId)));
-      }
-      
-      // Apply privacy filter to fresh posts
-      const currentUser = getCurrentUser() as { uid?: string } | null;
-      const privacyFilteredPosts = await filterPostsByPrivacyWithUserCheck(freshPosts, currentUser?.uid);
-      const blocked = currentUser?.uid ? await fetchBlockedUserIds(currentUser.uid) : new Set<string>();
-      const moderationFilteredPosts = filterOutBlocked(privacyFilteredPosts, blocked);
-      
-      // Store all posts
-      setAllLoadedPosts(moderationFilteredPosts);
-      
-      // Create completely new mixed feed with fresh shuffle
-      const mixedFeed = createMixedFeed(moderationFilteredPosts);
-      
-      // Clear posts first, then set new shuffled feed to force complete re-render
+      // Fetch fresh posts from backend
+      const freshPosts = await apiService.get('/posts');
+      setAllLoadedPosts(freshPosts);
+      const mixedFeed = createMixedFeed(freshPosts);
       setPosts([]);
       setFeedReloadKey(prev => prev + 1);
-      
-      // Use setTimeout to ensure state clears before setting new posts
       setTimeout(() => {
         setPosts(mixedFeed);
         setFeedReloadKey(prev => prev + 1);
       }, 10);
-      
-      setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
     } catch (error) {
-      logger.error('Refresh error:', error);
     }
-    
     setRefreshing(false);
   }
 
@@ -433,7 +381,7 @@ async function filterPostsByPrivacyWithUserCheck(posts: any[], currentUserId: st
   });
 }
 
-const currentUser = getCurrentUser() as { uid?: string } | null;
+const currentUser = null;
 const currentUserId = currentUser?.uid;
 
 
@@ -508,7 +456,7 @@ let filteredPosts = privacyFiltered;
       }));
       
       // Apply privacy filter immediately
-      const currentUser = getCurrentUser() as { uid?: string } | null;
+      const currentUser = null;
       const privacyFilteredPosts = filterPostsByPrivacy(freshPosts, currentUser?.uid);
       
       setAllLoadedPosts(privacyFilteredPosts);
@@ -622,7 +570,7 @@ let filteredPosts = privacyFiltered;
           </View>
         )}
         renderItem={({ item }) => {
-          const currentUser = getCurrentUser() as { uid?: string } | null;
+          const currentUser = null;
           // Fallback for missing media
           if (!item || (!item.thumbnailUrl && (!item.imageUrls || item.imageUrls.length === 0)) && (!item.videoUrl && (!item.videoUrls || item.videoUrls.length === 0))) {
             return (

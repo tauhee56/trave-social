@@ -3,17 +3,7 @@
  * Support for @mentions and #hashtags in posts and comments
  */
 
-import {
-    arrayUnion,
-    collection,
-    doc,
-    getDocs,
-    query,
-    serverTimestamp,
-    updateDoc,
-    where,
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
+// import { apiService } from '../app/_services/apiService';
 
 export interface Mention {
   userId: string;
@@ -88,27 +78,8 @@ export function extractHashtags(text: string): Hashtag[] {
  */
 export async function validateMentions(mentions: Mention[]): Promise<Mention[]> {
   try {
-    const validated: Mention[] = [];
-
-    for (const mention of mentions) {
-      // Search for user by username
-      const usersQuery = query(
-        collection(db, 'users'),
-        where('userName', '==', mention.username)
-      );
-
-      const snapshot = await getDocs(usersQuery);
-
-      if (!snapshot.empty) {
-        const userId = snapshot.docs[0].id;
-        validated.push({
-          ...mention,
-          userId,
-        });
-      }
-    }
-
-    return validated;
+    const res = await apiService.post('/mentions/validate', { mentions });
+    return Array.isArray(res) ? res : [];
   } catch (error) {
     console.error('Validate mentions error:', error);
     return [];
@@ -126,26 +97,13 @@ export async function sendMentionNotification(
   contentText?: string
 ): Promise<boolean> {
   try {
-    // Get mentioner's profile
-    const { getDoc, doc: firestoreDoc } = await import('firebase/firestore');
-    const mentionerSnapshot = await getDoc(firestoreDoc(db, 'users', mentionedBy));
-    const mentionerDoc = mentionerSnapshot.data();
-
-    // Create notification
-    await updateDoc(doc(db, 'users', userId), {
-      notifications: arrayUnion({
-        type: 'mention',
-        senderId: mentionedBy,
-        senderName: mentionerDoc?.displayName || 'Unknown',
-        senderAvatar: mentionerDoc?.avatar,
-        contentId,
-        contentType,
-        contentPreview: contentText?.substring(0, 100),
-        createdAt: serverTimestamp(),
-        read: false,
-      }),
+    await apiService.post('/mentions/notify', {
+      userId,
+      mentionedBy,
+      contentId,
+      contentType,
+      contentText,
     });
-
     return true;
   } catch (error) {
     console.error('Send mention notification error:', error);
@@ -158,26 +116,7 @@ export async function sendMentionNotification(
  */
 export async function trackHashtag(hashtag: string): Promise<boolean> {
   try {
-    const hashtagRef = doc(db, 'hashtags', hashtag.toLowerCase());
-
-    await updateDoc(hashtagRef, {
-      usageCount: arrayUnion(1),
-      lastUsed: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    }).catch(async () => {
-      // Create if doesn't exist
-      await (
-        await import('firebase/firestore').then(({ setDoc }) =>
-          setDoc(hashtagRef, {
-            tag: hashtag,
-            usageCount: 1,
-            createdAt: serverTimestamp(),
-            lastUsed: serverTimestamp(),
-          })
-        )
-      );
-    });
-
+    await apiService.post('/hashtags/track', { hashtag });
     return true;
   } catch (error) {
     console.error('Track hashtag error:', error);
@@ -190,21 +129,8 @@ export async function trackHashtag(hashtag: string): Promise<boolean> {
  */
 export async function getTrendingHashtags(limit: number = 10): Promise<Hashtag[]> {
   try {
-    const hashtagsQuery = query(
-      collection(db, 'hashtags'),
-      ...[
-        // Add orderBy('usageCount', 'desc') when available
-      ]
-    );
-
-    const snapshot = await getDocs(hashtagsQuery);
-    const hashtags = snapshot.docs.map((doc) => ({
-      tag: doc.data().tag,
-      index: 0,
-      postCount: doc.data().usageCount || 0,
-    }));
-
-    return hashtags.slice(0, limit);
+    const res = await apiService.get('/hashtags/trending', { limit });
+    return Array.isArray(res) ? res : [];
   } catch (error) {
     console.error('Get trending hashtags error:', error);
     return [];
@@ -271,16 +197,8 @@ export async function processContentMetadata(
  */
 export async function getPostsByHashtag(hashtag: string): Promise<any[]> {
   try {
-    const postsQuery = query(
-      collection(db, 'posts'),
-      where('hashtags', 'array-contains', hashtag.toLowerCase())
-    );
-
-    const snapshot = await getDocs(postsQuery);
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const res = await apiService.get('/hashtags/posts', { hashtag });
+    return Array.isArray(res) ? res : [];
   } catch (error) {
     console.error('Get posts by hashtag error:', error);
     return [];
@@ -292,16 +210,8 @@ export async function getPostsByHashtag(hashtag: string): Promise<any[]> {
  */
 export async function getUserMentions(userId: string): Promise<any[]> {
   try {
-    const postsQuery = query(
-      collection(db, 'posts'),
-      where('mentions.userId', 'array-contains', userId)
-    );
-
-    const snapshot = await getDocs(postsQuery);
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const res = await apiService.get('/mentions', { userId });
+    return Array.isArray(res) ? res : [];
   } catch (error) {
     console.error('Get mentions error:', error);
     return [];

@@ -1,11 +1,10 @@
 import { Feather } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { collection, deleteDoc, doc, getDocs } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../config/firebase';
+import { auth } from '../config/firebase';
 import { useUser } from './_components/UserContext';
 
 interface BlockedUser {
@@ -32,46 +31,10 @@ export default function SettingsScreen() {
     if (!user?.uid) return;
     setLoading(true);
     try {
-      const blockedRef = collection(db, 'users', user.uid, 'blocked');
-      const snap = await getDocs(blockedRef);
-      const blocked: BlockedUser[] = [];
-      
-      // Fetch user details for each blocked user
-      for (const docSnap of snap.docs) {
-        const userId = docSnap.id;
-        const data = docSnap.data();
-        
-        // Try to get user profile
-        let name = 'Unknown User';
-        let avatar = '';
-        let username = '';
-        
-        try {
-          const { doc, getDoc } = await import('firebase/firestore');
-          const userSnap = await getDoc(doc(db, 'users', userId));
-          if (userSnap.exists()) {
-            const userData: any = userSnap.data();
-            name = userData.name || userData.displayName || 'Unknown User';
-            avatar = userData.avatar || userData.photoURL || '';
-            username = userData.username || '';
-          }
-        } catch (e) {
-          console.warn('Failed to fetch user details:', e);
-        }
-        
-        blocked.push({
-          id: docSnap.id,
-          userId,
-          blockedAt: data.blockedAt || Date.now(),
-          name,
-          avatar,
-          username,
-        });
-      }
-      
-      setBlockedUsers(blocked);
+      // TODO: Implement backend API to fetch blocked users
     } catch (e) {
-      console.error('Failed to load blocked users:', e);
+      console.warn('Failed to fetch blocked users:', e);
+      setBlockedUsers([]);
     }
     setLoading(false);
   };
@@ -89,7 +52,10 @@ export default function SettingsScreen() {
           onPress: async () => {
             setUnblocking(userId);
             try {
-              await deleteDoc(doc(db, 'users', user.uid, 'blocked', userId));
+              // TODO: Implement backend API to unblock user
+              // const response = await fetch(`/api/users/${user.uid}/blocked/${userId}`, {
+              //   method: 'DELETE'
+              // });
               setBlockedUsers(prev => prev.filter(u => u.userId !== userId));
               Alert.alert('Success', 'User unblocked');
             } catch (e) {

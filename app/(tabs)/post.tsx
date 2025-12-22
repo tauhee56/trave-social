@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { createPost, getCurrentUser, searchUsers } from '../../lib/firebaseHelpers/index';
+import { createPost, searchUsers } from '../../lib/firebaseHelpers/index';
 import VerifiedBadge from '../_components/VerifiedBadge';
 
 // Runtime import of ImagePicker with graceful fallback
@@ -23,7 +23,7 @@ const MOCK_LOCATIONS = [
 
 export default function PostScreen() {
     // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+    const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
   const router = useRouter();
   const [caption, setCaption] = useState('');
   const [location, setLocation] = useState<any>(null);
@@ -107,12 +107,13 @@ export default function PostScreen() {
       return;
     }
     
-    const user = getCurrentUser() as { uid: string } | null;
-    if (!user || !user.uid) {
-      Alert.alert('Not signed in', 'Please sign in to create a post');
-      router.replace('/auth/welcome');
-      return;
-    }
+    // const user = getCurrentUser() as { uid: string } | null;
+    // if (!user || !user.uid) {
+    //   Alert.alert('Not signed in', 'Please sign in to create a post');
+    //   router.replace('/auth/welcome');
+    //   return;
+    // }
+    // TODO: Use user from context or props
     
     setLoading(true);
     try {

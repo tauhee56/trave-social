@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, FlatList, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import CustomButton from '../_components/auth/CustomButton';
+import CustomButton from '../../src/_components/auth/CustomButton';
 
 // Popular countries list
 const COUNTRIES = [

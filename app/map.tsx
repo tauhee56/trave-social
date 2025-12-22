@@ -4,12 +4,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Dimensions, PermissionsAndroid, Platform, Share, StyleSheet, Text, View } from 'react-native';
 // import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
-import { collection, query as firestoreQuery, getDocs, where } from 'firebase/firestore';
+// Firestore imports removed
 import MapView, { Marker, Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PostLocationModal } from '../components/PostLocationModal';
-import { db } from '../config/firebase';
-import { getAllPosts, getCurrentUser } from '../lib/firebaseHelpers';
+// Firebase imports removed - using backend API
+import { getAllPosts } from '../lib/firebaseHelpers';
 import { addComment } from '../lib/firebaseHelpers/comments';
 import { getOptimizedImageUrl } from '../lib/imageHelpers';
 
@@ -136,11 +136,12 @@ export default function MapScreen() {
       async function handleModalComment(post: PostType) {
         if (!modalComment[post.id] || !modalComment[post.id].trim()) return;
 
-        const currentUser = getCurrentUser();
-        if (!currentUser) {
-          console.log('❌ User not logged in');
-          return;
-        }
+        // const currentUser = getCurrentUser();
+        // if (!currentUser) {
+        //   console.log('❌ User not logged in');
+        //   return;
+        // }
+        // TODO: Use user from context or props
 
         const commentText = modalComment[post.id].trim();
 
@@ -164,7 +165,7 @@ export default function MapScreen() {
         }
       }
     // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+    const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
   const router = useRouter();
   const params = useLocalSearchParams();
   const initialQuery = (params.q as string) || '';
@@ -224,23 +225,19 @@ export default function MapScreen() {
   useEffect(() => {
     const fetchLiveStreams = async () => {
       try {
-        const liveStreamsRef = collection(db, 'liveStreams');
-        const liveQuery = firestoreQuery(liveStreamsRef, where('isLive', '==', true));
-        const snapshot = await getDocs(liveQuery);
-
-        const streams: LiveStream[] = [];
-        snapshot.forEach((doc) => {
-          streams.push({
-            id: doc.id,
-            ...doc.data()
-          } as LiveStream);
-        });
-
+        // Fetch live streams from backend API
+        const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.209:5000'}/api/livestreams?isLive=true`);
+        if (!response.ok) throw new Error('Failed to fetch live streams');
+        
+        const data = await response.json();
+        const streams = Array.isArray(data) ? data : data.data || [];
+        
         // Sort by viewer count
-        streams.sort((a, b) => (b.viewerCount || 0) - (a.viewerCount || 0));
+        streams.sort((a: any, b: any) => (b.viewerCount || 0) - (a.viewerCount || 0));
         setLiveStreams(streams);
       } catch (error) {
         console.error('Error fetching live streams:', error);
+        setLiveStreams([]);
       }
     };
 

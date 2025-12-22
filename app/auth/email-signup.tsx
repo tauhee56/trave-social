@@ -4,8 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signUpUser } from '../../lib/firebaseHelpers';
-import CustomButton from '../_components/auth/CustomButton';
-import SocialButton from '../_components/auth/SocialButton';
+import CustomButton from '../../src/_components/auth/CustomButton';
+import SocialButton from '../../src/_components/auth/SocialButton';
 
 export default function EmailSignUpScreen() {
   const router = useRouter();

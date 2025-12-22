@@ -1,11 +1,10 @@
 
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { collection, getDocs, getFirestore, query, where } from 'firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCurrentUser } from '../lib/firebaseHelpers';
+import { auth } from '../config/firebase';
 
 type SavedPost = {
   id: string;
@@ -21,32 +20,18 @@ export default function SavedScreen() {
   useEffect(() => {
     async function fetchSavedPosts() {
       setLoading(true);
-      const user = getCurrentUser();
+      const user = auth.currentUser;
       if (!user) {
         setPosts([]);
         setLoading(false);
         return;
       }
       try {
-        const db = getFirestore();
-        // Assume saved posts are stored in users/{uid}/saved collection as doc with postId
-        const savedRef = collection(db, 'users', user.uid, 'saved');
-        const savedSnap = await getDocs(savedRef);
-        const postIds = savedSnap.docs.map(doc => doc.id);
-        if (postIds.length === 0) {
-          setPosts([]);
-          setLoading(false);
-          return;
-        }
-        // Fetch post data for each saved postId
-        const postsQuery = query(collection(db, 'posts'), where('__name__', 'in', postIds));
-        const postsSnap = await getDocs(postsQuery);
-        const postList = postsSnap.docs.map(doc => ({
-          id: doc.id,
-          imageUrl: doc.data().imageUrl || (doc.data().imageUrls && doc.data().imageUrls[0]) || '',
-          // add more fields if needed
-        }));
-        setPosts(postList);
+        // TODO: Implement backend API call to fetch saved posts
+        // const response = await fetch(`/api/users/${user.uid}/saved`);
+        // const data = await response.json();
+        // setPosts(data);
+        setPosts([]);
       } catch (e) {
         setPosts([]);
       }

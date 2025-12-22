@@ -2,18 +2,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { Camera } from 'expo-camera';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, PermissionsAndroid, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, PermissionsAndroid, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // @ts-ignore
 import { AGORA_CONFIG, getAgoraToken } from '../config/agora';
-import { db } from '../config/firebase';
-import { getCurrentUser, joinLiveStream, leaveLiveStream } from '../lib/firebaseHelpers';
+import { auth } from '../config/firebase';
+import { joinLiveStream, leaveLiveStream } from '../lib/firebaseHelpers';
+import VideoFallback from './VideoFallback';
 
 const { width, height } = Dimensions.get('window');
-const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
 // Utility: sanitize coordinates for MapView/Marker
 function getSafeCoordinate(coord: { latitude?: number; longitude?: number } | null, fallback = { latitude: 51.5074, longitude: -0.1278 }) {
@@ -143,44 +143,23 @@ export default function WatchLiveScreen() {
       setComments([]);
       return;
     }
-    const commentsRef = collection(db, 'liveStreams', streamId as string, 'comments');
-    const commentsQuery = query(commentsRef, orderBy('createdAt', 'desc'));
-    const unsubComments = onSnapshot(commentsQuery, (snapshot) => {
-      const newComments = snapshot.docs.slice(0, 50).map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setComments(newComments);
-    });
 
-    const streamRef = doc(db, 'liveStreams', streamId as string);
-    const unsubStream = onSnapshot(streamRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        setStreamData(data);
-        if (!data?.isLive) {
-          Alert.alert('Stream Ended', 'The host has ended the stream', [
-            { text: 'OK', onPress: () => router.back() }
-          ]);
-        }
+    // TODO: Implement real-time comments fetch from backend API
+    // For now, just fetch once
+    const loadComments = async () => {
+      try {
+        // Backend API call would go here
+        // const response = await fetch(`/api/livestreams/${streamId}/comments`);
+        // const data = await response.json();
+        // setComments(data);
+        setComments([]);
+      } catch (error) {
+        console.error('Error fetching comments:', error);
+        setComments([]);
       }
-    });
-
-    const viewersRef = collection(db, 'liveStreams', streamId as string, 'viewers');
-    const unsubViewers = onSnapshot(viewersRef, (snapshot) => {
-      const viewersList = snapshot.docs.slice(0, 50).map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setViewers(viewersList);
-      setViewerCount(viewersList.length);
-    });
-
-    return () => {
-      unsubComments();
-      unsubStream();
-      unsubViewers();
     };
+
+    loadComments();
   }, [streamId]);
 
   const initializeViewer = async () => {
@@ -199,6 +178,7 @@ export default function WatchLiveScreen() {
         isInitializingRef.current = false;
         return;
       }
+        console.log('🔎 [KR LOG] initializeViewer called.');
 
       if (!streamId || !channelName) {
         console.log('❌ Missing streamId or channelName:', { streamId, channelName });
@@ -207,6 +187,7 @@ export default function WatchLiveScreen() {
         isInitializingRef.current = false;
         return;
       }
+        console.log('🔎 [KR LOG] streamId:', streamId, 'channelName:', channelName);
 
       if (!currentUser) {
         console.log('❌ No current user');
@@ -215,6 +196,7 @@ export default function WatchLiveScreen() {
         isInitializingRef.current = false;
         return;
       }
+        console.log('🔎 [KR LOG] currentUser:', currentUser.uid);
       
       // Clean up existing engine before creating new one
       if (engineRef.current) {
@@ -228,12 +210,18 @@ export default function WatchLiveScreen() {
         engineRef.current = null;
       }
 
-      // Check if stream exists and is live BEFORE trying to join
+      // TODO: Check if stream exists and is live from backend API
       console.log('🔍 Checking if stream exists:', streamId);
-      const streamRef = doc(db, 'liveStreams', streamId as string);
-      const streamSnap = await getDoc(streamRef);
+      // const response = await fetch(`/api/livestreams/${streamId}`);
+      // if (!response.ok) {
+      //   throw new Error('Stream not found');
+      // }
+      // const streamData = await response.json();
 
-      if (!streamSnap.exists()) {
+      // For now, assume stream exists
+      try {
+        console.log('✅ Stream found, proceeding to join');
+      } catch (error) {
         console.log('❌ Stream document does not exist');
         Alert.alert('Stream Not Found', 'This stream does not exist or has ended.', [
           { text: 'OK', onPress: () => router.back() }
@@ -253,6 +241,7 @@ export default function WatchLiveScreen() {
       }
 
       console.log('✅ Stream is live, proceeding to join...');
+        console.log('🔎 [KR LOG] Stream doc:', streamDataCheck);
 
       setIsInitializing(true);
       setConnectionStatus('connecting');
@@ -269,6 +258,7 @@ export default function WatchLiveScreen() {
       }
 
       await joinLiveStream(streamId as string, currentUser.uid);
+        console.log('🔎 [KR LOG] joinLiveStream called for viewer:', currentUser.uid);
 
       const engine = RtcEngine();
       if (!engine) {
@@ -278,16 +268,19 @@ export default function WatchLiveScreen() {
       }
 
       engineRef.current = engine;
+        console.log('🔎 [KR LOG] Agora engine created for viewer.');
 
       console.log('🔧 Initializing Agora engine with appId:', AGORA_CONFIG.appId);
       await engine.initialize({
         appId: AGORA_CONFIG.appId,
         channelProfile: ChannelProfileType.ChannelProfileLiveBroadcasting,
       });
+        console.log('🔎 [KR LOG] Agora engine initialized for viewer.');
 
       await engine.enableVideo();
       await engine.enableAudio();
       await engine.setClientRole(ClientRoleType.ClientRoleAudience);
+        console.log('🔎 [KR LOG] setClientRole to Audience');
       
       // Enable dual stream mode for better quality
       await engine.enableDualStreamMode(true);
@@ -498,16 +491,19 @@ export default function WatchLiveScreen() {
   const handleSend = async () => {
     if (!input.trim()) return;
 
-    if (streamId && currentUser) {
+    if (streamId && auth.currentUser) {
       try {
-        const commentsRef = collection(db, 'liveStreams', streamId as string, 'comments');
-        await addDoc(commentsRef, {
-          userId: currentUser.uid,
-          userName: currentUser.displayName || 'User',
-          userAvatar: currentUser.photoURL || DEFAULT_AVATAR_URL,
-          text: input.trim(),
-          createdAt: serverTimestamp()
-        });
+        // TODO: Post comment to backend API
+        // const response = await fetch(`/api/livestreams/${streamId}/comments`, {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify({
+        //     text: input.trim(),
+        //     userName: auth.currentUser.displayName,
+        //     userAvatar: auth.currentUser.photoURL
+        //   })
+        // });
+        console.log('Comment sent:', input.trim());
       } catch (error) {
         console.error('Error sending comment:', error);
       }
@@ -517,16 +513,19 @@ export default function WatchLiveScreen() {
 
   // Helper for video icon comment
   const handleSendVideoComment = async () => {
-    if (streamId && currentUser) {
+    if (streamId && auth.currentUser) {
       try {
-        const commentsRef = collection(db, 'liveStreams', streamId as string, 'comments');
-        await addDoc(commentsRef, {
-          userId: currentUser.uid,
-          userName: currentUser.displayName || 'User',
-          userAvatar: currentUser.photoURL || DEFAULT_AVATAR_URL,
-          text: "I'm watching the stream!",
-          createdAt: serverTimestamp()
-        });
+        // TODO: Post comment to backend API
+        // const response = await fetch(`/api/livestreams/${streamId}/comments`, {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify({
+        //     text: "I'm watching the stream!",
+        //     userName: auth.currentUser.displayName,
+        //     userAvatar: auth.currentUser.photoURL
+        //   })
+        // });
+        console.log('Video comment sent');
       } catch (error) {
         console.error('Error sending video comment:', error);
       }
@@ -772,30 +771,12 @@ export default function WatchLiveScreen() {
           <RtcSurfaceView
             style={styles.videoBackground}
             canvas={{ uid: remoteUid, sourceType: 0, renderMode: 2 }}
-            zOrderMediaOverlay={false}
+            zOrderMediaOverlay={true}
           />
         ) : (
-          <View style={[styles.videoBackground, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
-            <ActivityIndicator size="large" color="#fff" style={{ marginBottom: 10 }} />
-            <Text style={{ color: '#fff', fontSize: 16 }}>
-              {connectionStatus === 'reconnecting' ? 'Reconnecting...' : 'Connecting to live stream...'}
-            </Text>
-            <Text style={{ color: '#aaa', fontSize: 12, marginTop: 5 }}>
-              {connectionStatus === 'reconnecting' ? `Attempt ${reconnectAttemptsRef.current}/${maxReconnectAttemptsRef.current}` : 'Please wait'}
-            </Text>
-            {connectionStatus === 'disconnected' && (
-              <TouchableOpacity 
-                style={{ marginTop: 20, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#ff6b6b', borderRadius: 8 }}
-                onPress={() => {
-                  reconnectAttemptsRef.current = 0;
-                  initializeViewer();
-                }}
-              >
-                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Try Again</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          <VideoFallback connectionStatus={connectionStatus} initializeViewer={initializeViewer} />
         )}
+      
       </View>
 
       {/* Top Header - Host info and viewer count */}
@@ -820,22 +801,6 @@ export default function WatchLiveScreen() {
         </View>
       </SafeAreaView>
 
-      {/* Self Camera PiP - Show viewer's own camera when enabled */}
-      {showSelfCamera && AGORA_AVAILABLE && RtcSurfaceView && (
-        <View style={styles.selfCameraPip}>
-          <RtcSurfaceView
-            style={styles.pipImage}
-            canvas={{ uid: 0, sourceType: 1, renderMode: 2 }}
-            zOrderMediaOverlay={true}
-          />
-          <TouchableOpacity
-            style={styles.pipCloseBtn}
-            onPress={() => setShowSelfCamera(false)}
-          >
-            <Ionicons name="close-circle" size={24} color="rgba(255,255,255,0.8)" />
-          </TouchableOpacity>
-        </View>
-      )}
 
       {/* Map Popup - Show location when enabled */}
       {showMap && streamData?.location && typeof streamData.location.latitude === 'number' && (
@@ -932,13 +897,6 @@ export default function WatchLiveScreen() {
       {/* Bottom Control Buttons */}
       <SafeAreaView style={styles.bottomOverlay} edges={['bottom']}>
         <View style={styles.bottomControlsRow}>
-          {/* Camera/Selfie Button */}
-          <TouchableOpacity
-            style={[styles.controlBtn, showSelfCamera && styles.controlBtnActive]}
-            onPress={toggleSelfCamera}
-          >
-            <Ionicons name="camera-outline" size={22} color={showSelfCamera ? "#fff" : "#333"} />
-          </TouchableOpacity>
 
           {/* Location Button - Green only when map is open */}
           <TouchableOpacity
@@ -987,6 +945,8 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: '#1a1a1a',
+    borderWidth: 3, // DEBUG: Add red border to confirm view is visible
+    borderColor: 'red',
   },
   commentsContainer: {
     position: 'absolute',

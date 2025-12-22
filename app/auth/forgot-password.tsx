@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../../config/firebase';
-import CustomButton from '../_components/auth/CustomButton';
+import CustomButton from '../../src/_components/auth/CustomButton';
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();

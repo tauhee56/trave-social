@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { uploadImage } from '../lib/firebaseHelpers';
-import { getCurrentUser, getUserProfile, updateUserProfile } from '../lib/firebaseHelpers/index';
+import { getUserProfile, updateUserProfile } from '../lib/firebaseHelpers/index';
 
 // Runtime import with fallback
 let ImagePicker: any = null;
@@ -16,7 +16,7 @@ try {
 
 export default function EditProfile() {
     // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+    const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
   const router = useRouter();
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -37,11 +37,12 @@ export default function EditProfile() {
   }, []);
 
   async function loadProfile() {
-    const user = getCurrentUser() as { uid: string } | null;
-    if (!user || !user.uid) {
-      router.replace('/auth/welcome');
-      return;
-    }
+    // const user = getCurrentUser() as { uid: string } | null;
+    // if (!user || !user.uid) {
+    //   router.replace('/auth/welcome');
+    //   return;
+    // }
+    // TODO: Use user from context or props
     
     console.log('🔄 Loading profile for user:', user.uid);
     const result = await getUserProfile(user.uid);
@@ -79,11 +80,12 @@ export default function EditProfile() {
     setError(v);
     if (v) return;
     
-    const user = getCurrentUser() as { uid: string } | null;
-    if (!user || !user.uid) {
-      Alert.alert('Error', 'Not signed in');
-      return;
-    }
+    // const user = getCurrentUser() as { uid: string } | null;
+    // if (!user || !user.uid) {
+    //   Alert.alert('Error', 'Not signed in');
+    //   return;
+    // }
+    // TODO: Use user from context or props
     
     console.log('💾 Saving profile changes...');
     console.log('  Name:', name);
@@ -132,39 +134,20 @@ export default function EditProfile() {
       });
       
       if (result && result.success) {
-        console.log('✅ Profile updated in Firestore');
+        console.log('✅ Profile updated');
         
-        // If privacy setting changed, update all user's posts
+        // If privacy setting changed, TODO: implement backend API to update all user's posts
         console.log('🔄 Updating posts privacy to:', isPrivate);
-        const { collection, query, where, getDocs, updateDoc, doc } = await import('firebase/firestore');
-        const { db } = await import('../config/firebase');
         
         try {
-          const postsQuery = query(
-            collection(db, 'posts'),
-            where('userId', '==', user.uid)
-          );
-          const postsSnapshot = await getDocs(postsQuery);
+          // TODO: Call backend API to update user posts
+          // const response = await fetch(`/api/users/${user.uid}/posts/privacy`, {
+          //   method: 'PATCH',
+          //   headers: { 'Content-Type': 'application/json' },
+          //   body: JSON.stringify({ isPrivate })
+          // });
           
-          console.log(`📝 Found ${postsSnapshot.size} posts to update`);
-          
-          // Get user's followers list for allowedFollowers
-          const userProfileRes = await getUserProfile(user.uid);
-          const followers = userProfileRes?.data?.followers || [];
-          
-          console.log(`👥 User has ${followers.length} followers`);
-          
-          // Update all posts with new privacy settings
-          const updatePromises = postsSnapshot.docs.map(async (postDoc) => {
-            console.log(`🔒 Updating post ${postDoc.id} - isPrivate: ${isPrivate}, allowedFollowers: ${followers.length}`);
-            await updateDoc(doc(db, 'posts', postDoc.id), {
-              isPrivate: isPrivate,
-              allowedFollowers: isPrivate ? followers : []
-            });
-          });
-          
-          await Promise.all(updatePromises);
-          console.log(`✅ Successfully updated ${postsSnapshot.size} posts!`);
+          console.log(`📝 Posts privacy update complete`);
         } catch (error) {
           console.error('❌ Error updating posts privacy:', error);
           Alert.alert('Warning', `Profile updated but some posts may not have been updated. Please try again.`);

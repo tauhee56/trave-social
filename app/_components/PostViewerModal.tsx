@@ -273,15 +273,17 @@ export default function PostViewerModal({
                 const post = posts[currentPostIndex];
                 if (!authUser?.uid || !post) return;
                 try {
-                  const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
-                  const { db } = await import('../../config/firebase');
-                  await addDoc(collection(db, 'reports'), {
-                    type: 'post',
-                    postId: post.id,
-                    reportedUserId: post.userId,
-                    reportedBy: authUser.uid,
-                    createdAt: serverTimestamp(),
-                  });
+                  // TODO: Implement backend API to report post
+                  // const response = await fetch('/api/reports', {
+                  //   method: 'POST',
+                  //   headers: { 'Content-Type': 'application/json' },
+                  //   body: JSON.stringify({
+                  //     type: 'post',
+                  //     postId: post.id,
+                  //     reportedUserId: post.userId,
+                  //     reportedBy: authUser.uid
+                  //   })
+                  // });
                   Alert.alert('Reported', 'Thanks. We will review this post.');
                 } catch (e) {
                   Alert.alert('Error', 'Failed to report. Try again later.');
@@ -299,12 +301,12 @@ export default function PostViewerModal({
                   {
                     text: 'Block', style: 'destructive', onPress: async () => {
                       try {
-                        const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
-                        const { db } = await import('../../config/firebase');
-                        await addDoc(collection(db, 'users', uid, 'blocked'), {
-                          userId: post.userId,
-                          createdAt: serverTimestamp(),
-                        });
+                        // TODO: Implement backend API to block user
+                        // const response = await fetch(`/api/users/${uid}/blocked`, {
+                        //   method: 'POST',
+                        //   headers: { 'Content-Type': 'application/json' },
+                        //   body: JSON.stringify({ blockedUserId: post.userId })
+                        // });
                         onClose();
                       } catch (e) {
                         console.error('Failed to block user:', e);

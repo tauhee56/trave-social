@@ -1,23 +1,23 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { AVPlaybackStatus, ResizeMode, Video } from 'expo-av';
-import { doc, getDoc, collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+// Firestore imports removed
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  FlatList,
-  Image,
-  Pressable,
-  KeyboardAvoidingView,
-  Modal,
-  PanResponder,
-  Platform,
-  Text,
-  TextInput,
-  ToastAndroid,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    FlatList,
+    Image,
+    KeyboardAvoidingView,
+    Modal,
+    PanResponder,
+    Platform,
+    Pressable,
+    Text,
+    TextInput,
+    ToastAndroid,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../config/firebase';
@@ -57,7 +57,7 @@ interface StoryComment {
 
 export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { stories: Story[]; onClose: () => void; initialIndex?: number }) {
     // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+    const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [progress, setProgress] = useState(0);
   const [imageLoading, setImageLoading] = useState(true);
@@ -131,11 +131,11 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
   useEffect(() => {
     async function fetchLatestAvatar() {
       if (currentUser?.uid) {
-        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setLatestAvatar(userData.avatar || userData.photoURL || null);
-        }
+        // TODO: Backend API to fetch user avatar
+        // const response = await fetch(`/api/users/${currentUser.uid}`);
+        // const data = await response.json();
+        // setLatestAvatar(data.avatar || data.photoURL || null);
+        setLatestAvatar(currentUser.photoURL || null);
       }
     }
     fetchLatestAvatar();
@@ -152,10 +152,12 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
     async function applyBlockedFilter() {
       try {
         if (!currentUser?.uid) return;
-        const blockedRef = collection(db, 'users', currentUser.uid, 'blocked');
-        const snap = await getDocs(blockedRef);
+        // TODO: Implement backend API to fetch blocked users list
+        // const response = await fetch(`/api/users/${currentUser.uid}/blocked`);
+        // const data = await response.json();
+        // const blockedIds = new Set(data.map((u: any) => u.userId));
+        
         const blockedIds = new Set<string>();
-        snap.forEach(docu => blockedIds.add(docu.id));
         setLocalStories(prev => prev.filter(s => !blockedIds.has(s.userId)));
         // Adjust index if filtered list shrinks before currentIndex
         setCurrentIndex(idx => {
@@ -466,13 +468,17 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
               onPress={async () => {
                 if (!currentUser?.uid) return;
                 try {
-                  await addDoc(collection(db, 'reports'), {
-                    type: 'story',
-                    storyId: currentStory.id,
-                    reportedUserId: currentStory.userId,
-                    reportedBy: currentUser.uid,
-                    createdAt: serverTimestamp(),
-                  });
+                  // TODO: Implement backend API to report story
+                  // const response = await fetch('/api/reports', {
+                  //   method: 'POST',
+                  //   headers: { 'Content-Type': 'application/json' },
+                  //   body: JSON.stringify({
+                  //     type: 'story',
+                  //     storyId: currentStory.id,
+                  //     reportedUserId: currentStory.userId,
+                  //     reportedBy: currentUser.uid
+                  //   })
+                  // });
                   if (Platform.OS === 'android') {
                     ToastAndroid.show('Story reported. Thanks!', ToastAndroid.SHORT);
                   } else {
@@ -496,10 +502,12 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
                   {
                     text: 'Block', style: 'destructive', onPress: async () => {
                       try {
-                        await addDoc(collection(db, 'users', currentUser.uid, 'blocked'), {
-                          userId: currentStory.userId,
-                          createdAt: serverTimestamp(),
-                        });
+                        // TODO: Implement backend API to block user
+                        // const response = await fetch(`/api/users/${currentUser.uid}/blocked`, {
+                        //   method: 'POST',
+                        //   headers: { 'Content-Type': 'application/json' },
+                        //   body: JSON.stringify({ blockedUserId: currentStory.userId })
+                        // });
                         setLocalStories(prev => prev.filter(s => s.userId !== currentStory.userId));
                         setCurrentIndex(0);
                         if (Platform.OS === 'android') {

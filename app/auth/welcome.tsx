@@ -3,9 +3,9 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { handleSocialAuthResult, signInWithApple, signInWithGoogle, signInWithSnapchat, signInWithTikTok } from '../../services/socialAuthService';
-import CustomButton from '../_components/auth/CustomButton';
-import SocialButton from '../_components/auth/SocialButton';
-import { fetchLogoUrl } from '../_services/brandingService';
+import CustomButton from '../../src/_components/auth/CustomButton';
+import SocialButton from '../../src/_components/auth/SocialButton';
+import fetchLogoUrl from '../../src/_services/brandingService';
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -98,7 +98,7 @@ export default function WelcomeScreen() {
             <ActivityIndicator size="large" color="#f39c12" style={{ marginBottom: 32 }} />
           ) : (
             <Image
-              source={{ uri: logoUrl || 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2Flogo.png?alt=media&token=e1db7a0b-4fb0-464a-82bc-44255729d46e' }}
+              source={{ uri: logoUrl || 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/logo/logo.png' }}
               style={styles.logo}
               accessibilityLabel="App Logo"
             />

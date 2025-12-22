@@ -3,25 +3,7 @@
  * Firestore structure for group conversations
  */
 
-import {
-    addDoc,
-    arrayRemove,
-    arrayUnion,
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    limit,
-    orderBy,
-    query,
-    serverTimestamp,
-    Timestamp,
-    updateDoc,
-    where,
-} from 'firebase/firestore';
-import {
-    db,
-} from '../config/firebase';
+import { apiService } from '../app/_services/apiService';
 
 /**
  * Firestore Collection Structure:
@@ -106,42 +88,8 @@ export async function createGroupChat(
   creatorId: string,
   groupData: Partial<GroupChat>
 ): Promise<string> {
-  try {
-    const newGroup: GroupChat = {
-      name: groupData.name || 'New Group',
-      description: groupData.description || '',
-      avatar: groupData.avatar,
-      members: [creatorId, ...(groupData.members || [])],
-      admins: [creatorId],
-      createdBy: creatorId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      isPublic: groupData.isPublic ?? false,
-      maxMembers: groupData.maxMembers ?? 100,
-      currentMemberCount: 1 + (groupData.members?.length || 0),
-    };
-
-    const docRef = await addDoc(collection(db, 'groupChats'), newGroup);
-    
-    // Create member entries for all initial members
-    for (const memberId of newGroup.members) {
-      await updateDoc(
-        doc(db, 'groupChats', docRef.id, 'members', memberId),
-        {
-          userId: memberId,
-          joinedAt: new Date(),
-          role: memberId === creatorId ? 'admin' : 'member',
-          isMuted: false,
-          notifications: 'all',
-        }
-      );
-    }
-
-    return docRef.id;
-  } catch (error) {
-    console.error('Create group chat error:', error);
-    throw error;
-  }
+  const res = await apiService.post('/group-chats', { creatorId, ...groupData });
+  return res?.id || res?._id || '';
 }
 
 /**
@@ -152,50 +100,8 @@ export async function addGroupMember(
   userId: string,
   role: 'member' | 'moderator' | 'admin' = 'member'
 ): Promise<boolean> {
-  try {
-    const groupRef = doc(db, 'groupChats', groupId);
-    const groupSnapshot = await getDoc(groupRef);
-
-    if (!groupSnapshot.exists()) {
-      throw new Error('Group not found');
-    }
-
-    const group = groupSnapshot.data() as GroupChat;
-
-    // Check if already member
-    if (group.members.includes(userId)) {
-      return false;
-    }
-
-    // Check max members limit
-    if (group.maxMembers > 0 && group.currentMemberCount >= group.maxMembers) {
-      throw new Error('Group is full');
-    }
-
-    // Add to members array
-    await updateDoc(groupRef, {
-      members: arrayUnion(userId),
-      currentMemberCount: group.currentMemberCount + 1,
-      updatedAt: serverTimestamp(),
-    });
-
-    // Create member entry
-    await updateDoc(
-      doc(db, 'groupChats', groupId, 'members', userId),
-      {
-        userId,
-        joinedAt: new Date(),
-        role,
-        isMuted: false,
-        notifications: 'all',
-      }
-    );
-
-    return true;
-  } catch (error) {
-    console.error('Add member error:', error);
-    throw error;
-  }
+  await apiService.post(`/group-chats/${groupId}/members`, { userId, role });
+  return true;
 }
 
 /**
@@ -205,40 +111,8 @@ export async function removeGroupMember(
   groupId: string,
   userId: string
 ): Promise<boolean> {
-  try {
-    const groupRef = doc(db, 'groupChats', groupId);
-    const groupSnapshot = await getDoc(groupRef);
-
-    if (!groupSnapshot.exists()) {
-      throw new Error('Group not found');
-    }
-
-    const group = groupSnapshot.data() as GroupChat;
-
-    if (!group.members.includes(userId)) {
-      return false;
-    }
-
-    // Remove from members
-    await updateDoc(groupRef, {
-      members: arrayRemove(userId),
-      currentMemberCount: Math.max(0, group.currentMemberCount - 1),
-      updatedAt: serverTimestamp(),
-    });
-
-    // Remove member entry
-    await updateDoc(
-      doc(db, 'groupChats', groupId, 'members', userId),
-      {
-        leftAt: new Date(),
-      }
-    );
-
-    return true;
-  } catch (error) {
-    console.error('Remove member error:', error);
-    throw error;
-  }
+  await apiService.delete(`/group-chats/${groupId}/members/${userId}`);
+  return true;
 }
 
 /**
@@ -249,32 +123,8 @@ export async function promoteGroupMember(
   userId: string,
   role: 'admin' | 'moderator'
 ): Promise<boolean> {
-  try {
-    const groupRef = doc(db, 'groupChats', groupId);
-    const groupSnapshot = await getDoc(groupRef);
-
-    if (!groupSnapshot.exists()) {
-      throw new Error('Group not found');
-    }
-
-    if (role === 'admin') {
-      await updateDoc(groupRef, {
-        admins: arrayUnion(userId),
-        updatedAt: serverTimestamp(),
-      });
-    }
-
-    // Update member role
-    await updateDoc(
-      doc(db, 'groupChats', groupId, 'members', userId),
-      { role }
-    );
-
-    return true;
-  } catch (error) {
-    console.error('Promote member error:', error);
-    throw error;
-  }
+  await apiService.post(`/group-chats/${groupId}/members/${userId}/role`, { role });
+  return true;
 }
 
 /**
@@ -284,65 +134,24 @@ export async function sendGroupMessage(
   groupId: string,
   message: GroupMessage
 ): Promise<string> {
-  try {
-    const docRef = await addDoc(
-      collection(db, 'groupChats', groupId, 'messages'),
-      {
-        ...message,
-        createdAt: serverTimestamp(),
-      }
-    );
-
-    // Update group's last message
-    await updateDoc(doc(db, 'groupChats', groupId), {
-      lastMessage: message.text,
-      lastMessageAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-
-    return docRef.id;
-  } catch (error) {
-    console.error('Send message error:', error);
-    throw error;
-  }
+  const res = await apiService.post(`/group-chats/${groupId}/messages`, message);
+  return res?.id || res?._id || '';
 }
 
 /**
  * Get group chat by ID
  */
 export async function getGroupChat(groupId: string): Promise<GroupChat | null> {
-  try {
-    const snapshot = await getDoc(doc(db, 'groupChats', groupId));
-    if (snapshot.exists()) {
-      return { id: snapshot.id, ...snapshot.data() } as GroupChat;
-    }
-    return null;
-  } catch (error) {
-    console.error('Get group error:', error);
-    throw error;
-  }
+  const res = await apiService.get(`/group-chats/${groupId}`);
+  return res ? ({ ...res, id: res.id || res._id }) : null;
 }
 
 /**
  * Get all groups for a user
  */
 export async function getUserGroupChats(userId: string): Promise<GroupChat[]> {
-  try {
-    const q = query(
-      collection(db, 'groupChats'),
-      where('members', 'array-contains', userId),
-      orderBy('updatedAt', 'desc')
-    );
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as GroupChat[];
-  } catch (error) {
-    console.error('Get user groups error:', error);
-    return [];
-  }
+  const res = await apiService.get(`/group-chats`, { member: userId });
+  return Array.isArray(res) ? res : [];
 }
 
 /**
@@ -351,24 +160,10 @@ export async function getUserGroupChats(userId: string): Promise<GroupChat[]> {
 export async function getGroupMessages(
   groupId: string,
   pageLimit: number = 50,
-  startAfter?: Timestamp
+  startAfter?: string
 ): Promise<GroupMessage[]> {
-  try {
-    let q = query(
-      collection(db, 'groupChats', groupId, 'messages'),
-      orderBy('createdAt', 'desc'),
-      limit(pageLimit)
-    );
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as GroupMessage[];
-  } catch (error) {
-    console.error('Get messages error:', error);
-    return [];
-  }
+  const res = await apiService.get(`/group-chats/${groupId}/messages`, { limit: pageLimit, startAfter });
+  return Array.isArray(res) ? res : [];
 }
 
 /**
@@ -379,16 +174,8 @@ export async function muteGroupNotifications(
   userId: string,
   mute: boolean
 ): Promise<boolean> {
-  try {
-    await updateDoc(
-      doc(db, 'groupChats', groupId, 'members', userId),
-      { isMuted: mute }
-    );
-    return true;
-  } catch (error) {
-    console.error('Mute error:', error);
-    return false;
-  }
+  await apiService.post(`/group-chats/${groupId}/members/${userId}/mute`, { mute });
+  return true;
 }
 
 /**
@@ -398,32 +185,8 @@ export async function deleteGroupChat(
   groupId: string,
   userId: string
 ): Promise<boolean> {
-  try {
-    const groupRef = doc(db, 'groupChats', groupId);
-    const snapshot = await getDoc(groupRef);
-
-    if (!snapshot.exists()) {
-      throw new Error('Group not found');
-    }
-
-    const group = snapshot.data() as GroupChat;
-
-    // Check if user is admin
-    if (!group.admins.includes(userId)) {
-      throw new Error('Only admins can delete groups');
-    }
-
-    // Soft delete by marking as deleted
-    await updateDoc(groupRef, {
-      deletedAt: new Date(),
-      active: false,
-    });
-
-    return true;
-  } catch (error) {
-    console.error('Delete group error:', error);
-    throw error;
-  }
+  await apiService.delete(`/group-chats/${groupId}`, { data: { userId } });
+  return true;
 }
 
 export default {

@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCurrentUser } from '../lib/firebaseHelpers';
+// import { getCurrentUser } from '../lib/firebaseHelpers';
 
 export default function Archive() {
   const router = useRouter();
@@ -12,11 +12,12 @@ export default function Archive() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const user = getCurrentUser();
-    if (!user) {
-      setLoading(false);
-      return;
-    }
+    // const user = getCurrentUser();
+    // if (!user) {
+    //   setLoading(false);
+    //   return;
+    // }
+    // TODO: Use user from context or props
     setLoading(true);
     // @ts-ignore
     import('../lib/firebaseHelpers/archive').then((mod: { getArchivedConversations: (uid: string) => Promise<{ success: boolean; data?: any[] }> }) => {
@@ -57,8 +58,9 @@ export default function Archive() {
                 <TouchableOpacity
                   style={{ backgroundColor: '#FF8800', justifyContent: 'center', alignItems: 'center', width: 100, height: '100%', borderRadius: 12 }}
                   onPress={async () => {
-                    const user = getCurrentUser();
-                    if (!user) return;
+                    // const user = getCurrentUser();
+                    // if (!user) return;
+                    // TODO: Use user from context or props
                     // @ts-ignore
                     const mod: { unarchiveConversation: (id: string, uid: string) => Promise<any> } = await import('../lib/firebaseHelpers/archive');
                     await mod.unarchiveConversation(item.id, user.uid);
@@ -74,7 +76,7 @@ export default function Archive() {
                 onPress={() => router.push({ pathname: '/dm', params: { id: item.id } })}
               >
                 <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                  <Image source={{ uri: (item.otherUser && item.otherUser.avatar) ? item.otherUser.avatar : 'https://firebasestorage.googleapis.com/v0/b/YOUR_PROJECT_ID.appspot.com/o/default-pic.jpg?alt=media' }} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#eee' }} />
+                  <Image source={{ uri: (item.otherUser && item.otherUser.avatar) ? item.otherUser.avatar : 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg' }} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#eee' }} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 16, fontWeight: '600', color: '#222' }}>{item.otherUser && (item.otherUser.displayName || item.otherUser.name) ? (item.otherUser.displayName || item.otherUser.name) : 'Unknown User'}</Text>

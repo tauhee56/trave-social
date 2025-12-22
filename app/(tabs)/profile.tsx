@@ -2,7 +2,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+// Firestore imports removed
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
@@ -10,23 +10,26 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../config/firebase';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
 import { followUser, sendFollowRequest, unfollowUser } from '../../lib/firebaseHelpers/follow';
-import { getUserSectionsSorted } from '../../lib/firebaseHelpers/getUserSectionsSorted';
+import { getUserSections as getUserSectionsAPI } from '../../src/_services/firebaseService';
 import { likePost, unlikePost } from '../../lib/firebaseHelpers/post';
-import { getUserHighlights, getUserPosts, getUserProfile, getUserStories } from '../../lib/firebaseHelpers/user';
+import { getUserStories as getUserStoriesAPI } from '../../src/_services/firebaseService';
+import { getUserHighlights as getUserHighlightsAPI } from '../../src/_services/firebaseService';
+import { getUserPosts as getUserPostsAPI } from '../../src/_services/firebaseService';
+import { getUserProfile as getUserProfileAPI } from '../../src/_services/firebaseService';
 import { getOptimizedImageUrl } from '../../lib/imageHelpers';
 import { fetchBlockedUserIds, filterOutBlocked } from '../../services/moderation';
+import CommentSection from '../../src/_components/CommentSection';
+import CreateHighlightModal from '../../src/_components/CreateHighlightModal';
+import EditSectionsModal from '../../src/_components/EditSectionsModal';
+import { useAuthUser } from '../../src/_components/UserContext';
+import HighlightCarousel from '../../src/_components/HighlightCarousel';
+import HighlightViewer from '../../src/_components/HighlightViewer';
+import PostViewerModal from '../../src/_components/PostViewerModal';
+import StoriesViewer from '../../src/_components/StoriesViewer';
 import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
-import { CommentSection } from '../_components/CommentSection';
-import CreateHighlightModal from '../_components/CreateHighlightModal';
-import EditSectionsModal from '../_components/EditSectionsModal';
-import HighlightCarousel from '../_components/HighlightCarousel';
-import HighlightViewer from '../_components/HighlightViewer';
-import PostViewerModal from '../_components/PostViewerModal';
-import StoriesViewer from '../_components/StoriesViewer';
-import { useUser } from '../_components/UserContext';
 
 // Default avatar URL
-const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
+const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 const DEFAULT_IMAGE_URL = DEFAULT_AVATAR_URL;
 
 // Utility to parse/sanitize coordinates
@@ -149,7 +152,7 @@ export default function Profile({ userIdProp }: any) {
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
   const router = useRouter();
   const params = useLocalSearchParams();
-  const authUser = useUser();
+  const authUser = useAuthUser();
   const viewedUserId = typeof userIdProp !== 'undefined'
     ? userIdProp
     : (typeof params.user === 'string' ? params.user : (authUser?.uid as string | undefined));
@@ -373,7 +376,7 @@ export default function Profile({ userIdProp }: any) {
       const fetchData = async () => {
         try {
           // Fetch profile
-          const profileRes = await getUserProfile(viewedUserId || '');
+          const profileRes = await getUserProfileAPI(viewedUserId || '');
           if (profileRes.success) {
             let profileData: ProfileData | null = null;
             if ('data' in profileRes && profileRes.data && typeof profileRes.data === 'object') profileData = profileRes.data as ProfileData;
@@ -386,7 +389,7 @@ export default function Profile({ userIdProp }: any) {
             setProfile(null);
           }
           // Fetch posts
-          const postsRes = await getUserPosts(viewedUserId || '');
+          const postsRes = await getUserPostsAPI(viewedUserId || '');
           let postsData: any[] = [];
           if (postsRes.success) {
             if ('data' in postsRes && Array.isArray(postsRes.data)) postsData = postsRes.data;
@@ -399,7 +402,7 @@ export default function Profile({ userIdProp }: any) {
           // Fetch sections (sorted by user's preferred order)
           let sectionsData: any[] = [];
           if (viewedUserId) {
-            const sectionsRes = await getUserSectionsSorted(viewedUserId);
+            const sectionsRes = await getUserSectionsAPI(viewedUserId);
             if (sectionsRes.success) {
               if ('data' in sectionsRes && Array.isArray(sectionsRes.data)) sectionsData = sectionsRes.data;
               else if ('sections' in sectionsRes && Array.isArray(sectionsRes.sections)) sectionsData = sectionsRes.sections;
@@ -411,7 +414,7 @@ export default function Profile({ userIdProp }: any) {
             setSections([]);
           }
           // Fetch highlights
-          const highlightsRes = await getUserHighlights(viewedUserId || '');
+          const highlightsRes = await getUserHighlightsAPI(viewedUserId || '');
           let highlightsData: any[] = [];
           if (highlightsRes.success) {
             if ('data' in highlightsRes && Array.isArray(highlightsRes.data)) highlightsData = highlightsRes.data;
@@ -419,6 +422,17 @@ export default function Profile({ userIdProp }: any) {
             setHighlights(highlightsData);
           } else {
             setHighlights([]);
+          }
+
+          // Fetch stories
+          const storiesRes = await getUserStoriesAPI(viewedUserId || '');
+          let storiesData: any[] = [];
+          if (storiesRes.success) {
+            if ('data' in storiesRes && Array.isArray(storiesRes.data)) storiesData = storiesRes.data;
+            else if ('stories' in storiesRes && Array.isArray(storiesRes.stories)) storiesData = storiesRes.stories;
+            setUserStories(storiesData);
+          } else {
+            setUserStories([]);
           }
         } catch (err) {
           console.log(err);
@@ -433,7 +447,7 @@ export default function Profile({ userIdProp }: any) {
   useEffect(() => {
     async function loadData() {
       setLoading(true);
-      const profileRes = await getUserProfile(viewedUserId);
+      const profileRes = await getUserProfileAPI(viewedUserId);
       let profileData: ProfileData | null = null;
       if (profileRes.success) {
         if ('data' in profileRes && profileRes.data && typeof profileRes.data === 'object') profileData = profileRes.data as ProfileData;
@@ -445,7 +459,7 @@ export default function Profile({ userIdProp }: any) {
       } else {
         setProfile(null);
       }
-      const postsRes = await getUserPosts(viewedUserId);
+      const postsRes = await getUserPostsAPI(viewedUserId);
       let postsData: any[] = [];
       if (postsRes.success) {
         if ('data' in postsRes && Array.isArray(postsRes.data)) postsData = postsRes.data;
