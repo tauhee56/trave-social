@@ -1,29 +1,22 @@
 // Highlight-related Firestore helpers
-import { addDoc, collection, deleteDoc, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { db } from '../../config/firebase';
 
 /**
  * Create a new highlight
  */
 export async function createHighlight(
-  userId: string, 
-  name: string, 
-  coverImage: string, 
+  userId: string,
+  name: string,
+  coverImage: string,
   storyIds: string[] = []
 ) {
   try {
-    const highlightData = {
-      userId,
-      name,
-      coverImage,
-      storyIds,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
-    
-    const docRef = await addDoc(collection(db, 'highlights'), highlightData);
-    
-    return { success: true, highlightId: docRef.id };
+    const res = await fetch(`/api/highlights`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, title: name, items: storyIds.map(id => ({ id, coverImage })) })
+    });
+    const data = await res.json();
+    return { success: data.success, highlightId: data.id };
   } catch (error: any) {
     console.error('❌ createHighlight error:', error);
     return { success: false, error: error.message };
@@ -35,28 +28,13 @@ export async function createHighlight(
  */
 export async function addStoryToHighlight(highlightId: string, storyId: string) {
   try {
-    const highlightRef = doc(db, 'highlights', highlightId);
-    const highlightSnap = await getDoc(highlightRef);
-    
-    if (!highlightSnap.exists()) {
-      return { success: false, error: 'Highlight not found' };
-    }
-    
-    const highlightData = highlightSnap.data();
-    const storyIds = highlightData.storyIds || [];
-    
-    // Check if story already exists in highlight
-    if (storyIds.includes(storyId)) {
-      return { success: false, error: 'Story already in highlight' };
-    }
-    
-    // Add story to highlight
-    await updateDoc(highlightRef, {
-      storyIds: [...storyIds, storyId],
-      updatedAt: serverTimestamp(),
+    const res = await fetch(`/api/highlights/${highlightId}/stories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storyId })
     });
-    
-    return { success: true };
+    const data = await res.json();
+    return data;
   } catch (error: any) {
     console.error('❌ addStoryToHighlight error:', error);
     return { success: false, error: error.message };
@@ -68,25 +46,12 @@ export async function addStoryToHighlight(highlightId: string, storyId: string) 
  */
 export async function removeStoryFromHighlight(highlightId: string, storyId: string) {
   try {
-    const highlightRef = doc(db, 'highlights', highlightId);
-    const highlightSnap = await getDoc(highlightRef);
-    
-    if (!highlightSnap.exists()) {
-      return { success: false, error: 'Highlight not found' };
-    }
-    
-    const highlightData = highlightSnap.data();
-    const storyIds = highlightData.storyIds || [];
-    
-    // Remove story from highlight
-    const updatedStoryIds = storyIds.filter((id: string) => id !== storyId);
-    
-    await updateDoc(highlightRef, {
-      storyIds: updatedStoryIds,
-      updatedAt: serverTimestamp(),
+    const res = await fetch(`/api/highlights/${highlightId}/stories/${storyId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' }
     });
-    
-    return { success: true };
+    const data = await res.json();
+    return data;
   } catch (error: any) {
     console.error('❌ removeStoryFromHighlight error:', error);
     return { success: false, error: error.message };
@@ -97,23 +62,17 @@ export async function removeStoryFromHighlight(highlightId: string, storyId: str
  * Update highlight details (name, cover image)
  */
 export async function updateHighlight(
-  highlightId: string, 
+  highlightId: string,
   updates: { name?: string; coverImage?: string }
 ) {
   try {
-    const highlightRef = doc(db, 'highlights', highlightId);
-    const highlightSnap = await getDoc(highlightRef);
-    
-    if (!highlightSnap.exists()) {
-      return { success: false, error: 'Highlight not found' };
-    }
-    
-    await updateDoc(highlightRef, {
-      ...updates,
-      updatedAt: serverTimestamp(),
+    const res = await fetch(`/api/highlights/${highlightId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: updates.name, coverImage: updates.coverImage })
     });
-    
-    return { success: true };
+    const data = await res.json();
+    return data;
   } catch (error: any) {
     console.error('❌ updateHighlight error:', error);
     return { success: false, error: error.message };
@@ -125,24 +84,13 @@ export async function updateHighlight(
  */
 export async function deleteHighlight(highlightId: string, userId: string) {
   try {
-    const highlightRef = doc(db, 'highlights', highlightId);
-    const highlightSnap = await getDoc(highlightRef);
-    
-    if (!highlightSnap.exists()) {
-      return { success: false, error: 'Highlight not found' };
-    }
-    
-    const highlightData = highlightSnap.data();
-    
-    // Check if user owns the highlight
-    if (highlightData.userId !== userId) {
-      return { success: false, error: 'Unauthorized' };
-    }
-    
-    // Delete the highlight
-    await deleteDoc(highlightRef);
-    
-    return { success: true };
+    const res = await fetch(`/api/highlights/${highlightId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId })
+    });
+    const data = await res.json();
+    return data;
   } catch (error: any) {
     console.error('❌ deleteHighlight error:', error);
     return { success: false, error: error.message };

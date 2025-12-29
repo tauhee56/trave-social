@@ -87,7 +87,7 @@ export default function EmailOTPScreen() {
         const username = email.split('@')[0];
 
         // Create account (skip email verification since we're using OTP)
-        const result = await signUpUser(email, tempPassword, username, true);
+        const result = await signUpUser(email, tempPassword, username);
 
         if (result.success) {
           // Store phone number in user profile

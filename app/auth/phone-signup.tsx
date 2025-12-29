@@ -96,7 +96,7 @@ export default function PhoneSignUpScreen() {
       const { auth } = await import('../../config/firebase');
 
       // Create account (email verification will be sent automatically)
-      const result = await signUpUser(email, tempPassword, username, false);
+      const result = await signUpUser(email, tempPassword, username);
 
       if (result.success) {
         // Store phone number in user profile

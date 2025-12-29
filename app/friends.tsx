@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth } from '../config/firebase';
+import { db, doc } from '../lib/firebaseCompatibility';
 import { followUser, unfollowUser } from '../lib/firebaseHelpers/follow';
 import { useUser } from './_components/UserContext';
 
@@ -130,7 +130,7 @@ export default function FriendsScreen() {
           onPress: async () => {
             try {
               const { deleteDoc } = await import('firebase/firestore');
-              await deleteDoc(doc(db, 'users', authUser.uid, 'blocked', targetUserId));
+              await deleteDoc(doc(db, 'users', authUser.uid, 'blocked', targetUserId) as any);
               setBlockedUsers(prev => prev.filter(u => u.uid !== targetUserId));
               Alert.alert('Success', 'User unblocked');
             } catch (e) {

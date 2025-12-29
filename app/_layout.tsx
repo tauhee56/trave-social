@@ -1,16 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Font from 'expo-font';
 import { Stack, useRouter, useSegments } from "expo-router";
-import { onAuthStateChanged } from "firebase/auth";
+// import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, LogBox, Text as RNText, View } from "react-native";
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { auth } from "../config/firebase";
+// import { auth } from "../config/firebase";
 // import { initSentry } from "../lib/sentry";
-import { updateUserPresence } from "../lib/userPresence";
 import { UserProvider } from "../src/_components/UserContext";
 // Suppress non-critical warnings
 LogBox.ignoreLogs([
@@ -60,32 +59,32 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    try {
-      if (!auth) {
-        throw new Error('Firebase Auth not initialized');
-      }
-
-      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        setUser(currentUser);
+    // Check if user has session token in AsyncStorage
+    async function checkAuth() {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const token = await AsyncStorage.getItem('token');
+        const userId = await AsyncStorage.getItem('userId');
         
-        // Update user presence when they log in
-        if (currentUser?.uid) {
-          updateUserPresence(currentUser.uid);
+        if (token && userId) {
+          setUser({ token, userId });
+        } else {
+          setUser(null);
         }
-        
+      } catch (error) {
+        console.log('Auth check error:', error);
+        setUser(null);
+      } finally {
         setLoading(false);
-      }, (error) => {
-        console.error('Auth state change error:', error);
-        setInitError(error.message);
-        setLoading(false);
-      });
-
-      return unsubscribe;
-    } catch (error: any) {
-      console.error('Auth initialization error:', error);
-      setInitError(error.message);
-      setLoading(false);
+      }
     }
+    
+    checkAuth();
+    
+    // Only check for token changes every 5 seconds (less aggressive)
+    const checkAuthInterval = setInterval(checkAuth, 5000);
+    
+    return () => clearInterval(checkAuthInterval);
   }, []);
 
   useEffect(() => {

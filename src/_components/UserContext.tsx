@@ -3,30 +3,42 @@ import React, { createContext, ReactNode, useContext, useEffect, useState } from
 import { auth } from '../../config/firebase';
 
 export type AuthUser = FirebaseUser | null;
-const UserContext = createContext<AuthUser>(null);
+const UserContext = createContext<{ user: AuthUser; loading: boolean }>({ user: null, loading: true });
 
 interface UserProviderProps {
   children: ReactNode;
 }
 
-const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
+export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [user, setUser] = useState<AuthUser>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
+      setLoading(false);
+      console.log('[UserContext] Auth state changed:', firebaseUser?.uid || 'no user');
     });
     return () => unsubscribe();
   }, []);
 
   return (
-    <UserContext.Provider value={user}>{children}</UserContext.Provider>
+    <UserContext.Provider value={{ user, loading }}>
+      {children}
+    </UserContext.Provider>
   );
 };
 
-function useAuthUser() {
-  return useContext(UserContext);
+export function useAuthUser(): FirebaseUser | null {
+  const context = useContext(UserContext);
+  if (!context) {
+    console.warn('[useAuthUser] UserContext not found');
+    return null;
+  }
+  return context.user;
 }
 
-export { useAuthUser, UserContext, UserProvider };
-export default UserContext;
+export function useAuthLoading(): boolean {
+  const context = useContext(UserContext);
+  return context?.loading ?? true;
+}

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserErrorMessage } from '../../lib/errorHandler';
 import { signInUser } from '../../lib/firebaseHelpers';
@@ -53,16 +54,40 @@ export default function EmailLoginScreen() {
     
     try {
       const result = await signInUser(email, password);
+      console.log('[Login] Result:', result);
       
       if (result.success) {
+        console.log('[Login] ✅ Success - waiting for token save');
+        // Wait a moment for AsyncStorage to sync
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Verify token was saved
+        const token = await AsyncStorage.getItem('token');
+        const userId = await AsyncStorage.getItem('userId');
+        console.log('[Login] Token saved?', !!token, 'userId saved?', !!userId);
+        
         // Successfully logged in - navigate to home
-        router.replace('/(tabs)/home');
+        console.log('[Login] About to navigate to home screen');
+        
+        // Use setTimeout to ensure navigation happens after state updates
+        setTimeout(() => {
+          try {
+            router.replace('/(tabs)/home');
+            console.log('[Login] Navigation called successfully');
+          } catch (e) {
+            console.error('[Login] Navigation error:', e);
+            // Fallback: try alternative navigation path
+            router.push('/(tabs)/home');
+          }
+        }, 100);
       } else {
+        console.log('[Login] ❌ Failed:', result.error);
         setError(getUserErrorMessage(result.error || 'Login failed'));
+        setLoading(false);
       }
     } catch (err: any) {
+      console.error('[Login] Error:', err);
       setError(getUserErrorMessage(err));
-    } finally {
       setLoading(false);
     }
   };

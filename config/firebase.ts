@@ -41,11 +41,11 @@ try {
 }
 
 // Export Firestore helpers
-export {
-    arrayRemove, arrayUnion, FieldValue, serverTimestamp
-} from 'firebase/firestore';
+export { arrayRemove, arrayUnion, FieldValue, serverTimestamp } from 'firebase/firestore';
 
 export { auth, db };
 export const storage: FirebaseStorage = getStorage(app);
+
+
 
 export default app;

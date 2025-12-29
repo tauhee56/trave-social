@@ -10,7 +10,9 @@ export default function InboxRow({ item, router, unread, formatTime, DEFAULT_AVA
   } else if (Array.isArray(item.participants) && item.currentUserId) {
     otherUserId = item.participants.find((uid: string) => uid !== item.currentUserId) || '';
   }
-  const { username, avatar, loading } = useUserProfile(otherUserId);
+  const { profile, loading } = useUserProfile(otherUserId);
+  const username = profile?.username;
+  const avatar = profile?.avatar;
   const [presence, setPresence] = useState<UserPresence | null>(null);
   useEffect(() => {
     if (!otherUserId) return;

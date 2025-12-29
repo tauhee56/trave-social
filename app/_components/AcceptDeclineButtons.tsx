@@ -24,11 +24,12 @@ const AcceptDeclineButtons: React.FC<AcceptDeclineButtonsProps> = ({ item, onAct
         onPress={async () => {
           setActionTaken(true);
           try {
-            // TODO: Implement backend API to accept follow request
-            // const response = await fetch(`/api/users/followRequests/${item.senderId}/accept`, {
-            //   method: 'POST'
-            // });
-            
+            // Backend API call to accept follow request
+            const response = await fetch(`/api/users/followRequests/${item.senderId}/accept`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+            });
+            if (!response.ok) throw new Error('Failed to accept request');
             Alert.alert('Success', 'Follow request accepted');
             if (onActionTaken) onActionTaken(item.id);
           } catch (err) {
@@ -52,33 +53,17 @@ const AcceptDeclineButtons: React.FC<AcceptDeclineButtonsProps> = ({ item, onAct
         onPress={async () => {
           setActionTaken(true);
           try {
-            // TODO: Implement backend API to reject follow request
-            // const response = await fetch(`/api/users/followRequests/${item.senderId}/reject`, {
-            //   method: 'POST'
-            // });
-            
+            // Backend API call to reject follow request
+            const response = await fetch(`/api/users/followRequests/${item.senderId}/reject`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+            });
+            if (!response.ok) throw new Error('Failed to reject request');
             Alert.alert('Success', 'Follow request rejected');
             if (onActionTaken) onActionTaken(item.id);
           } catch (err) {
             console.error('Error rejecting request:', err);
             Alert.alert('Error', 'Failed to reject request');
-          }
-        }}
-      >
-        <Text style={{ color: '#fff', fontWeight: 'bold' }}>Decline</Text>
-      </TouchableOpacity>
-    </>
-  );
-};
-
-export default AcceptDeclineButtons;
-            });
-
-            alert('Request declined');
-            if (onActionTaken) onActionTaken(item.id);
-          } catch (err) {
-            console.error('Error declining request:', err);
-            alert('Error declining request');
           }
         }}
       >

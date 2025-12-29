@@ -4,6 +4,7 @@
  */
 
 import { apiService } from '../app/_services/apiService';
+import { db, doc, updateDoc } from './firebaseCompatibility';
 
 export interface UserPresence {
   userId: string;

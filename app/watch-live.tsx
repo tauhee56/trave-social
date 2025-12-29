@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, PermissionsAndroid, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useUser } from './_components/UserContext';
 // @ts-ignore
 import { AGORA_CONFIG, getAgoraToken } from '../config/agora';
 import { auth } from '../config/firebase';
@@ -62,11 +63,9 @@ try {
 }
 
 export default function WatchLiveScreen() {
-
-
   const router = useRouter();
   const { streamId, channelName } = useLocalSearchParams();
-  const currentUser = getCurrentUser();
+  const currentUser = useUser();
 
   const [input, setInput] = useState("");
   const [comments, setComments] = useState<any[]>([]);
@@ -230,6 +229,8 @@ export default function WatchLiveScreen() {
         return;
       }
 
+      // TODO: Re-enable when backend stream status check is ready
+      /*
       const streamDataCheck = streamSnap.data();
       if (!streamDataCheck?.isLive) {
         console.log('❌ Stream is not live');
@@ -242,6 +243,7 @@ export default function WatchLiveScreen() {
 
       console.log('✅ Stream is live, proceeding to join...');
         console.log('🔎 [KR LOG] Stream doc:', streamDataCheck);
+      */
 
       setIsInitializing(true);
       setConnectionStatus('connecting');

@@ -42,7 +42,7 @@ interface StoryUser {
   stories: any[];
 }
 
-function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: (stories: any[], initialIndex: number) => void; refreshTrigger?: number }) {
+function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: (stories: any[], initialIndex: number) => void; refreshTrigger?: number }): React.ReactElement {
   const [storyUsers, setStoryUsers] = useState<StoryUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -165,7 +165,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
       quality: 0.8,
       videoMaxDuration: 40,
     });
-    if (!pickerResult.canceled && currentUser) {
+    if (!pickerResult.canceled && authUser) {
       setSelectedMedia(pickerResult.assets[0]);
       setShowUploadModal(true);
     }
@@ -439,7 +439,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                 style={[styles.shareButton, !selectedMedia && styles.shareButtonDisabled]}
                 disabled={!selectedMedia || uploading}
                 onPress={async () => {
-                  if (!selectedMedia || !currentUser || uploading) return;
+                  if (!selectedMedia || !authUser || uploading) return;
                   setUploading(true);
                   setUploadProgress(10);
                   let uploadUri = selectedMedia.uri;

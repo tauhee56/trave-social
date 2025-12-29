@@ -20,20 +20,53 @@ interface LiveStream {
 function LiveStreamsRowComponent() {
 	const router = useRouter();
 	const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
+	const lastFetchRef = React.useRef<number>(0);
+	const isFetchingRef = React.useRef<boolean>(false);
 
 	useEffect(() => {
+		let isMounted = true;
+
 		const fetchLiveStreams = async () => {
+			// Prevent multiple concurrent fetches
+			if (isFetchingRef.current) {
+				console.log('🔄 Already fetching, skipping...');
+				return;
+			}
+
+			// Prevent multiple rapid calls (5 second minimum between calls)
+			const now = Date.now();
+			if (now - lastFetchRef.current < 5000) {
+				console.log('🔇 Livestream fetch throttled - too recent');
+				return;
+			}
+
+			isFetchingRef.current = true;
+			lastFetchRef.current = now;
+
 			try {
+				console.log('🎬 Fetching live streams...');
 				const streams = await getActiveLiveStreams();
-				streams.sort((a, b) => (b.viewerCount || 0) - (a.viewerCount || 0));
+				if (!isMounted) {
+					isFetchingRef.current = false;
+					return;
+				}
+				
+				streams.sort((a: any, b: any) => (b.viewerCount || 0) - (a.viewerCount || 0));
 				setLiveStreams(streams);
+				console.log(`✅ Loaded ${streams.length} live streams`);
 			} catch (error) {
-				console.error('Error fetching live streams:', error);
+				console.error('❌ Error fetching live streams:', error);
+			} finally {
+				isFetchingRef.current = false;
 			}
 		};
+
+		// Initial fetch only - no polling
 		fetchLiveStreams();
-		const interval = setInterval(fetchLiveStreams, 30000);
-		return () => clearInterval(interval);
+
+		return () => {
+			isMounted = false;
+		};
 	}, []);
 
 	if (liveStreams.length === 0) {

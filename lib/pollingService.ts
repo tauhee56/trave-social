@@ -46,7 +46,7 @@ export async function startConversationsPolling(
 
       // Batch fetch user profiles for all conversations
       const uniqueUserIds = new Set(
-        conversations.flatMap(conv =>
+        conversations.flatMap((conv: any) =>
           (Array.isArray(conv.participants) ? conv.participants : []).filter((id: string) => id !== userId)
         )
       );
@@ -55,14 +55,14 @@ export async function startConversationsPolling(
       const { getUserProfile } = await import('./firebaseHelpers/user');
       const userProfiles = new Map();
       for (const uid of uniqueUserIds) {
-        const userResult = await getUserProfile(uid);
+        const userResult = await getUserProfile(uid as string);
         if (userResult && userResult.success && userResult.data) {
           userProfiles.set(uid, userResult.data);
         }
       }
 
       // Enrich conversations with user data
-      const enrichedConversations = conversations.map(conv => {
+      const enrichedConversations = conversations.map((conv: any) => {
         const otherUserId = (Array.isArray(conv.participants) ? conv.participants : []).find((id: string) => id !== userId);
         return {
           ...conv,

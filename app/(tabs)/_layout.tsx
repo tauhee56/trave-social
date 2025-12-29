@@ -1,7 +1,8 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
+import { Image as ExpoImage } from 'expo-image';
 import { Tabs, useFocusEffect, useRouter, useSegments } from "expo-router";
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 let RtcSurfaceView: any = null;
 let VideoSourceType: any = null;
 let RenderModeType: any = null;
@@ -14,10 +15,10 @@ try {
 // Minimize overlay removed
 import { SafeAreaView } from "react-native-safe-area-context";
 import { logAnalyticsEvent, setAnalyticsUserId } from '../../lib/analytics';
-
 import { getUserConversations } from '../../lib/firebaseHelpers/conversation';
 import { getUserNotifications } from '../../lib/firebaseHelpers/notification';
 import fetchLogoUrl from '../../src/_services/brandingService';
+import { useUser } from '../_components/UserContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isSmallDevice = SCREEN_WIDTH < 375;
@@ -110,6 +111,7 @@ export default function TabsLayout() {
     };
   };
   const router = useRouter();
+  const user = useUser();
   // const segments = useSegments();
   // const isProfileScreen = segments[segments.length - 1] === 'profile';
   return (
@@ -122,6 +124,9 @@ export default function TabsLayout() {
           tabBarActiveTintColor: '#f39c12',
           tabBarInactiveTintColor: '#777',
           tabBarShowLabel: true,
+          lazy: true,
+          unmountOnBlur: false,
+          freezeOnBlur: true,
           tabBarStyle: {
             height: 64,
             paddingBottom: 10,
@@ -222,6 +227,7 @@ export default function TabsLayout() {
 
 function TopMenu() {
   const router = useRouter();
+  const user = useUser();
   const [unreadNotif, setUnreadNotif] = React.useState(0);
   const [unreadMsg, setUnreadMsg] = React.useState(0);
   const [menuVisible, setMenuVisible] = React.useState(false);
@@ -231,9 +237,9 @@ function TopMenu() {
   const isProfileScreen = segments[segments.length - 1] === 'profile';
 
   useEffect(() => {
-    const u = null;
+    const u = user;
     if (u?.uid) setAnalyticsUserId(u.uid);
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     let isMounted = true;
@@ -250,16 +256,16 @@ function TopMenu() {
   useFocusEffect(
     React.useCallback(() => {
       async function fetchCounts() {
-        const user = null;
-        if (!user || !user.uid) return;
+        const userData = user;
+        if (!userData || !userData.uid) return;
         // Notifications
-          const notifRes = await getUserNotifications(user.uid);
+          const notifRes = await getUserNotifications(userData.uid);
           if (Array.isArray(notifRes)) {
             const unread = notifRes.filter((n: any) => n && typeof n.read === 'boolean' ? n.read === false : false);
             setUnreadNotif(unread.length);
           }
         // Messages
-          const msgRes = await getUserConversations(user.uid);
+          const msgRes = await getUserConversations(userData.uid);
           if (Array.isArray(msgRes)) {
             const unreadMsgs = msgRes.reduce((sum: number, convo: any) => sum + (convo.unread || 0), 0);
             setUnreadMsg(unreadMsgs);
@@ -275,10 +281,12 @@ function TopMenu() {
         {logoLoading ? (
           <ActivityIndicator size="small" color="#f39c12" style={{ marginVertical: 2, marginLeft: 0, marginRight: 0, height: 54, width: 130 }} />
         ) : (
-          <Image
+          <ExpoImage
             source={{ uri: logoUrl || 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/logo/logo.png' }}
             style={[styles.logoImg, { marginLeft: 0, marginRight: 16, alignSelf: 'flex-start' }]}
-            resizeMode="contain"
+            contentFit="contain"
+            transition={200}
+            cachePolicy="memory-disk"
             accessibilityLabel="App Logo"
           />
         )}
@@ -470,11 +478,15 @@ function TopMenu() {
                     setMenuVisible(false);
                     try {
                       logAnalyticsEvent('logout');
-                      const { signOut } = await import('firebase/auth');
-                      const { auth } = await import('../../config/firebase');
-                      await signOut(auth);
-                      console.log('Logged out successfully');
-                      router.replace('/auth/welcome');
+                      // Import and use actual logout function
+                      const { logoutUser } = await import('../_services/firebaseAuthService');
+                      const result = await logoutUser();
+                      if (result.success) {
+                        console.log('Logged out successfully');
+                        router.replace('/auth/welcome');
+                      } else {
+                        Alert.alert('Error', result.error || 'Logout failed');
+                      }
                     } catch (error) {
                       console.error('Logout error:', error);
                       Alert.alert('Error', 'Failed to log out. Please try again.');

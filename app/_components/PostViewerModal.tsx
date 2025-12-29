@@ -62,7 +62,7 @@ export default function PostViewerModal({
   setCommentModalPostId,
   setCommentModalAvatar,
   setCommentModalVisible,
-}: PostViewerModalProps) {
+}: PostViewerModalProps): React.ReactElement {
   const [currentPostIndex, setCurrentPostIndex] = useState(selectedPostIndex);
   const [showMenu, setShowMenu] = useState(false);
   const [comments, setComments] = useState<any[]>([]);

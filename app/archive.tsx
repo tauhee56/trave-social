@@ -4,10 +4,11 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// import { getCurrentUser } from '../lib/firebaseHelpers';
+import { useUser } from './_components/UserContext';
 
 export default function Archive() {
   const router = useRouter();
+  const user = useUser();
   const [archived, setArchived] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 

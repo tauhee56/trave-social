@@ -36,7 +36,7 @@ const HighlightCarousel: React.FC<HighlightCarouselProps> = ({ highlights, onPre
         data={highlights}
         horizontal
         showsHorizontalScrollIndicator={false}
-        keyExtractor={item => item.id}
+        keyExtractor={item => item.id || (item as any)._id || Math.random().toString()}
         ListHeaderComponent={renderAddButton}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.highlightBubble} onPress={() => onPressHighlight?.(item)}>

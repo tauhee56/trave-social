@@ -1,5 +1,5 @@
 import {
-    Dimensions
+	Dimensions
 } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
@@ -31,8 +31,9 @@ interface StoryComment {
 	editedAt?: any;
 }
 
-export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { stories: Story[]; onClose: () => void; initialIndex?: number }) {
-		const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
-		// ...existing code...
+export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { stories: Story[]; onClose: () => void; initialIndex?: number }): JSX.Element {
+	const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+	// ...existing code...
+	return <></>; // TODO: Replace with actual JSX
 }
 // ...existing code (styles, helpers, etc.)...

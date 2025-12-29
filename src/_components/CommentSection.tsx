@@ -70,6 +70,8 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   };
 
   // ...rest of the full implementation from app/_components/CommentSection.tsx...
+
+  return null;
 };
 
 export default CommentSection;

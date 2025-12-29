@@ -28,5 +28,6 @@ export default function EditSectionsModal({
   posts,
   onSectionsUpdate,
 }: EditSectionsModalProps) {
-  // ...existing code...
+  return null;
 }
+

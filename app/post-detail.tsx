@@ -50,22 +50,22 @@ export default function PostDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <PostViewerModal
-        visible={true}
-        onClose={() => router.back()}
-        posts={[post]}
-        selectedPostIndex={0}
-        profile={profile}
-        authUser={currentUser}
-        likedPosts={{}}
-        savedPosts={{}}
-        handleLikePost={() => {}}
-        handleSavePost={() => {}}
-        handleSharePost={() => {}}
-        setCommentModalPostId={() => {}}
-        setCommentModalAvatar={() => {}}
-        setCommentModalVisible={() => {}}
-      />
+      {React.createElement(PostViewerModal as any, {
+        visible: true,
+        onClose: () => router.back(),
+        posts: [post],
+        selectedPostIndex: 0,
+        profile: profile,
+        authUser: currentUser,
+        likedPosts: {},
+        savedPosts: {},
+        handleLikePost: () => {},
+        handleSavePost: () => {},
+        handleSharePost: () => {},
+        setCommentModalPostId: () => {},
+        setCommentModalAvatar: () => {},
+        setCommentModalVisible: () => {},
+      })}
     </SafeAreaView>
   );
 }

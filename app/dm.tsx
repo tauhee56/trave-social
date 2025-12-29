@@ -20,6 +20,7 @@ import {
 import { getFormattedActiveStatus, subscribeToUserPresence, updateUserOffline, updateUserPresence, UserPresence } from '../lib/userPresence';
 import MessageBubble from '../src/_components/MessageBubble';
 import useUserProfile from '../src/_hooks/useUserProfile';
+import { useUser } from './_components/UserContext';
 
 const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
@@ -28,11 +29,15 @@ export default function DM() {
   const realOtherUserId = typeof id === 'string' ? id : otherUserId;
   const router = useRouter();
   const navigation = useNavigation();
+  const currentUserTyped = useUser();
   
   // Use the hook to fetch and subscribe to the other user's profile
-  const { profile: otherUserProfile, loading: profileLoading, username, avatar } = useUserProfile(
+  const { profile: otherUserProfile, loading: profileLoading } = useUserProfile(
     typeof realOtherUserId === 'string' ? realOtherUserId : null
   );
+  
+  const username = otherUserProfile?.username;
+  const avatar = otherUserProfile?.avatar;
   
   const [input, setInput] = useState("");
   const [canMessage, setCanMessage] = useState(false);
@@ -137,8 +142,8 @@ export default function DM() {
     });
 
     // Subscribe to real-time messages via socket
-    const unsub = subscribeToMessages(conversationId, (msg) => {
-      setMessages(prev => [...prev, msg]);
+    const unsub = subscribeToMessages(conversationId, (messages: any[]) => {
+      setMessages(messages);
     });
 
     // Mark as read when opening conversation
@@ -153,6 +158,9 @@ export default function DM() {
   }, [conversationId]);
 
   // Remove loadMessagesPage (pagination) for now; can be re-added with backend support
+  const loadMessagesPage = () => {
+    // Pagination disabled - all messages loaded on initial fetch
+  };
 
   async function initializeConversation() {
     if (!currentUserTyped || !currentUserTyped.uid || !realOtherUserId) {
@@ -192,17 +200,15 @@ export default function DM() {
       await sendMessage(conversationId, currentUserTyped.uid, messageText, undefined, replyData);
       // Send notification to recipient
       if (otherUserId && otherUserId !== currentUserTyped.uid) {
-        // Fetch sender profile for name and avatar
+        // Fetch sender profile for name and avatar from backend
         let senderName = '';
         let senderAvatar = '';
-        try {
-          const senderDoc = await import('../config/firebase').then(({ db }) => import('firebase/firestore').then(({ doc, getDoc }) => getDoc(doc(db, 'users', String(currentUserTyped.uid)))));
-          if (senderDoc && senderDoc.exists()) {
-            const senderData = senderDoc.data();
-            senderName = senderData.displayName || senderData.name || 'User';
-            senderAvatar = senderData.avatar || senderData.photoURL || DEFAULT_AVATAR_URL;
-          }
-        } catch {}
+        // TODO: Replace with backend API call to fetch sender profile
+        // Example:
+        // const response = await fetch(`/api/users/${currentUserTyped.uid}`);
+        // const senderData = await response.json();
+        // senderName = senderData.displayName || senderData.name || 'User';
+        // senderAvatar = senderData.avatar || senderData.photoURL || DEFAULT_AVATAR_URL;
         await addNotification({
           recipientId: String(otherUserId),
           senderId: currentUserTyped.uid,

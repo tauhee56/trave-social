@@ -1,10 +1,9 @@
-import { deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../../config/firebase';
 
 export async function deleteStory(storyId: string) {
   try {
-    await deleteDoc(doc(db, 'stories', storyId));
-    return { success: true };
+    const res = await fetch(`/api/stories/${storyId}`, { method: 'DELETE' });
+    const data = await res.json();
+    return data;
   } catch (error: any) {
     return { success: false, error: error.message };
   }

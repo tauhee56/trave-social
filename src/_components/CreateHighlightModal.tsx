@@ -39,5 +39,5 @@ export default function CreateHighlightModal({ visible, onClose, userId, onSucce
     // ...existing code...
   };
 
-  // ...existing code...
+  return null;
 }

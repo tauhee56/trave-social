@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createPost, searchUsers } from '../../lib/firebaseHelpers/index';
+import { useUser } from '../_components/UserContext';
 import VerifiedBadge from '../_components/VerifiedBadge';
 
 // Runtime import of ImagePicker with graceful fallback
@@ -14,17 +15,13 @@ try {
   console.warn('expo-image-picker not available');
 }
 
-const MOCK_LOCATIONS = [
-  { id: "1", name: "Cantinetta Antinori London", address: "4 Harriet St, London SW1X 9JR, United Kingdom" },
-  { id: "2", name: "Harry's Victoria", address: "52 Grosvenor Gardens, London SW1W 0AU, United Kingdom" },
-  { id: "3", name: "The Campaner", address: "Chelsea Barracks, 1 Garrison Square, London SW1W 8BG, United Kingdom" },
-  { id: "4", name: "Inchel", address: "33H King's Rd, London SW3 4LX, United Kingdom" },
-];
+
 
 export default function PostScreen() {
     // Default avatar from Firebase Storage
     const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
   const router = useRouter();
+  const user = useUser();
   const [caption, setCaption] = useState('');
   const [location, setLocation] = useState<any>(null);
   const [verifiedLocation, setVerifiedLocation] = useState<any>(null);
@@ -40,10 +37,12 @@ export default function PostScreen() {
   const [users, setUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [locationInput, setLocationInput] = useState('');
+  const [locationResults, setLocationResults] = useState<any[]>([]);
 
   useEffect(() => {
     loadUsers();
     loadGalleryImages();
+    fetchLocations();
   }, []);
 
   const loadUsers = async () => {
@@ -66,6 +65,17 @@ export default function PostScreen() {
       }
     } catch (err) {
       console.warn('Gallery permission error', err);
+    }
+  };
+
+  // Fetch locations from backend
+  const fetchLocations = async () => {
+    try {
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/locations`);
+      const data = await response.json();
+      if (Array.isArray(data)) setLocationResults(data);
+    } catch (err) {
+      setLocationResults([]);
     }
   };
 
@@ -323,7 +333,7 @@ export default function PostScreen() {
                 />
               </View>
             <FlatList
-              data={MOCK_LOCATIONS}
+              data={locationResults}
               keyExtractor={(item: any) => item.id}
               renderItem={({ item }: { item: any }) => (
                 <TouchableOpacity
@@ -383,7 +393,7 @@ export default function PostScreen() {
               />
             </View>
             <FlatList
-              data={MOCK_LOCATIONS}
+              data={locationResults}
               keyExtractor={item => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity

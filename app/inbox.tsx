@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuthLoading, useUser } from './_components/UserContext';
 // import {} from '../lib/firebaseHelpers';
 // @ts-ignore
 import { useInboxPolling } from '../hooks/useInboxPolling';
@@ -16,8 +17,8 @@ export default function Inbox() {
     const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
   const router = useRouter();
   const navigation = useNavigation();
-  // const currentUserTyped = getCurrentUser() as { uid?: string } | null;
-  // TODO: Use user from context or props
+  const currentUserTyped = useUser();
+  const authLoading = useAuthLoading();
   
   // Use optimized polling instead of real-time listeners (saves 70-80% on costs)
   const { conversations: polledConversations, loading: polledLoading } = useInboxPolling(currentUserTyped?.uid || null, {
@@ -27,10 +28,21 @@ export default function Inbox() {
 
   const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(polledLoading);
+  const [forceLoadTimeout, setForceLoadTimeout] = useState(false);
 
   useEffect(() => {
     setLoading(polledLoading);
-  }, [polledLoading]);
+    
+    // Force clear loading after 8 seconds max to prevent infinite spinner
+    if (polledLoading && !forceLoadTimeout) {
+      const timeoutId = setTimeout(() => {
+        console.warn('⚠️ Inbox loading timeout - forcing display');
+        setLoading(false);
+        setForceLoadTimeout(true);
+      }, 8000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [polledLoading, forceLoadTimeout]);
 
   useEffect(() => {
     if (!currentUserTyped || !currentUserTyped.uid) {
@@ -84,6 +96,15 @@ export default function Inbox() {
     return date.toLocaleDateString();
   }
 
+  if (authLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color="#007aff" />
+        <Text style={{ color: '#999', marginTop: 10 }}>Loading...</Text>
+      </SafeAreaView>
+    );
+  }
+
   if (!currentUserTyped || !currentUserTyped.uid) {
     return (
       <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}> 
@@ -91,13 +112,17 @@ export default function Inbox() {
       </SafeAreaView>
     );
   }
-  if (loading) {
+
+  // Show loading only if still loading AND no conversations yet
+  if (loading && (!conversations || conversations.length === 0)) {
     return (
       <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}> 
         <ActivityIndicator size="large" color="#007aff" />
+        <Text style={{ color: '#999', marginTop: 10 }}>Loading messages...</Text>
       </SafeAreaView>
     );
   }
+
   if (!conversations || conversations.length === 0) {
     console.log('Inbox: No conversations found for user', currentUserTyped?.uid, conversations);
     return (
@@ -153,9 +178,8 @@ export default function Inbox() {
                 <TouchableOpacity
                   style={styles.archiveBtn}
                   onPress={async () => {
-                    const user = getCurrentUser() as { uid?: string } | null;
-                    if (!user) return;
-                    await archiveConversation(item.id, typeof user?.uid === 'string' ? user.uid : '');
+                    if (!currentUserTyped?.uid) return;
+                    await archiveConversation(item.id, currentUserTyped.uid);
                     setConversations(conversations.filter(c => c.id !== item.id));
                   }}
                 >

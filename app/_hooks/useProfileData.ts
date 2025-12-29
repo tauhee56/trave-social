@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getUserPosts, getUserProfile, getUserSections, getUserStories, sendFollowRequest, unfollowUser } from '../_services/firebaseService';
+import { apiService } from '../_services/apiService';
 
 export function useProfileData(userId: string) {
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -13,17 +13,17 @@ export function useProfileData(userId: string) {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      getUserProfile(userId),
-      getUserPosts(userId),
-      getUserSections(userId),
-      getUserStories(userId)
+      apiService.get(`/users/${userId}`),
+      apiService.get(`/posts`, { userId }),
+      apiService.get(`/users/${userId}/sections`),
+      apiService.get(`/users/${userId}/stories`)
     ])
       .then(([profileData, postsData, sectionsData, storiesData]) => {
-        setProfile(hasData<ProfileData>(profileData) ? profileData.data : null);
-        setPosts(postsData.success && postsData.data ? postsData.data : []);
-        setSections(sectionsData.success && sectionsData.data ? sectionsData.data : []);
-        setStories(storiesData.success && storiesData.stories ? storiesData.stories : []);
-        setFollowStatus(hasData<ProfileData>(profileData) && profileData.data.followStatus ? profileData.data.followStatus : 'none');
+        setProfile(profileData?.data || null);
+        setPosts(postsData?.data || []);
+        setSections(sectionsData?.data || []);
+        setStories(storiesData?.data || []);
+        setFollowStatus(profileData?.data?.followStatus || 'none');
         setLoading(false);
       })
       .catch((err) => {
@@ -36,13 +36,10 @@ export function useProfileData(userId: string) {
     setLoading(true);
     try {
       if (followStatus === 'none') {
-        await sendFollowRequest(userId);
+        await apiService.post(`/users/${userId}/follow`);
         setFollowStatus('pending');
-      } else if (followStatus === 'pending') {
-        await unfollowUser(userId);
-        setFollowStatus('none');
-      } else if (followStatus === 'approved') {
-        await unfollowUser(userId);
+      } else if (followStatus === 'pending' || followStatus === 'approved') {
+        await apiService.post(`/users/${userId}/unfollow`);
         setFollowStatus('none');
       }
       setLoading(false);
@@ -56,6 +53,7 @@ export function useProfileData(userId: string) {
 }
 
 // Add ProfileData type if not already defined
+
 export type ProfileData = {
   uid: string;
   name: string;
@@ -70,6 +68,4 @@ export type ProfileData = {
   // Add other fields as needed
 };
 
-function hasData<T>(obj: any): obj is { success: true; data: T } {
-  return obj && obj.success && 'data' in obj;
-}
+

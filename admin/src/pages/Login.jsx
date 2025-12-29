@@ -15,18 +15,28 @@ export default function Login() {
     e.preventDefault();
     try {
       setLoading(true);
-      
-      // TODO: Replace with actual Firebase/backend authentication
-      // For now, accept any email/password with 'admin' role
-      if (email && password) {
-        const mockUser = { uid: 'admin', email, role: 'admin' };
-        const mockToken = 'mock-jwt-token'; // Replace with real JWT
-        setAuth(mockUser, mockToken);
-        toast.success('Logged in successfully');
-        navigate('/');
-      } else {
+      if (!email || !password) {
         toast.error('Please enter email and password');
+        setLoading(false);
+        return;
       }
+      // Call backend API for admin login
+      const res = await fetch('http://192.168.100.209:5000/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        toast.error(errData.error || 'Login failed');
+        setLoading(false);
+        return;
+      }
+      const data = await res.json();
+      // data: { user, token }
+      setAuth(data.user, data.token);
+      toast.success('Logged in successfully');
+      navigate('/');
     } catch (err) {
       toast.error('Login failed');
       console.error(err);
@@ -61,7 +71,7 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="login-note">Note: Implement proper Firebase/backend authentication</p>
+        {/* Backend authentication is now implemented */}
       </div>
     </div>
   );

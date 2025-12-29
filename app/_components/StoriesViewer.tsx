@@ -55,7 +55,7 @@ interface StoryComment {
   editedAt?: any;
 }
 
-export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { stories: Story[]; onClose: () => void; initialIndex?: number }) {
+export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { stories: Story[]; onClose: () => void; initialIndex?: number }): React.ReactElement {
     // Default avatar from Firebase Storage
     const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
   const [currentIndex, setCurrentIndex] = useState(initialIndex);

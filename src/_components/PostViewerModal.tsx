@@ -37,5 +37,6 @@ interface PostViewerModalProps {
 }
 
 export default function PostViewerModal(props: PostViewerModalProps) {
-  // ...existing code...
+  return null;
 }
+

@@ -8,6 +8,7 @@ import { Dimensions, PermissionsAndroid, Platform, Share, StyleSheet, Text, View
 import MapView, { Marker, Region } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PostLocationModal } from '../components/PostLocationModal';
+import { useUser } from './_components/UserContext';
 // Firebase imports removed - using backend API
 import { getAllPosts } from '../lib/firebaseHelpers';
 import { addComment } from '../lib/firebaseHelpers/comments';
@@ -79,6 +80,7 @@ const DEFAULT_REGION = {
 };
 
 export default function MapScreen() {
+  const currentUser = useUser();
   // Placeholder search function for modal
   function doSearch() {
     // TODO: Implement search logic to update map region based on query

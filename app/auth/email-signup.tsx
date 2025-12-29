@@ -53,8 +53,8 @@ export default function EmailSignUpScreen() {
       // Use email username as name for now
       const username = email.split('@')[0];
 
-      // Enable email verification (false = send verification email)
-      const result = await signUpUser(email, password, username, false);
+      // Enable email verification (send verification email)
+      const result = await signUpUser(email, password, username);
 
       if (result.success) {
         // Account created - email verification sent (but not required to login)

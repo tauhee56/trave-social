@@ -3,7 +3,7 @@
  * Support for @mentions and #hashtags in posts and comments
  */
 
-// import { apiService } from '../app/_services/apiService';
+import { apiService } from '../app/_services/apiService';
 
 export interface Mention {
   userId: string;

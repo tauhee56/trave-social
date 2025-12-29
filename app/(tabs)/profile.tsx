@@ -9,23 +9,22 @@ import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../../config/firebase';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
+import { serverTimestamp } from '../../lib/firebaseCompatibility';
+import { getUserHighlights, getUserSectionsSorted, getUserStories } from '../../lib/firebaseHelpers';
 import { followUser, sendFollowRequest, unfollowUser } from '../../lib/firebaseHelpers/follow';
-import { getUserSections as getUserSectionsAPI } from '../../src/_services/firebaseService';
 import { likePost, unlikePost } from '../../lib/firebaseHelpers/post';
-import { getUserStories as getUserStoriesAPI } from '../../src/_services/firebaseService';
-import { getUserHighlights as getUserHighlightsAPI } from '../../src/_services/firebaseService';
-import { getUserPosts as getUserPostsAPI } from '../../src/_services/firebaseService';
-import { getUserProfile as getUserProfileAPI } from '../../src/_services/firebaseService';
 import { getOptimizedImageUrl } from '../../lib/imageHelpers';
 import { fetchBlockedUserIds, filterOutBlocked } from '../../services/moderation';
 import CommentSection from '../../src/_components/CommentSection';
 import CreateHighlightModal from '../../src/_components/CreateHighlightModal';
-import EditSectionsModal from '../../src/_components/EditSectionsModal';
-import { useAuthUser } from '../../src/_components/UserContext';
+import EditSectionsModal from '../_components/EditSectionsModal';
 import HighlightCarousel from '../../src/_components/HighlightCarousel';
 import HighlightViewer from '../../src/_components/HighlightViewer';
 import PostViewerModal from '../../src/_components/PostViewerModal';
 import StoriesViewer from '../../src/_components/StoriesViewer';
+import { useAuthUser } from '../../src/_components/UserContext';
+import { useAuthLoading } from '../../src/_components/UserContext';
+import { getUserHighlights as getUserHighlightsAPI, getUserPosts as getUserPostsAPI, getUserProfile as getUserProfileAPI, getUserSections as getUserSectionsAPI, getUserStories as getUserStoriesAPI } from '../../src/_services/firebaseService';
 import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
 
 // Default avatar URL
@@ -153,6 +152,7 @@ export default function Profile({ userIdProp }: any) {
   const router = useRouter();
   const params = useLocalSearchParams();
   const authUser = useAuthUser();
+  const authLoading = useAuthLoading();
   const viewedUserId = typeof userIdProp !== 'undefined'
     ? userIdProp
     : (typeof params.user === 'string' ? params.user : (authUser?.uid as string | undefined));
@@ -298,11 +298,12 @@ export default function Profile({ userIdProp }: any) {
           style: 'destructive',
           onPress: async () => {
             try {
-              // Add to blocked list
-              await setDoc(doc(db, 'users', authUser.uid, 'blocked', viewedUserId), {
-                blockedAt: serverTimestamp(),
-                userId: viewedUserId,
-              });
+              // TODO: Block user via backend API
+              // await fetch(`/api/users/${authUser.uid}/blocked`, {
+              //   method: 'POST',
+              //   headers: { 'Content-Type': 'application/json' },
+              //   body: JSON.stringify({ blockedUserId: viewedUserId })
+              // });
               
               // Also unfollow if following
               if (isFollowing) {
@@ -375,8 +376,12 @@ export default function Profile({ userIdProp }: any) {
       setLoading(true);
       const fetchData = async () => {
         try {
+          console.log('[Profile] Fetching data for user:', viewedUserId);
+          
           // Fetch profile
           const profileRes = await getUserProfileAPI(viewedUserId || '');
+          console.log('[Profile] Profile response:', profileRes);
+          
           if (profileRes.success) {
             let profileData: ProfileData | null = null;
             if ('data' in profileRes && profileRes.data && typeof profileRes.data === 'object') profileData = profileRes.data as ProfileData;
@@ -386,10 +391,14 @@ export default function Profile({ userIdProp }: any) {
             setApprovedFollower(profileData?.approvedFollowers?.includes(authUser?.uid || '') || false);
             setFollowRequestPending(profileData?.followRequestPending || false);
           } else {
+            console.warn('[Profile] Profile fetch failed:', profileRes.error);
             setProfile(null);
           }
+          
           // Fetch posts
           const postsRes = await getUserPostsAPI(viewedUserId || '');
+          console.log('[Profile] Posts response success:', postsRes.success);
+          
           let postsData: any[] = [];
           if (postsRes.success) {
             if ('data' in postsRes && Array.isArray(postsRes.data)) postsData = postsRes.data;
@@ -399,6 +408,7 @@ export default function Profile({ userIdProp }: any) {
           } else {
             setPosts([]);
           }
+          
           // Fetch sections (sorted by user's preferred order)
           let sectionsData: any[] = [];
           if (viewedUserId) {
@@ -413,6 +423,7 @@ export default function Profile({ userIdProp }: any) {
           } else {
             setSections([]);
           }
+          
           // Fetch highlights
           const highlightsRes = await getUserHighlightsAPI(viewedUserId || '');
           let highlightsData: any[] = [];
@@ -434,8 +445,10 @@ export default function Profile({ userIdProp }: any) {
           } else {
             setUserStories([]);
           }
+          
+          console.log('[Profile] All data fetched successfully');
         } catch (err) {
-          console.log(err);
+          console.error('[Profile] Error fetching data:', err);
         }
         setLoading(false);
       };
@@ -535,6 +548,35 @@ export default function Profile({ userIdProp }: any) {
   );
 
   // UI
+  // Show loading while auth is initializing
+  if (authLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#007aff" />
+          <Text style={{ marginTop: 10, color: '#999' }}>Loading auth...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show error if not logged in on own profile tab
+  if (!authUser && isOwnProfile) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ fontSize: 18, color: '#999', marginBottom: 20 }}>Please log in to view your profile</Text>
+          <TouchableOpacity 
+            style={{ backgroundColor: '#007aff', paddingHorizontal: 30, paddingVertical: 12, borderRadius: 8 }}
+            onPress={() => router.push('/login')}
+          >
+            <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>Go to Login</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header for other users' profiles with back button and 3-dots menu */}
@@ -918,22 +960,22 @@ export default function Profile({ userIdProp }: any) {
       </ScrollView>
 
       {/* Instagram-style Post Viewer */}
-      <PostViewerModal
-        visible={postViewerVisible}
-        onClose={() => setPostViewerVisible(false)}
-        posts={segmentTab === 'grid' ? (selectedSection ? visiblePosts : posts) : taggedPosts}
-        selectedPostIndex={selectedPostIndex}
-        profile={profile}
-        authUser={authUser}
-        likedPosts={likedPosts}
-        savedPosts={savedPosts}
-        handleLikePost={handleLikePost}
-        handleSavePost={handleSavePost}
-        handleSharePost={handleSharePost}
-        setCommentModalPostId={(id) => setCommentModalPostId(id || '')}
-        setCommentModalAvatar={setCommentModalAvatar}
-        setCommentModalVisible={setCommentModalVisible}
-      />
+      {React.createElement(PostViewerModal as any, {
+        visible: postViewerVisible,
+        onClose: () => setPostViewerVisible(false),
+        posts: segmentTab === 'grid' ? (selectedSection ? visiblePosts : posts) : taggedPosts,
+        selectedPostIndex: selectedPostIndex,
+        profile: profile,
+        authUser: authUser,
+        likedPosts: likedPosts,
+        savedPosts: savedPosts,
+        handleLikePost: handleLikePost,
+        handleSavePost: handleSavePost,
+        handleSharePost: handleSharePost,
+        setCommentModalPostId: (id: any) => setCommentModalPostId(id || ''),
+        setCommentModalAvatar: setCommentModalAvatar,
+        setCommentModalVisible: setCommentModalVisible,
+      })}
 
       <Modal visible={commentModalVisible} animationType="slide" transparent={true} onRequestClose={() => setCommentModalVisible(false)}>
         <KeyboardAvoidingView

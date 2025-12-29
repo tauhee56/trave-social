@@ -3,7 +3,8 @@ import { Image } from 'react-native';
 import useUserProfile from '../../src/_hooks/useUserProfile';
 
 export default function CommentAvatar({ userId, userAvatar, size = 36 }: { userId: string, userAvatar?: string, size?: number }) {
-  const { avatar } = useUserProfile(userId);
+  const { profile } = useUserProfile(userId);
+  const avatar = profile?.avatar;
 
   return (
     <Image

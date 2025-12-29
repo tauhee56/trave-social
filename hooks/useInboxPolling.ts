@@ -50,14 +50,29 @@ export function useInboxPolling(
         pollingInterval
       ).then(unsub => {
         unsubscribeFn = unsub;
+      }).catch((err) => {
+        // Even if polling fails, stop showing loading after 5 seconds
+        if (isMounted) {
+          setLoading(false);
+          setError(err.message || 'Failed to load conversations');
+        }
       });
     } else {
       // Stop polling when app goes to background
       stopPolling(`conversations-${userId}`);
     }
 
+    // Timeout to prevent infinite loading - max 5 seconds
+    const timeoutId = setTimeout(() => {
+      if (isMounted && loading) {
+        console.warn('⏱️ Inbox polling timeout - forcing loading off');
+        setLoading(false);
+      }
+    }, 5000);
+
     return () => {
       isMounted = false;
+      clearTimeout(timeoutId);
       if (unsubscribeFn) unsubscribeFn();
       subscription.remove();
     };
@@ -105,10 +120,24 @@ export function useMessagesPolling(
       pollingInterval
     ).then(unsub => {
       unsubscribeFn = unsub;
+    }).catch((err) => {
+      if (isMounted) {
+        setLoading(false);
+        setError(err.message || 'Failed to load messages');
+      }
     });
+
+    // Timeout to prevent infinite loading - max 5 seconds
+    const timeoutId = setTimeout(() => {
+      if (isMounted && loading) {
+        console.warn('⏱️ Messages polling timeout - forcing loading off');
+        setLoading(false);
+      }
+    }, 5000);
 
     return () => {
       isMounted = false;
+      clearTimeout(timeoutId);
       if (unsubscribeFn) unsubscribeFn();
     };
   }, [conversationId, enabled, pollingInterval]);

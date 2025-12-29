@@ -115,3 +115,6 @@ firebase-debug.*.log
 functions/lib/
 
 # @end expo-cli
+# Keystore files (keep secret)
+keystore-backup/
+*.keystore

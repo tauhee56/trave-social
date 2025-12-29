@@ -2,8 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 // Firestore imports removed
 import React, { useEffect, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { getActiveLiveStreams } from '../../lib/firebaseHelpers';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native';
+import { apiService } from '../_services/apiService';
 
 const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
@@ -26,12 +26,23 @@ function LiveStreamsRowComponent() {
   useEffect(() => {
     const fetchLiveStreams = async () => {
       try {
-        const streams = await getActiveLiveStreams();
-        // Sort by viewer count
-        streams.sort((a, b) => (b.viewerCount || 0) - (a.viewerCount || 0));
+        let res = await apiService.get('/live-streams');
+        // Defensive: handle all possible response shapes
+        let streams: any[] = [];
+        if (res && typeof res === 'object') {
+          streams = res.streams || res.data || [];
+        }
+        if (!Array.isArray(streams)) streams = [];
+        
+        
+        // Sort by viewer count (safe)
+        if (streams.length > 0) {
+          streams.sort((a: any, b: any) => (b?.viewerCount || 0) - (a?.viewerCount || 0));
+        }
         setLiveStreams(streams);
       } catch (error) {
         console.error('Error fetching live streams:', error);
+        setLiveStreams([]);
       }
     };
 

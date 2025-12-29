@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Scroll
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { uploadImage } from '../lib/firebaseHelpers';
 import { getUserProfile, updateUserProfile } from '../lib/firebaseHelpers/index';
+import { useUser, useAuthLoading } from './_components/UserContext';
 
 // Runtime import with fallback
 let ImagePicker: any = null;
@@ -18,6 +19,8 @@ export default function EditProfile() {
     // Default avatar from Firebase Storage
     const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
   const router = useRouter();
+  const user = useUser();
+  const authLoading = useAuthLoading();
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
@@ -33,41 +36,69 @@ export default function EditProfile() {
   const [isPrivate, setIsPrivate] = useState(false);
 
   useEffect(() => {
-    loadProfile();
-  }, []);
+    // If auth is loaded and user exists, load profile immediately
+    if (!authLoading && user?.uid) {
+      loadProfile();
+      return;
+    }
+    
+    // Safety timeout: force load after 3 seconds regardless of authLoading state
+    // This prevents infinite loading if authLoading gets stuck
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        console.warn('⏱️ Edit profile timeout - checking user state');
+        if (user?.uid) {
+          console.log('⏱️ User exists, forcing profile load');
+          loadProfile();
+        } else {
+          console.warn('⏱️ No user after timeout, redirecting to welcome');
+          setLoading(false);
+          router.replace('/auth/welcome');
+        }
+      }
+    }, 3000);
+    
+    return () => clearTimeout(timeoutId);
+  }, [authLoading, user?.uid]);
 
   async function loadProfile() {
-    // const user = getCurrentUser() as { uid: string } | null;
-    // if (!user || !user.uid) {
-    //   router.replace('/auth/welcome');
-    //   return;
-    // }
-    // TODO: Use user from context or props
+    if (!user || !user.uid) {
+      console.error('❌ User not authenticated');
+      router.replace('/auth/welcome');
+      return;
+    }
     
     console.log('🔄 Loading profile for user:', user.uid);
-    const result = await getUserProfile(user.uid);
-    
-    if (result && result.success && result.data) {
-      console.log('✅ Profile loaded:', {
-        name: result.data.name,
-        username: result.data.username,
-        avatar: result.data.avatar?.substring(0, 50),
-        isPrivate: result.data.isPrivate
-      });
+    try {
+      const result = await getUserProfile(user.uid);
       
-      setName(result.data.name || '');
-      setUsername((result.data as any).username || '');
-      setBio(result.data.bio || '');
-      setWebsite(result.data.website || '');
-      setLocation((result.data as any).location || '');
-      setPhone((result.data as any).phone || '');
-      setInterests((result.data as any).interests || '');
-      setAvatar(result.data.avatar || '');
-      setIsPrivate(!!(result.data as any).isPrivate);
-    } else {
-      console.error('❌ Failed to load profile:', result.error);
+      if (result && result.success && result.data) {
+        console.log('✅ Profile loaded:', {
+          name: result.data.name,
+          username: result.data.username,
+          avatar: result.data.avatar?.substring(0, 50),
+          isPrivate: result.data.isPrivate
+        });
+        
+        setName(result.data.name || '');
+        setUsername((result.data as any).username || '');
+        setBio(result.data.bio || '');
+        setWebsite(result.data.website || '');
+        setLocation((result.data as any).location || '');
+        setPhone((result.data as any).phone || '');
+        setInterests((result.data as any).interests || '');
+        setAvatar(result.data.avatar || '');
+        setIsPrivate(!!(result.data as any).isPrivate);
+      } else {
+        console.error('❌ Failed to load profile:', result.error);
+        setError(result?.error || 'Failed to load profile');
+      }
+    } catch (err) {
+      console.error('❌ Profile load error:', err);
+      setError('Error loading profile');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   function validate() {
@@ -360,11 +391,14 @@ export default function EditProfile() {
                     style: 'destructive',
                     onPress: async () => {
                       try {
-                        const { getAuth, signOut } = await import('firebase/auth');
-                        const auth = getAuth();
-                        await signOut(auth);
-                        console.log('Logout successful, redirecting to welcome');
-                        router.replace('/auth/welcome');
+                        const { logoutUser } = await import('./_services/firebaseAuthService');
+                        const result = await logoutUser();
+                        if (result.success) {
+                          console.log('Logout successful, redirecting to welcome');
+                          router.replace('/auth/welcome');
+                        } else {
+                          Alert.alert('Error', 'Failed to log out');
+                        }
                       } catch (err) {
                         Alert.alert('Error', 'Failed to log out');
                       }

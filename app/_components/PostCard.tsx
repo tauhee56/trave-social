@@ -992,22 +992,22 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 
                 // Then update in background
                 if (wasLiked) {
-                  const res = await unlikePost(post.id, userId);
+                  const res = await unlikePost(post.id, userId) as { success: boolean; error?: string };
                   if (!res.success) {
                     // Revert on error
                     setLikes(prev => [...prev, userId]);
                     setLikesCount((prev: number) => prev + 1);
-                    alert('Unlike error: ' + res.error);
+                    alert('Unlike error: ' + (res.error || 'Unknown error'));
                     // Re-broadcast revert
                     feedEventEmitter.emitPostUpdated(post.id, { liked: true, likesCount: (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) + 1 });
                   }
                 } else {
-                  const res = await likePost(post.id, userId);
+                  const res = await likePost(post.id, userId) as { success: boolean; error?: string };
                   if (!res.success) {
                     // Revert on error
                     setLikes(prev => prev.filter(id => id !== userId));
                     setLikesCount((prev: number) => Math.max(0, prev - 1));
-                    alert('Like error: ' + res.error);
+                    alert('Like error: ' + (res.error || 'Unknown error'));
                     // Re-broadcast revert
                     feedEventEmitter.emitPostUpdated(post.id, { liked: false, likesCount: Math.max(0, (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) - 1) });
                   }

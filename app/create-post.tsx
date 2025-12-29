@@ -6,10 +6,11 @@ import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useUser } from '../app/_components/UserContext';
 import VerifiedBadge from '../src/_components/VerifiedBadge';
 // import {} from '../lib/firebaseHelpers';
 import { GOOGLE_MAPS_CONFIG } from '../config/environment';
-import { createPost, DEFAULT_CATEGORIES, ensureDefaultCategories, getCategories, searchUsers } from '../lib/firebaseHelpers/index';
+import { createPost, DEFAULT_CATEGORIES, ensureDefaultCategories, getCategories, getPassportTickets, searchUsers } from '../lib/firebaseHelpers/index';
 import { compressImage } from '../lib/imageCompressor';
 import { extractHashtags, trackHashtag } from '../lib/mentions';
 import { startTrace } from '../lib/perf';
@@ -44,6 +45,7 @@ type UserType = {
 
 export default function CreatePostScreen() {
   const router = useRouter();
+  const user = useUser();
   const [step, setStep] = useState<'picker' | 'details'>('picker');
   const [caption, setCaption] = useState<string>('');
   const [hashtags, setHashtags] = useState<string[]>([]);
@@ -231,7 +233,7 @@ export default function CreatePostScreen() {
         }
         // Deduplicate by location name and lat/lon (update keys after log)
         const uniqueLocations: { [key: string]: LocationType } = {};
-        tickets.forEach(ticketRaw => {
+        tickets.forEach((ticketRaw: any) => {
           const ticket = ticketRaw as {
             city?: string;
             coordinates?: { latitude: number; longitude: number };
@@ -419,7 +421,13 @@ export default function CreatePostScreen() {
         caption,
         locationData?.name || '',
         mediaType,
-        locationData || null,
+        locationData ? { 
+          name: locationData.name, 
+          address: locationData.address, 
+          lat: locationData.lat, 
+          lon: locationData.lon,
+          verified: locationData.verified
+        } : undefined,
         taggedUsers.map(u => u.uid),
         selectedCategory?.name || '',
         extractedHashtags.map(h => typeof h === 'string' ? h : h.tag), // Convert to string array

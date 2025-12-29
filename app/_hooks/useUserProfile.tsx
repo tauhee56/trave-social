@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { getUserProfile } from '../../lib/firebaseHelpers/index';
+import { apiService } from '../_services/apiService';
 
-const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1/default/default-pic.jpg';
 
 export interface UserProfile {
   id: string;
   uid: string;
   name: string;
+  username?: string;
   avatar: string;
   photoURL?: string;
   bio?: string;
@@ -32,15 +33,12 @@ export function useUserProfile(userId: string | null | undefined) {
       try {
         setLoading(true);
         setError(null);
-        
-        const result = await getUserProfile(userId as string);
-        
+        // Use backend API for user profile
+        const result = await apiService.get(`/users/${userId}`);
         if (!mounted) return;
-
         if (result.success && 'data' in result && result.data) {
           // Ensure avatar always has a value
           const avatarUrl = result.data.avatar || result.data.photoURL || DEFAULT_AVATAR_URL;
-          
           setProfile({
             ...result.data,
             avatar: avatarUrl,
@@ -63,17 +61,10 @@ export function useUserProfile(userId: string | null | undefined) {
     }
 
     fetchProfile();
-
     return () => {
       mounted = false;
     };
   }, [userId]);
 
-  return {
-    profile,
-    loading,
-    error,
-    username: profile?.name || 'User',
-    avatar: profile?.avatar || DEFAULT_AVATAR_URL,
-  };
+  return { profile, loading, error };
 }

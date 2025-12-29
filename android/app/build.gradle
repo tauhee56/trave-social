@@ -114,10 +114,10 @@ android {
             keyPassword 'android'
         }
         release {
-            storeFile file('my-release-key.keystore')
-            storePassword 'mypassword'
-            keyAlias 'my-key-alias'
-            keyPassword 'mypassword'
+            storeFile file('travesocial-release.keystore')
+            storePassword 'travesocial123'
+            keyAlias 'travesocial'
+            keyPassword 'travesocial123'
         }
     }
     buildTypes {

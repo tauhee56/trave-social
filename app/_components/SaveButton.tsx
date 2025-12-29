@@ -2,23 +2,26 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import { TouchableOpacity, Alert } from "react-native";
 import { useUser } from "./UserContext";
+import { apiService } from "../_services/apiService";
 
 async function savePost(postId: string, userId: string) {
-  // TODO: Implement backend API to save post
-  // const response = await fetch(`/api/users/${userId}/saved`, {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify({ postId })
-  // });
-  console.log('Post saved:', postId);
+  try {
+    await apiService.post(`/users/${userId}/saved`, { postId });
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error saving post:', error);
+    return { success: false, error: error.message };
+  }
 }
 
 async function unsavePost(postId: string, userId: string) {
-  // TODO: Implement backend API to unsave post
-  // const response = await fetch(`/api/users/${userId}/saved/${postId}`, {
-  //   method: 'DELETE'
-  // });
-  console.log('Post unsaved:', postId);
+  try {
+    await apiService.delete(`/users/${userId}/saved/${postId}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error unsaving post:', error);
+    return { success: false, error: error.message };
+  }
 }
 
 export default function SaveButton({ post }: any) {

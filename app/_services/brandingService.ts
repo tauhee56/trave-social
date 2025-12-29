@@ -5,9 +5,10 @@ import { apiService } from './apiService';
 export async function fetchLogoUrl(): Promise<string | null> {
   try {
     const data = await apiService.get('/branding');
-    return data?.url || null;
+    // Handle different response shapes
+    return data?.data?.logoUrl || data?.logoUrl || data?.url || null;
   } catch (error) {
-    console.error('Error fetching logo URL:', error);
+    // Silently return null on error - branding is optional
     return null;
   }
 }
