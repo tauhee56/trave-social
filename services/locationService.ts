@@ -250,14 +250,8 @@ async function processLocationUpdate(userId: string, latitude: number, longitude
       }
     });
 
-    // Send appropriate notification
-    if (countryChanged) {
-      await sendLocationNotification(city, country, 'country');
-      await createPassportTicket(userId, city, country, countryCode, latitude, longitude);
-    } else if (cityChanged) {
-      await sendLocationNotification(city, country, 'city');
-      await createPassportTicket(userId, city, country, countryCode, latitude, longitude);
-    }
+    // Send smart passport notification (checks if stamp already exists)
+    await sendPassportNotification(userId, city, country);
 
   } catch (error) {
     console.error('❌ Error processing location update:', error);
@@ -362,3 +356,58 @@ export async function getCurrentLocation(): Promise<LocationData | null> {
   }
 }
 
+/**
+ * Check if user has a passport stamp for this location
+ */
+export async function hasPassportStamp(userId: string, city: string, country: string): Promise<boolean> {
+  try {
+    // Import from firebaseHelpers to check existing stamps
+    const { getPassportTickets } = await import('../lib/firebaseHelpers');
+    const tickets = await getPassportTickets(userId);
+    
+    if (!Array.isArray(tickets)) return false;
+    
+    // Check if any stamp matches this city and country
+    return tickets.some(ticket =>
+      ticket.city?.toLowerCase() === city.toLowerCase() &&
+      ticket.country?.toLowerCase() === country.toLowerCase()
+    );
+  } catch (error) {
+    console.error('❌ Error checking passport stamps:', error);
+    return false;
+  }
+}
+
+/**
+ * Send smart notification for new passport location
+ */
+export async function sendPassportNotification(userId: string, city: string, country: string): Promise<void> {
+  try {
+    // Check if user already has a stamp for this location
+    const hasStamp = await hasPassportStamp(userId, city, country);
+    
+    if (hasStamp) {
+      console.log(`✅ User already has stamp for ${city}, ${country}`);
+      return;
+    }
+
+    // Send notification suggesting to add stamp
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '🎫 New Location!',
+        body: `You're now in ${city}, ${country}! Add it to your passport?`,
+        data: {
+          type: 'passport_suggestion',
+          city,
+          country,
+          action: 'add_passport_stamp'
+        },
+      },
+      trigger: null, // Send immediately
+    });
+
+    console.log(`✅ Sent passport notification for ${city}, ${country}`);
+  } catch (error) {
+    console.error('❌ Error sending passport notification:', error);
+  }
+}
