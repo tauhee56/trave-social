@@ -6,31 +6,38 @@ import { Platform } from 'react-native';
 // On Android emulator: use 10.0.2.2 to reach host machine
 // On physical device or iOS: use localhost or actual server IP
 const getAPIBaseURL = () => {
-  // If environment variable is set, use it
-  if (process.env.EXPO_PUBLIC_API_BASE_URL) {
-    console.log('📡 Using env API_BASE:', process.env.EXPO_PUBLIC_API_BASE_URL);
-    return process.env.EXPO_PUBLIC_API_BASE_URL;
+  // Try to get from environment variable (for Expo)
+  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+  console.log('📡 [apiService] Checking env variable EXPO_PUBLIC_API_BASE_URL:', envUrl);
+  
+  if (envUrl) {
+    console.log('✅ [apiService] Using env API_BASE:', envUrl);
+    return envUrl;
   }
+  
+  // Fallback: Use Render URL directly (hardcoded as backup)
+  const renderUrl = 'https://trave-social-backend.onrender.com/api';
+  console.log('📡 [apiService] Env not found, trying Render URL:', renderUrl);
   
   // On Android emulator, localhost is the emulator itself, use 10.0.2.2 for host
   if (Platform.OS === 'android') {
-    console.log('📱 Android detected - using 10.0.2.2 for host machine');
-    return 'http://10.0.2.2:5000/api';
+    console.log('📱 [apiService] Android detected - trying Render first');
+    return renderUrl;
   }
   
   // On iOS simulator, localhost works fine
   if (Platform.OS === 'ios') {
-    console.log('📱 iOS detected - using localhost');
-    return 'http://localhost:5000/api';
+    console.log('📱 [apiService] iOS detected - using Render URL');
+    return renderUrl;
   }
   
   // Web/default fallback
-  console.log('📱 Web/default - using localhost');
-  return 'http://localhost:5000/api';
+  console.log('📱 [apiService] Web/default - using Render URL');
+  return renderUrl;
 };
 
 const API_BASE = getAPIBaseURL();
-console.log('✅ API BASE URL (resolved):', API_BASE);
+console.log('✅ [apiService] API BASE URL (final):', API_BASE);
 
 // Create axios instance with better error handling
 const axiosInstance = axios.create({
