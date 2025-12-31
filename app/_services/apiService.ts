@@ -46,8 +46,10 @@ function getAxiosInstance() {
     
     axiosInstance = axios.create({
       baseURL: API_BASE,
-      timeout: 15000,
+      timeout: 30000,  // Increased timeout
       validateStatus: () => true,
+      httpAgent: require('http').globalAgent,
+      httpsAgent: require('https').globalAgent
     });
     
     // Add interceptors
@@ -117,15 +119,19 @@ async function apiRequest(method: string, url: string, data?: any, config?: any)
     return response.data || { success: false, error: 'No response data' };
   } catch (error: any) {
     console.error(`[API Error] ${method.toUpperCase()} ${url}:`, error.message);
-    console.error('[API Error Details]', {
+    console.error('[API Error Full]', {
+      message: error.message,
       code: error.code,
       errno: error.errno,
       syscall: error.syscall,
       address: error.address,
       port: error.port,
       response: error.response?.status,
+      request: !!error.request,
       isAxios: error.isAxios,
-      config: error.config?.baseURL
+      config: error.config?.baseURL,
+      url: error.config?.url,
+      method: error.config?.method,
     });
     throw error; // Re-throw so caller can handle
   }
