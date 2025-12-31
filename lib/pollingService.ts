@@ -42,7 +42,16 @@ export async function startConversationsPolling(
 
   const poll = async () => {
     try {
-      const conversations = await apiService.get('/conversations', { userId });
+      const response = await apiService.get('/conversations', { userId });
+      
+      // Unwrap response data structure
+      const conversations = response.data || response || [];
+      
+      if (!Array.isArray(conversations)) {
+        console.error('❌ Conversations endpoint returned non-array:', typeof conversations, conversations);
+        callback([]);
+        return;
+      }
 
       // Batch fetch user profiles for all conversations
       const uniqueUserIds = new Set(
@@ -119,7 +128,16 @@ export async function startMessagesPolling(
 
   const poll = async () => {
     try {
-      const messages = await apiService.get(`/conversations/${conversationId}/messages`);
+      const response = await apiService.get(`/conversations/${conversationId}/messages`);
+      
+      // Unwrap response data structure
+      const messages = response.data || response || [];
+      
+      if (!Array.isArray(messages)) {
+        console.error('❌ Messages endpoint returned non-array:', typeof messages, messages);
+        callback([]);
+        return;
+      }
 
       callback(messages.reverse());
 
@@ -170,7 +188,16 @@ export async function startNotificationsPolling(
 
   const poll = async () => {
     try {
-      const notifications = await apiService.get(`/notifications/${userId}`);
+      const response = await apiService.get(`/notifications/${userId}`);
+      
+      // Unwrap response data structure
+      const notifications = response.data || response || [];
+      
+      if (!Array.isArray(notifications)) {
+        console.error('❌ Notifications endpoint returned non-array:', typeof notifications, notifications);
+        callback([]);
+        return;
+      }
 
       callback(notifications);
 
