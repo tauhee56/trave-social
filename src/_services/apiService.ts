@@ -25,32 +25,56 @@ function getAxiosInstance() {
     
     axiosInstance = axios.create({
       baseURL: API_BASE,
-      timeout: 30000,
+      timeout: 60000, // Increased timeout for Render cold start (60s)
     });
   }
   return axiosInstance;
 }
 
-async function apiRequest(method: string, url: string, data?: any, params?: any) {
-  try {
-    const instance = getAxiosInstance();
-    const response = await instance({
-      method,
-      url,
-      data,
-      params,
-    });
-    return response.data;
-  } catch (error: any) {
-    console.error(`[src/apiService] ${method.toUpperCase()} ${url} failed:`, error.message);
-    throw error;
+// Retry logic for handling Render cold starts
+async function apiRequestWithRetry(method: string, url: string, data?: any, params?: any, retries: number = 3): Promise<any> {
+  let lastError: any;
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const instance = getAxiosInstance();
+      const response = await instance({
+        method,
+        url,
+        data,
+        params,
+      });
+      return response.data;
+    } catch (error: any) {
+      lastError = error;
+      const isNetworkError = error.code === 'ERR_NETWORK' || error.message === 'Network Error';
+      const isTimeout = error.code === 'ECONNABORTED';
+      
+      // Only retry on network errors or timeouts (likely cold start)
+      if ((isNetworkError || isTimeout) && attempt < retries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Exponential backoff: 1s, 2s, 4s (max 10s)
+        console.log(`[src/apiService] ${method.toUpperCase()} ${url} failed (attempt ${attempt}/${retries}), retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      console.error(`[src/apiService] ${method.toUpperCase()} ${url} failed:`, error.message);
+      throw error;
+    }
   }
+  
+  throw lastError;
+}
+
+async function apiRequest(method: string, url: string, data?: any, params?: any) {
+  return apiRequestWithRetry(method, url, data, params);
 }
 
 const apiService = {
   get: (url: string, params?: any) => apiRequest('get', url, undefined, params),
   post: (url: string, data?: any) => apiRequest('post', url, data),
   put: (url: string, data?: any) => apiRequest('put', url, data),
+  patch: (url: string, data?: any) => apiRequest('patch', url, data),
   delete: (url: string, data?: any) => apiRequest('delete', url, data),
 };
 

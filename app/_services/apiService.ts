@@ -46,7 +46,7 @@ function getAxiosInstance() {
     
     axiosInstance = axios.create({
       baseURL: API_BASE,
-      timeout: 30000,  // Increased timeout for slow network
+      timeout: 60000,  // Increased timeout for Render cold start (60s)
       validateStatus: () => true,
     });
     
@@ -85,60 +85,85 @@ function getAxiosInstance() {
 
 // Add response interceptor to handle errors - moved inside getAxiosInstance()
 
-async function apiRequest(method: string, url: string, data?: any, config?: any) {
-  try {
-    const axiosInstance = getAxiosInstance();
-    const requestConfig: any = {
-      method,
-      url,
-      data,
-    };
-    
-    // Handle params from config object
-    if (config?.params) {
-      requestConfig.params = config.params;
+// Retry logic for handling Render cold starts
+async function apiRequestWithRetry(method: string, url: string, data?: any, config?: any, retries: number = 3): Promise<any> {
+  let lastError: any;
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const axiosInstance = getAxiosInstance();
+      const requestConfig: any = {
+        method,
+        url,
+        data,
+      };
+      
+      // Handle params from config object
+      if (config?.params) {
+        requestConfig.params = config.params;
+      }
+      
+      // Handle old-style params as second argument for get
+      if (method === 'get' && config && !config.params && typeof config === 'object') {
+        requestConfig.params = config;
+      }
+      
+      console.log(`[API Request] ${method.toUpperCase()} ${url}`, requestConfig.params || '');
+      
+      const response = await axiosInstance(requestConfig);
+      
+      console.log(`[API Response] ${method.toUpperCase()} ${url}:`, {
+        status: response.status,
+        success: response.data?.success,
+        hasData: !!response.data?.data
+      });
+      
+      return response.data || { success: false, error: 'No response data' };
+    } catch (error: any) {
+      lastError = error;
+      const isNetworkError = error.code === 'ERR_NETWORK' || error.message === 'Network Error';
+      const isTimeout = error.code === 'ECONNABORTED';
+      
+      // Only retry on network errors or timeouts (likely cold start)
+      if ((isNetworkError || isTimeout) && attempt < retries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Exponential backoff: 1s, 2s, 4s (max 10s)
+        console.log(`[API] ${method.toUpperCase()} ${url} failed (attempt ${attempt}/${retries}), retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      console.error(`[API Error] ${method.toUpperCase()} ${url}:`, error.message);
+      console.error('[API Error Full]', {
+        message: error.message,
+        code: error.code,
+        errno: error.errno,
+        syscall: error.syscall,
+        address: error.address,
+        port: error.port,
+        response: error.response?.status,
+        request: !!error.request,
+        isAxios: error.isAxios,
+        config: error.config?.baseURL,
+        url: error.config?.url,
+        method: error.config?.method,
+      });
+      throw error;
     }
-    
-    // Handle old-style params as second argument for get
-    if (method === 'get' && config && !config.params && typeof config === 'object') {
-      requestConfig.params = config;
-    }
-    
-    console.log(`[API Request] ${method.toUpperCase()} ${url}`, requestConfig.params || '');
-    
-    const response = await axiosInstance(requestConfig);
-    
-    console.log(`[API Response] ${method.toUpperCase()} ${url}:`, {
-      status: response.status,
-      success: response.data?.success,
-      hasData: !!response.data?.data
-    });
-    
-    return response.data || { success: false, error: 'No response data' };
-  } catch (error: any) {
-    console.error(`[API Error] ${method.toUpperCase()} ${url}:`, error.message);
-    console.error('[API Error Full]', {
-      message: error.message,
-      code: error.code,
-      errno: error.errno,
-      syscall: error.syscall,
-      address: error.address,
-      port: error.port,
-      response: error.response?.status,
-      request: !!error.request,
-      isAxios: error.isAxios,
-      config: error.config?.baseURL,
-      url: error.config?.url,
-      method: error.config?.method,
-    });
-    throw error; // Re-throw so caller can handle
   }
+  
+  throw lastError;
+}
+
+// Use the retry version for all API calls
+async function apiRequest(method: string, url: string, data?: any, config?: any) {
+  return apiRequestWithRetry(method, url, data, config);
 }
 
 export const apiService = {
   get: (url: string, config?: any) => apiRequest('get', url, undefined, config),
   post: (url: string, data?: any) => apiRequest('post', url, data),
   put: (url: string, data?: any) => apiRequest('put', url, data),
+  patch: (url: string, data?: any) => apiRequest('patch', url, data),
   delete: (url: string, data?: any) => apiRequest('delete', url, data),
 
   // Chat helpers

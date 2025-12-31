@@ -118,10 +118,12 @@ const ProfilePostMarker: React.FC<{ lat: number; lon: number; imageUrl: string; 
 type ProfileData = {
   id: string;
   uid: string;
-  name: string;
+  name?: string;
+  displayName?: string;  // Backend returns displayName, not name
   username?: string;
   email: string;
-  avatar: string;
+  avatar?: string;
+  photoURL?: string;  // Firebase field name
   bio?: string;
   website?: string;
   location?: string;
@@ -136,6 +138,7 @@ type ProfileData = {
   isPrivate?: boolean;
   approvedFollowers?: string[];
   followRequestPending?: boolean;
+  firebaseUid?: string;  // Backend field
 };
 
 export default function Profile({ userIdProp }: any) {
@@ -391,11 +394,38 @@ export default function Profile({ userIdProp }: any) {
           // Fetch profile
           const profileRes = await getUserProfileAPI(viewedUserId || '');
           console.log('[Profile] Profile response:', profileRes);
+          console.log('[Profile] Full response structure:', {
+            hasSuccess: 'success' in profileRes,
+            hasData: 'data' in profileRes,
+            successValue: profileRes?.success,
+            dataType: typeof profileRes?.data,
+            dataKeys: profileRes?.data ? Object.keys(profileRes.data) : 'N/A'
+          });
           
           if (profileRes.success) {
             let profileData: ProfileData | null = null;
-            if ('data' in profileRes && profileRes.data && typeof profileRes.data === 'object') profileData = profileRes.data as ProfileData;
-            else if ('profile' in profileRes && profileRes.profile && typeof profileRes.profile === 'object') profileData = profileRes.profile as ProfileData;
+            if ('data' in profileRes && profileRes.data && typeof profileRes.data === 'object') {
+              profileData = profileRes.data as ProfileData;
+              console.log('[Profile] Extracted from profileRes.data:', {
+                name: profileData?.name,
+                displayName: profileData?.displayName,
+                avatar: profileData?.avatar,
+                photoURL: profileData?.photoURL,
+                email: profileData?.email,
+                uid: profileData?.uid,
+                _id: (profileData as any)?._id
+              });
+            } else if ('profile' in profileRes && profileRes.profile && typeof profileRes.profile === 'object') {
+              profileData = profileRes.profile as ProfileData;
+              console.log('[Profile] Extracted from profileRes.profile:', {
+                name: profileData?.name,
+                displayName: profileData?.displayName,
+                avatar: profileData?.avatar,
+                photoURL: profileData?.photoURL
+              });
+            }
+            console.log('[Profile] Final profileData being set:', profileData);
+            console.log('[Profile] Profile state update - isOwnProfile:', isOwnProfile, 'viewedUserId:', viewedUserId);
             setProfile(profileData);
             setIsPrivate(profileData?.isPrivate || false);
             setApprovedFollower(profileData?.approvedFollowers?.includes(authUser?.uid || '') || false);
@@ -595,7 +625,7 @@ export default function Profile({ userIdProp }: any) {
           <TouchableOpacity onPress={() => router.back()} style={styles.headerBackBtn}>
             <Feather name="arrow-left" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>{profile?.username || profile?.name || 'Profile'}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>{profile?.username || profile?.name || (profile as any)?.displayName || 'Profile'}</Text>
           <TouchableOpacity onPress={() => setUserMenuVisible(true)} style={styles.headerMenuBtn}>
             <Feather name="more-vertical" size={24} color="#000" />
           </TouchableOpacity>
@@ -629,7 +659,7 @@ export default function Profile({ userIdProp }: any) {
               }}
             >
               <ExpoImage
-                source={{ uri: profile?.avatar || authUser?.photoURL || DEFAULT_AVATAR_URL }}
+                source={{ uri: profile?.avatar || (profile as any)?.photoURL || (isOwnProfile ? authUser?.photoURL : null) || DEFAULT_AVATAR_URL }}
                 style={[styles.avatar, isPrivate && !isOwnProfile && !approvedFollower && { opacity: 0.3 }]}
                 contentFit="cover"
                 transition={200}
@@ -767,15 +797,13 @@ export default function Profile({ userIdProp }: any) {
 
         {/* Name + Bio + Website + Location + Phone + Interests */}
         <View style={styles.infoBlock}>
-          <Text style={styles.displayName}>{profile?.name || 'User'}</Text>
+          <Text style={styles.displayName}>{profile?.name || (profile as any)?.displayName || profile?.username || 'User'}</Text>
             {!!profile?.username && <Text style={styles.username}>@{profile.username}</Text>}
           {!!profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
           {!!profile?.website && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.website}>🔗 {profile.website}</Text>}
           {!!(profile as any)?.location && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.location}>📍 {(profile as any).location}</Text>}
           {!!(profile as any)?.phone && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.phone}>📱 {(profile as any).phone}</Text>}
           {!!(profile as any)?.interests && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.interests}>✨ {(profile as any).interests}</Text>}
-          {/* Only show follow button for other users, and only once */}
-          {/* Only show follow button for other users in pillRow below, not here */}
         </View>
 
         {/* Pill buttons: Profile | Sections | Passport (only show for own profile) */}

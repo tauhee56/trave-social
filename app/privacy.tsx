@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserProfile, updateUserProfile } from '../lib/firebaseHelpers/index';
+import { getUserProfile, toggleUserPrivacy } from '../lib/firebaseHelpers';
 import { useUser } from './_components/UserContext';
 
 
@@ -25,7 +25,7 @@ export default function PrivacyScreen() {
   const handleToggle = async (value: boolean) => {
     setIsPrivate(value);
     if (!authUser?.uid) return;
-    const res = await updateUserProfile(authUser.uid, { isPrivate: value });
+    const res = await toggleUserPrivacy(authUser.uid, value);
     if (!res.success) {
       Alert.alert('Error', 'Could not update privacy setting.');
       setIsPrivate(!value);
