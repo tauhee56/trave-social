@@ -8,7 +8,7 @@ import { db, doc } from '../lib/firebaseCompatibility';
 import { followUser, unfollowUser } from '../lib/firebaseHelpers/follow';
 import { useUser } from './_components/UserContext';
 
-const DEFAULT_AVATAR = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+const DEFAULT_AVATAR = 'https://via.placeholder.com/200x200.png?text=Profile';
 
 type UserItem = {
   uid: string;

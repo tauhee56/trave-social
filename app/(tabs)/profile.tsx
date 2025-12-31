@@ -28,7 +28,7 @@ import { getUserHighlights as getUserHighlightsAPI, getUserPosts as getUserPosts
 import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
 
 // Default avatar URL
-const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
 const DEFAULT_IMAGE_URL = DEFAULT_AVATAR_URL;
 
 // Utility to parse/sanitize coordinates
@@ -933,14 +933,15 @@ export default function Profile({ userIdProp }: any) {
             {/* Posts */}
             {loading ? renderSkeletonPosts() : (segmentTab === 'grid' ? (selectedSection ? visiblePosts : posts) : taggedPosts).map((p, index) => {
               const currentPostsArray = segmentTab === 'grid' ? (selectedSection ? visiblePosts : posts) : taggedPosts;
+              const postKey = p.id || p._id || `post-${index}`;
               return (
                 <TouchableOpacity
-                  key={p.id}
+                  key={postKey}
                   style={styles.gridItem}
                   activeOpacity={0.8}
                   onPress={() => {
                     // Find correct index in the posts array being passed to modal
-                    const modalIndex = currentPostsArray.findIndex(post => post.id === p.id);
+                    const modalIndex = currentPostsArray.findIndex(post => (post.id || post._id) === (p.id || p._id));
                     setSelectedPostIndex(modalIndex >= 0 ? modalIndex : index);
                     setPostViewerVisible(true);
                   }}

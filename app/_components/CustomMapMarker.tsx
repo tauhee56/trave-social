@@ -8,7 +8,7 @@ interface CustomMapMarkerProps {
   isLive?: boolean;
 }
 
-const DEFAULT_AVATAR = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+const DEFAULT_AVATAR = 'https://via.placeholder.com/200x200.png?text=Profile';
 
 export const CustomMapMarker: React.FC<CustomMapMarkerProps> = ({ imageUrl, imageUrls, userAvatar, isLive }) => {
   // Get post image

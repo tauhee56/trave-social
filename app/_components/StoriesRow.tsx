@@ -53,8 +53,8 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
   const [locationQuery, setLocationQuery] = useState('');
   const [locationSuggestions, setLocationSuggestions] = useState<any[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
-  // Default avatar from Firebase Storage
-  const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+  // Default avatar placeholder
+  const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   // const currentUser = getCurrentUser();
   // const currentUserTyped = getCurrentUser() as { uid?: string } | null;
   // Use authUser from context instead

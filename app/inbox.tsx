@@ -14,7 +14,7 @@ import InboxRow from '../src/_components/InboxRow';
 
 export default function Inbox() {
     // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+    const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   const router = useRouter();
   const navigation = useNavigation();
   const currentUserTyped = useUser();
@@ -31,18 +31,26 @@ export default function Inbox() {
   const [forceLoadTimeout, setForceLoadTimeout] = useState(false);
 
   useEffect(() => {
-    setLoading(polledLoading);
+    // Only set loading if actually loading
+    if (!polledLoading) {
+      setLoading(false);
+      setForceLoadTimeout(false); // Reset timeout flag when data loads successfully
+      return;
+    }
     
-    // Force clear loading after 8 seconds max to prevent infinite spinner
-    if (polledLoading && !forceLoadTimeout) {
+    setLoading(true);
+    
+    // Force clear loading after 15 seconds max to prevent infinite spinner
+    // Only if we haven't already forced a timeout
+    if (!forceLoadTimeout) {
       const timeoutId = setTimeout(() => {
-        console.warn('⚠️ Inbox loading timeout - forcing display');
+        console.warn('⚠️ Inbox loading timeout - forcing display after 15s');
         setLoading(false);
         setForceLoadTimeout(true);
-      }, 8000);
+      }, 15000);
       return () => clearTimeout(timeoutId);
     }
-  }, [polledLoading, forceLoadTimeout]);
+  }, [polledLoading]);
 
   useEffect(() => {
     if (!currentUserTyped || !currentUserTyped.uid) {

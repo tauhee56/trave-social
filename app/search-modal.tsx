@@ -27,7 +27,7 @@ type User = {
   bio?: string;
 };
 
-const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
 
 // Default regions (fallback if Firebase fetch fails)
 const defaultRegions: Region[] = [

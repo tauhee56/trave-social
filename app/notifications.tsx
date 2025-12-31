@@ -8,7 +8,7 @@ import AcceptDeclineButtons from '../src/_components/AcceptDeclineButtons';
 
 export default function NotificationsScreen() {
     // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+    const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   const router = useRouter();
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);

@@ -77,7 +77,7 @@ export default function Archive() {
                 onPress={() => router.push({ pathname: '/dm', params: { id: item.id } })}
               >
                 <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                  <Image source={{ uri: (item.otherUser && item.otherUser.avatar) ? item.otherUser.avatar : 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg' }} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#eee' }} />
+                  <Image source={{ uri: (item.otherUser && item.otherUser.avatar) ? item.otherUser.avatar : 'https://via.placeholder.com/200x200.png?text=Profile' }} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#eee' }} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 16, fontWeight: '600', color: '#222' }}>{item.otherUser && (item.otherUser.displayName || item.otherUser.name) ? (item.otherUser.displayName || item.otherUser.name) : 'Unknown User'}</Text>

@@ -493,7 +493,8 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
   const [likesCount, setLikesCount] = useState<number>(typeof post?.likesCount === 'number' ? post.likesCount : (Array.isArray(post?.likes) ? post.likes.length : 0));
   const [savedBy, setSavedBy] = useState<string[]>(post?.savedBy || []);
   const user = useUser();
-  const liked = likes.includes(user?.uid || "");
+  const userIdForLike = user?.uid || currentUser?.uid || currentUser?.firebaseUid;
+  const liked = likes.includes(userIdForLike || "");
   
   // OPTIMIZATION: Update local state when post prop changes (no real-time listener)
   useEffect(() => {
@@ -509,7 +510,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
     setCommentCount(post?.commentCount || 0);
   }, [post?.commentCount]);
   
-  const [currentAvatar, setCurrentAvatar] = useState<string>("https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg");
+  const [currentAvatar, setCurrentAvatar] = useState<string>("https://via.placeholder.com/200x200.png?text=Profile");
     useEffect(() => {
       async function fetchAvatar() {
         if (post?.userId) {
@@ -520,7 +521,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
               setCurrentAvatar(res.data.avatar);
             }
           } catch {
-            setCurrentAvatar("https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg");
+            setCurrentAvatar("https://via.placeholder.com/200x200.png?text=Profile");
           }
         }
       }
@@ -970,9 +971,9 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
         <View style={styles.iconRow}>
           <TouchableOpacity
             onPress={async () => {
-              const userId = user?.uid;
+              const userId = userIdForLike;
               if (!userId) {
-                alert('User not logged in');
+                console.warn('User not logged in - userId:', userId, 'user:', user, 'currentUser:', currentUser);
                 return;
               }
               try {
@@ -997,7 +998,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                     // Revert on error
                     setLikes(prev => [...prev, userId]);
                     setLikesCount((prev: number) => prev + 1);
-                    alert('Unlike error: ' + (res.error || 'Unknown error'));
+                    console.error('Unlike error:', res.error);
                     // Re-broadcast revert
                     feedEventEmitter.emitPostUpdated(post.id, { liked: true, likesCount: (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) + 1 });
                   }
@@ -1007,7 +1008,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                     // Revert on error
                     setLikes(prev => prev.filter(id => id !== userId));
                     setLikesCount((prev: number) => Math.max(0, prev - 1));
-                    alert('Like error: ' + (res.error || 'Unknown error'));
+                    console.error('Like error:', res.error);
                     // Re-broadcast revert
                     feedEventEmitter.emitPostUpdated(post.id, { liked: false, likesCount: Math.max(0, (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) - 1) });
                   }
@@ -1024,7 +1025,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                   setLikesCount((prev: number) => Math.max(0, prev - 1));
                   feedEventEmitter.emitPostUpdated(post.id, { liked: false, likesCount: Math.max(0, (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) - 1) });
                 }
-                alert('Like/unlike exception: ' + err);
+                console.error('Like/unlike exception:', err);
               }
             }}
             style={{ marginRight: 8, flexDirection: 'row', alignItems: 'center' }}
@@ -1189,7 +1190,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 <CommentSection
                   postId={post.id}
                   postOwnerId={post.userId}
-                  currentAvatar={user?.photoURL || "https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg"}
+                  currentAvatar={user?.photoURL || "https://via.placeholder.com/200x200.png?text=Profile"}
                   maxHeight={undefined}
                   showInput={true}
                   highlightedCommentId={highlightedCommentId}

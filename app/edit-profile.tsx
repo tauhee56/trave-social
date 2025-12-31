@@ -17,7 +17,7 @@ try {
 
 export default function EditProfile() {
     // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+    const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   const router = useRouter();
   const user = useUser();
   const authLoading = useAuthLoading();
@@ -51,9 +51,10 @@ export default function EditProfile() {
           console.log('⏱️ User exists, forcing profile load');
           loadProfile();
         } else {
-          console.warn('⏱️ No user after timeout, redirecting to welcome');
+          console.warn('⏱️ No user after timeout, but continuing with empty form');
           setLoading(false);
-          router.replace('/auth/welcome');
+          // Don't redirect - let user fill form manually
+          // router.replace('/auth/welcome');
         }
       }
     }, 3000);

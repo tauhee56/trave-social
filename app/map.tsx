@@ -167,7 +167,7 @@ export default function MapScreen() {
         }
       }
     // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+    const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   const router = useRouter();
   const params = useLocalSearchParams();
   const initialQuery = (params.q as string) || '';

@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import { apiService } from '../_services/apiService';
 
-const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
 
 interface LiveStream {
   id: string;

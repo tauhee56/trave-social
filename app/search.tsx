@@ -180,7 +180,7 @@ export default function SearchScreen() {
           keyExtractor={item => item.uid || item.id}
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.row} onPress={() => router.push({ pathname: '/user-profile', params: { uid: item.uid || item.id } })}>
-              <Image source={{ uri: item.photoURL || item.avatar || 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg' }} style={styles.avatar} />
+              <Image source={{ uri: item.photoURL || item.avatar || 'https://via.placeholder.com/200x200.png?text=Profile' }} style={styles.avatar} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{item.displayName || item.userName || 'User'}</Text>
                 <Text style={styles.email}>{item.email}</Text>
@@ -203,7 +203,7 @@ export default function SearchScreen() {
             keyExtractor={item => item.id}
             renderItem={({ item }) => (
               <TouchableOpacity style={styles.row} onPress={() => router.push({ pathname: '/highlight/[id]', params: { id: item.id } })}>
-                <Image source={{ uri: item.imageUrl || item.imageUrls?.[0] || 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg' }} style={styles.postImg} />
+                <Image source={{ uri: item.imageUrl || item.imageUrls?.[0] || 'https://via.placeholder.com/200x200.png?text=Post' }} style={styles.postImg} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name}>{item.userName || 'User'}</Text>
                   <Text style={styles.caption} numberOfLines={1}>{item.caption}</Text>

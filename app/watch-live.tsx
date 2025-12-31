@@ -14,7 +14,7 @@ import { joinLiveStream, leaveLiveStream } from '../lib/firebaseHelpers';
 import VideoFallback from './VideoFallback';
 
 const { width, height } = Dimensions.get('window');
-const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
+const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
 
 // Utility: sanitize coordinates for MapView/Marker
 function getSafeCoordinate(coord: { latitude?: number; longitude?: number } | null, fallback = { latitude: 51.5074, longitude: -0.1278 }) {
