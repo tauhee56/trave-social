@@ -36,56 +36,58 @@ const getAPIBaseURL = () => {
   return renderUrl;
 };
 
-const API_BASE = getAPIBaseURL();
-console.log('✅ [apiService] API BASE URL (final):', API_BASE);
+// Lazy initialization - create axios instance on first use, not at module load
+let axiosInstance: any = null;
 
-// Create axios instance with better error handling
-const axiosInstance = axios.create({
-  baseURL: API_BASE,
-  timeout: 15000,
-  validateStatus: () => true,
-});
-
-// Add request interceptor to include Authorization header
-axiosInstance.interceptors.request.use(
-  async (config) => {
-    try {
-      const token = await AsyncStorage.getItem('token');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    } catch (error) {
-      console.warn('[API] Failed to get token from AsyncStorage:', error);
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Add response interceptor to handle errors
-axiosInstance.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  async (error) => {
-    // Handle token expiry
-    if (error.response?.status === 401) {
-      console.warn('[API] Unauthorized - clearing token');
+function getAxiosInstance() {
+  if (!axiosInstance) {
+    const API_BASE = getAPIBaseURL();
+    console.log('✅ [apiService] API BASE URL (final):', API_BASE);
+    
+    axiosInstance = axios.create({
+      baseURL: API_BASE,
+      timeout: 15000,
+      validateStatus: () => true,
+    });
+    
+    // Add interceptors
+    axiosInstance.interceptors.request.use(async (config: any) => {
       try {
-        await AsyncStorage.removeItem('token');
-        await AsyncStorage.removeItem('userId');
-      } catch (e) {
-        console.error('[API] Failed to clear storage:', e);
+        const token = await AsyncStorage.getItem('token');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      } catch (error) {
+        console.error('[API] Failed to get token:', error);
       }
-    }
-    return Promise.reject(error);
+      return config;
+    });
+
+    axiosInstance.interceptors.response.use(
+      (response: any) => response,
+      async (error: any) => {
+        if (error.response?.status === 401) {
+          try {
+            await AsyncStorage.removeItem('token');
+            await AsyncStorage.removeItem('userId');
+          } catch (e) {
+            console.error('[API] Failed to clear storage:', e);
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
   }
-);
+  return axiosInstance;
+}
+
+// Add request interceptor to include Authorization header - moved inside getAxiosInstance()
+
+// Add response interceptor to handle errors - moved inside getAxiosInstance()
 
 async function apiRequest(method: string, url: string, data?: any, config?: any) {
   try {
+    const axiosInstance = getAxiosInstance();
     const requestConfig: any = {
       method,
       url,
