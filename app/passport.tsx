@@ -121,8 +121,17 @@ export default function PassportScreen() {
   };
 
   const handleAddToPassport = async () => {
-    if (!userId || !currentLocation?.city || !currentLocation?.country) {
-      alert('Location information is missing');
+    // Check if location is valid (not placeholder text)
+    const isPlaceholderLocation = 
+      !currentLocation?.city || 
+      currentLocation.city === 'Your Location' ||
+      !currentLocation?.country ||
+      currentLocation.country === 'Enable location services' ||
+      currentLocation.country === 'Enable GPS to detect' ||
+      currentLocation.country === 'Location service unavailable';
+
+    if (isPlaceholderLocation) {
+      alert('Please enable location services to add a passport stamp.\n\nGo to Settings > App Permissions > Location');
       return;
     }
 

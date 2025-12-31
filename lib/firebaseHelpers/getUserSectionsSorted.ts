@@ -1,9 +1,9 @@
+import { apiService } from '../_services/apiService';
 
 export async function getUserSectionsSorted(userId: string) {
   try {
-    const res = await fetch(`/api/users/${userId}/sections`);
-    const data = await res.json();
-    return { success: data.success, data: data.data || [] };
+    const res = await apiService.get(`/users/${userId}/sections`);
+    return { success: true, data: res || [] };
   } catch (error: any) {
     console.error('❌ getUserSectionsSorted error:', error);
     return { success: false, error: error.message, data: [] };

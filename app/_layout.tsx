@@ -133,6 +133,13 @@ export default function RootLayout() {
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="create-post" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
               <Stack.Screen name="search-modal" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="inbox" options={{ headerShown: false }} />
+              <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
+              <Stack.Screen name="passport" options={{ headerShown: false }} />
+              <Stack.Screen name="dm" options={{ headerShown: false }} />
+              <Stack.Screen name="notifications" options={{ headerShown: false }} />
+              <Stack.Screen name="go-live" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+              <Stack.Screen name="watch-live" options={{ headerShown: false }} />
             </Stack>
           )}
         </GestureHandlerRootView>
