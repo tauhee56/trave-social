@@ -23,12 +23,22 @@ export default function PrivacyScreen() {
   }, [authUser?.uid]);
 
   const handleToggle = async (value: boolean) => {
+    console.log('[Privacy] Toggle requested:', value);
     setIsPrivate(value);
-    if (!authUser?.uid) return;
+    if (!authUser?.uid) {
+      console.error('[Privacy] No authUser.uid');
+      return;
+    }
+    
     const res = await toggleUserPrivacy(authUser.uid, value);
+    console.log('[Privacy] Response:', res);
+    
     if (!res.success) {
-      Alert.alert('Error', 'Could not update privacy setting.');
+      console.error('[Privacy] Toggle failed:', res.error);
+      Alert.alert('Error', res.error || 'Could not update privacy setting.');
       setIsPrivate(!value);
+    } else {
+      console.log('[Privacy] ✅ Toggle successful');
     }
   };
 

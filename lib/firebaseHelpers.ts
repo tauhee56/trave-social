@@ -347,8 +347,15 @@ export async function updateUserProfile(uid: string, data: any) {
 export async function toggleUserPrivacy(uid: string, isPrivate: boolean) {
   try {
     const res = await apiService.patch(`/users/${uid}/privacy`, { isPrivate });
+    
+    // Check if the backend response was successful
+    if (!res || !res.success) {
+      console.error('[toggleUserPrivacy] ❌ Backend error:', res?.error);
+      return { success: false, error: res?.error || 'Failed to update privacy' };
+    }
+    
     console.log('[toggleUserPrivacy] ✅ Privacy updated:', isPrivate);
-    return { success: true, isPrivate };
+    return { success: true, isPrivate: res.data?.isPrivate ?? isPrivate };
   } catch (err: any) {
     console.error('[toggleUserPrivacy] ❌ Error:', err.message);
     return { success: false, error: err.message };
