@@ -423,8 +423,25 @@ export async function deleteUserSection(userId: string, sectionName: string) {
 // ============= POSTS =============
 export async function getLocationVisitCount(location: string): Promise<number> {
   if (!location) return 0;
-  const res = await apiService.get('/posts/location-count', { location });
-  return res?.count ?? 0;
+  try {
+    // Backend returns aggregated data: { _id: location, count: N }
+    const res = await apiService.get('/posts/location-count');
+    
+    // Find matching location in the aggregated results
+    if (res?.data && Array.isArray(res.data)) {
+      const locationData = res.data.find((item: any) => 
+        item._id?.toLowerCase() === location.toLowerCase()
+      );
+      if (locationData?.count) {
+        return locationData.count;
+      }
+    }
+    
+    return 0;
+  } catch (err) {
+    console.warn('[getLocationVisitCount] Error:', err);
+    return 0;
+  }
 }
 
 export async function getAllPosts(limitCount: number = 50) {

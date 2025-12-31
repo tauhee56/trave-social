@@ -153,9 +153,19 @@ export default function Profile({ userIdProp }: any) {
   const params = useLocalSearchParams();
   const authUser = useAuthUser();
   const authLoading = useAuthLoading();
-  const viewedUserId = typeof userIdProp !== 'undefined'
-    ? userIdProp
-    : (typeof params.user === 'string' ? params.user : (authUser?.uid as string | undefined));
+  
+  // Extract viewedUserId - handle both cases
+  let viewedUserId: string | undefined;
+  if (userIdProp) {
+    viewedUserId = userIdProp;
+  } else if (params.user) {
+    // params.user could be an array or string
+    viewedUserId = Array.isArray(params.user) ? params.user[0] : params.user;
+  } else {
+    viewedUserId = authUser?.uid as string | undefined;
+  }
+  
+  console.log('[Profile] viewedUserId extracted:', viewedUserId, 'from params:', params, 'userIdProp:', userIdProp);
   
   // Determine if viewing own profile
   const isOwnProfile = viewedUserId === authUser?.uid || (!params.user && !userIdProp);

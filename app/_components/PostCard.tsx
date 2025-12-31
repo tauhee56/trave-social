@@ -516,28 +516,41 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
       if (post?.userId && typeof post.userId === 'object') {
         // Backend populated userId with user object
         const avatar = post.userId?.avatar || post.userId?.photoURL || post.userId?.profilePicture;
+        console.log('[PostCard] Using populated user avatar:', avatar);
         if (avatar) {
           setCurrentAvatar(avatar);
           return;
         }
       }
       
+      // If userId is a string, try to get avatar from the post object directly
+      if (typeof post?.userId === 'string' && post?.userAvatar) {
+        console.log('[PostCard] Using post.userAvatar:', post.userAvatar);
+        setCurrentAvatar(post.userAvatar);
+        return;
+      }
+      
       // Fallback: fetch avatar if userId is just a string
       async function fetchAvatar() {
         if (post?.userId && typeof post.userId === 'string') {
           try {
+            console.log('[PostCard] Fetching avatar for userId:', post.userId);
             const { getUserProfile } = await import('../../lib/firebaseHelpers/user');
             const res = await getUserProfile(post.userId);
             if (res && res.success && res.data && res.data.avatar) {
+              console.log('[PostCard] Fetched avatar:', res.data.avatar);
               setCurrentAvatar(res.data.avatar);
+            } else {
+              console.warn('[PostCard] No avatar in profile response');
             }
-          } catch {
+          } catch (err) {
+            console.warn('[PostCard] Error fetching avatar:', err);
             setCurrentAvatar("https://via.placeholder.com/200x200.png?text=Profile");
           }
         }
       }
       fetchAvatar();
-    }, [post?.userId]);
+    }, [post?.userId, post?.userAvatar]);
   
   // Helper function to check if URL is a video
   const isVideoUrl = (url: string) => {
