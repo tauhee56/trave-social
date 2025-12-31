@@ -29,11 +29,12 @@ export async function updateUserSection(userId: string, section: { name: string,
 }
 
 /**
- * Get highlights for a user
+ * Get highlights for a user (respects privacy settings)
  */
-export async function getUserHighlights(userId: string) {
+export async function getUserHighlights(userId: string, requesterUserId?: string) {
   try {
-    const res = await fetch(`/api/users/${userId}/highlights`);
+    const params = requesterUserId ? { requesterUserId } : {};
+    const res = await fetch(`/api/users/${userId}/highlights${new URLSearchParams(params).toString() ? '?' + new URLSearchParams(params).toString() : ''}`);
     const data = await res.json();
     return { success: data.success, highlights: data.data || [] };
   } catch (error: any) {
@@ -157,12 +158,13 @@ export async function searchUsers(queryText: string, resultLimit: number = 20) {
   }
 }
 /**
- * Get posts for a user
+ * Get posts for a user (respects privacy settings)
  */
-export async function getUserPosts(userId: string) {
+export async function getUserPosts(userId: string, requesterUserId?: string) {
   try {
     const { apiService } = await import('../../app/_services/apiService');
-    const res = await apiService.get(`/users/${userId}/posts`);
+    const params = requesterUserId ? { requesterUserId } : {};
+    const res = await apiService.get(`/users/${userId}/posts`, params);
     return { success: res.success !== false, data: res.data || [] };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -170,12 +172,13 @@ export async function getUserPosts(userId: string) {
 }
 
 /**
- * Get sections for a user
+ * Get sections for a user (respects privacy settings)
  */
-export async function getUserSections(userId: string) {
+export async function getUserSections(userId: string, requesterUserId?: string) {
   try {
     const { apiService } = await import('../../app/_services/apiService');
-    const res = await apiService.get(`/users/${userId}/sections`);
+    const params = requesterUserId ? { requesterUserId } : {};
+    const res = await apiService.get(`/users/${userId}/sections`, params);
     return { success: res.success !== false, data: res.data || [] };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -183,12 +186,13 @@ export async function getUserSections(userId: string) {
 }
 
 /**
- * Get active stories for a user
+ * Get active stories for a user (respects privacy settings)
  */
-export async function getUserStories(userId: string) {
+export async function getUserStories(userId: string, requesterUserId?: string) {
   try {
     const { apiService } = await import('../../app/_services/apiService');
-    const res = await apiService.get(`/users/${userId}/stories`);
+    const params = requesterUserId ? { requesterUserId } : {};
+    const res = await apiService.get(`/users/${userId}/stories`, params);
     const stories = res.data || [];
     stories.sort((a: any, b: any) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
     return { success: res.success !== false, stories };

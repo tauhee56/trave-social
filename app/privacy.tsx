@@ -9,13 +9,28 @@ export default function PrivacyScreen() {
   const authUser = useUser();
   const [isPrivate, setIsPrivate] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [debugInfo, setDebugInfo] = useState('');
+  
   useEffect(() => {
     async function fetchPrivacy() {
-      if (!authUser?.uid) return;
+      if (!authUser?.uid) {
+        console.log('[Privacy] No authUser.uid');
+        return;
+      }
+      
       setLoading(true);
+      console.log('[Privacy] Fetching profile for uid:', authUser.uid);
       const res = await getUserProfile(authUser.uid);
+      console.log('[Privacy] Profile response:', res);
+      
       if (res.success && 'data' in res && res.data) {
-        setIsPrivate(!!(res.data as any).isPrivate);
+        const privacyValue = !!(res.data as any).isPrivate;
+        console.log('[Privacy] Got isPrivate:', privacyValue, 'from data:', (res.data as any).isPrivate);
+        setIsPrivate(privacyValue);
+        setDebugInfo(`Loaded: isPrivate=${privacyValue}`);
+      } else {
+        console.log('[Privacy] Response not successful or no data:', res);
+        setDebugInfo('Failed to load privacy data');
       }
       setLoading(false);
     }
@@ -62,6 +77,12 @@ export default function PrivacyScreen() {
             : 'Your account is public. Anyone can see your posts and send you messages.'}
         </Text>
       </View>
+      {debugInfo && (
+        <View style={styles.debugCard}>
+          <Text style={styles.debugText}>{debugInfo}</Text>
+          <Text style={styles.debugText}>UID: {authUser?.uid?.substring(0, 10)}...</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -73,4 +94,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', marginBottom: 18, justifyContent: 'space-between' },
   label: { fontSize: 17, color: '#222', fontWeight: '600' },
   info: { fontSize: 14, color: '#666', marginBottom: 8, textAlign: 'center' },
+  debugCard: { backgroundColor: '#f0f0f0', borderRadius: 8, padding: 12, marginTop: 16, borderLeftWidth: 3, borderLeftColor: '#FF6B00' },
+  debugText: { fontSize: 11, color: '#666', marginVertical: 2, fontFamily: 'monospace' },
 });
