@@ -404,8 +404,15 @@ export default function CreatePostScreen() {
         uploadImages = compressedImages;
       }
       
+      // Get userId from user context or AsyncStorage
+      let userId = user?.uid;
+      if (!userId) {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        userId = await AsyncStorage.getItem('userId');
+      }
+
       console.log('📤 Creating post with params:', {
-        userId: user?.uid,
+        userId,
         imagesCount: uploadImages.length,
         caption: caption.substring(0, 50),
         hashtags: extractedHashtags,
@@ -416,7 +423,7 @@ export default function CreatePostScreen() {
       });
 
       const result = await createPost(
-        typeof user?.uid === 'string' ? user.uid : '',
+        typeof userId === 'string' ? userId : '',
         Array.isArray(uploadImages) ? uploadImages : [uploadImages], // Pass array of images
         caption,
         locationData?.name || '',
