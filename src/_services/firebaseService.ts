@@ -20,9 +20,14 @@ export async function getUserProfile(userId: string) {
   }
 }
 
-export async function getUserPosts(userId: string) {
+export async function getUserPosts(userId: string, requesterUserId?: string) {
   try {
-    const response = await apiService.get(`/users/${userId}/posts`);
+    const params: any = {};
+    if (requesterUserId) {
+      params.requesterUserId = requesterUserId;
+    }
+    
+    const response = await apiService.get(`/users/${userId}/posts`, params);
     console.log('[API] getUserPosts response:', response);
     
     if (response?.success) {
@@ -39,9 +44,14 @@ export async function getUserPosts(userId: string) {
   }
 }
 
-export async function getUserHighlights(userId: string) {
+export async function getUserHighlights(userId: string, requesterUserId?: string) {
   try {
-    const response = await apiService.get(`/users/${userId}/highlights`);
+    const params: any = {};
+    if (requesterUserId) {
+      params.requesterUserId = requesterUserId;
+    }
+    
+    const response = await apiService.get(`/users/${userId}/highlights`, params);
     console.log('[API] getUserHighlights response:', response);
     
     if (response?.success) {
@@ -58,9 +68,14 @@ export async function getUserHighlights(userId: string) {
   }
 }
 
-export async function getUserSections(userId: string) {
+export async function getUserSections(userId: string, requesterUserId?: string) {
   try {
-    const response = await apiService.get(`/users/${userId}/sections`);
+    const params: any = {};
+    if (requesterUserId) {
+      params.requesterUserId = requesterUserId;
+    }
+    
+    const response = await apiService.get(`/users/${userId}/sections`, params);
     console.log('[API] getUserSections response:', response);
     
     if (response?.success) {
@@ -77,9 +92,14 @@ export async function getUserSections(userId: string) {
   }
 }
 
-export async function getUserStories(userId: string) {
+export async function getUserStories(userId: string, requesterUserId?: string) {
   try {
-    const response = await apiService.get(`/users/${userId}/stories`);
+    const params: any = {};
+    if (requesterUserId) {
+      params.requesterUserId = requesterUserId;
+    }
+    
+    const response = await apiService.get(`/users/${userId}/stories`, params);
     console.log('[API] getUserStories response:', response);
     
     if (response?.success) {

@@ -272,9 +272,13 @@ export async function isApprovedFollower(userId: string, checkUserId: string) {
 }
 
 // Helper to get user highlights
-export async function getUserHighlights(userId: string) {
+export async function getUserHighlights(userId: string, requesterUserId?: string) {
   try {
-    const res = await apiService.get(`/users/${userId}/highlights`);
+    const params: any = {};
+    if (requesterUserId) {
+      params.requesterUserId = requesterUserId;
+    }
+    const res = await apiService.get(`/users/${userId}/highlights`, params);
     return { success: res?.success !== false, highlights: res?.data || [] };
   } catch (error: any) {
     return { success: false, highlights: [] };
@@ -282,9 +286,13 @@ export async function getUserHighlights(userId: string) {
 }
 
 // Helper to get user stories
-export async function getUserStories(userId: string) {
+export async function getUserStories(userId: string, requesterUserId?: string) {
   try {
-    const res = await apiService.get(`/users/${userId}/stories`);
+    const params: any = {};
+    if (requesterUserId) {
+      params.requesterUserId = requesterUserId;
+    }
+    const res = await apiService.get(`/users/${userId}/stories`, params);
     return { success: res?.success !== false, stories: res?.data || [] };
   } catch (error: any) {
     return { success: false, stories: [] };
@@ -292,9 +300,13 @@ export async function getUserStories(userId: string) {
 }
 
 // Helper to get user sections sorted
-export async function getUserSectionsSorted(userId: string) {
+export async function getUserSectionsSorted(userId: string, requesterUserId?: string) {
   try {
-    const res = await apiService.get(`/users/${userId}/sections`);
+    const params: any = {};
+    if (requesterUserId) {
+      params.requesterUserId = requesterUserId;
+    }
+    const res = await apiService.get(`/users/${userId}/sections`, params);
     return res?.data || [];
   } catch (error) {
     return [];

@@ -436,7 +436,7 @@ export default function Profile({ userIdProp }: any) {
           }
           
           // Fetch posts
-          const postsRes = await getUserPostsAPI(viewedUserId || '');
+          const postsRes = await getUserPostsAPI(viewedUserId || '', authUser?.uid);
           console.log('[Profile] Posts response success:', postsRes.success);
           
           let postsData: any[] = [];
@@ -452,7 +452,7 @@ export default function Profile({ userIdProp }: any) {
           // Fetch sections (sorted by user's preferred order)
           let sectionsData: any[] = [];
           if (viewedUserId) {
-            const sectionsRes = await getUserSectionsAPI(viewedUserId);
+            const sectionsRes = await getUserSectionsAPI(viewedUserId, authUser?.uid);
             if (sectionsRes.success) {
               if ('data' in sectionsRes && Array.isArray(sectionsRes.data)) sectionsData = sectionsRes.data;
               else if ('sections' in sectionsRes && Array.isArray(sectionsRes.sections)) sectionsData = sectionsRes.sections;
@@ -465,7 +465,7 @@ export default function Profile({ userIdProp }: any) {
           }
           
           // Fetch highlights
-          const highlightsRes = await getUserHighlightsAPI(viewedUserId || '');
+          const highlightsRes = await getUserHighlightsAPI(viewedUserId || '', authUser?.uid);
           let highlightsData: any[] = [];
           if (highlightsRes.success) {
             if ('data' in highlightsRes && Array.isArray(highlightsRes.data)) highlightsData = highlightsRes.data;
@@ -476,7 +476,7 @@ export default function Profile({ userIdProp }: any) {
           }
 
           // Fetch stories
-          const storiesRes = await getUserStoriesAPI(viewedUserId || '');
+          const storiesRes = await getUserStoriesAPI(viewedUserId || '', authUser?.uid);
           let storiesData: any[] = [];
           if (storiesRes.success) {
             if ('data' in storiesRes && Array.isArray(storiesRes.data)) storiesData = storiesRes.data;
@@ -512,7 +512,7 @@ export default function Profile({ userIdProp }: any) {
       } else {
         setProfile(null);
       }
-      const postsRes = await getUserPostsAPI(viewedUserId);
+      const postsRes = await getUserPostsAPI(viewedUserId, authUser?.uid);
       let postsData: any[] = [];
       if (postsRes.success) {
         if ('data' in postsRes && Array.isArray(postsRes.data)) postsData = postsRes.data;
@@ -553,7 +553,7 @@ export default function Profile({ userIdProp }: any) {
         console.error('Error fetching tagged posts:', err);
         setTaggedPosts([]);
       }
-      const sectionsRes = await getUserSectionsSorted(viewedUserId);
+      const sectionsRes = await getUserSectionsSorted(viewedUserId, authUser?.uid);
       let sectionsData: any[] = [];
       if (sectionsRes.success) {
         if ('data' in sectionsRes && Array.isArray(sectionsRes.data)) sectionsData = sectionsRes.data;
@@ -562,7 +562,7 @@ export default function Profile({ userIdProp }: any) {
       } else {
         setSections([]);
       }
-      const highlightsRes = await getUserHighlights(viewedUserId);
+      const highlightsRes = await getUserHighlights(viewedUserId, authUser?.uid);
       let highlightsData: any[] = [];
       if (highlightsRes.success) {
         if ('data' in highlightsRes && Array.isArray(highlightsRes.data)) highlightsData = highlightsRes.data;
@@ -1082,7 +1082,7 @@ export default function Profile({ userIdProp }: any) {
         onSuccess={async () => {
           // Refresh highlights after creating new one
           if (viewedUserId) {
-            const highlightsRes = await getUserHighlights(viewedUserId);
+            const highlightsRes = await getUserHighlights(viewedUserId, authUser?.uid);
             let highlightsData: any[] = [];
             if (highlightsRes.success) {
               if ('data' in highlightsRes && Array.isArray(highlightsRes.data)) highlightsData = highlightsRes.data;
