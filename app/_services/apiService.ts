@@ -46,10 +46,8 @@ function getAxiosInstance() {
     
     axiosInstance = axios.create({
       baseURL: API_BASE,
-      timeout: 30000,  // Increased timeout
+      timeout: 30000,  // Increased timeout for slow network
       validateStatus: () => true,
-      httpAgent: require('http').globalAgent,
-      httpsAgent: require('https').globalAgent
     });
     
     // Add interceptors
