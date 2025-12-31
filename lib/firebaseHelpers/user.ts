@@ -74,11 +74,14 @@ export async function getHighlightStories(highlightId: string) {
  */
 export async function getUserProfile(uid: string) {
   try {
-    const res = await fetch(`/api/users/${uid}`);
-    if (!res.ok) {
-      return { success: false, error: 'User not found' };
+    const { apiService } = await import('../../app/_services/apiService');
+    const res = await apiService.get(`/users/${uid}`);
+    
+    if (!res.success) {
+      return { success: false, error: res.error || 'User not found' };
     }
-    const userData = await res.json();
+    
+    const userData = res.data;
     const defaultAvatar = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
     const userAvatar = userData.avatar || userData.photoURL || defaultAvatar;
     const profile = {
@@ -138,9 +141,9 @@ export async function updateUserProfile(uid: string, data: any) {
  */
 export async function searchUsers(queryText: string, resultLimit: number = 20) {
   try {
-    const res = await fetch(`/api/users/search?q=${encodeURIComponent(queryText)}&limit=${Math.min(50, resultLimit)}`);
-    const data = await res.json();
-    let results = data.data || [];
+    const { apiService } = await import('../../app/_services/apiService');
+    const res = await apiService.get('/users/search', { q: queryText, limit: Math.min(50, resultLimit) });
+    let results = res.data || [];
     if (queryText.trim().length > 0) {
       const searchLower = queryText.toLowerCase();
       results = results.filter((user: any) => 
@@ -158,9 +161,9 @@ export async function searchUsers(queryText: string, resultLimit: number = 20) {
  */
 export async function getUserPosts(userId: string) {
   try {
-    const res = await fetch(`/api/users/${userId}/posts`);
-    const data = await res.json();
-    return { success: data.success !== false, data: data.data || [] };
+    const { apiService } = await import('../../app/_services/apiService');
+    const res = await apiService.get(`/users/${userId}/posts`);
+    return { success: res.success !== false, data: res.data || [] };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -171,9 +174,9 @@ export async function getUserPosts(userId: string) {
  */
 export async function getUserSections(userId: string) {
   try {
-    const res = await fetch(`/api/users/${userId}/sections`);
-    const data = await res.json();
-    return { success: data.success !== false, data: data.data || [] };
+    const { apiService } = await import('../../app/_services/apiService');
+    const res = await apiService.get(`/users/${userId}/sections`);
+    return { success: res.success !== false, data: res.data || [] };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -184,11 +187,11 @@ export async function getUserSections(userId: string) {
  */
 export async function getUserStories(userId: string) {
   try {
-    const res = await fetch(`/api/users/${userId}/stories`);
-    const data = await res.json();
-    const stories = data.data || [];
+    const { apiService } = await import('../../app/_services/apiService');
+    const res = await apiService.get(`/users/${userId}/stories`);
+    const stories = res.data || [];
     stories.sort((a: any, b: any) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
-    return { success: data.success !== false, stories };
+    return { success: res.success !== false, stories };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
