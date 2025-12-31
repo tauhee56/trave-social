@@ -344,10 +344,36 @@ export async function updateUserProfile(uid: string, data: any) {
   return apiService.put(`/users/${uid}`, data);
 }
 
+export async function toggleUserPrivacy(uid: string, isPrivate: boolean) {
+  try {
+    const res = await apiService.patch(`/users/${uid}/privacy`, { isPrivate });
+    console.log('[toggleUserPrivacy] ✅ Privacy updated:', isPrivate);
+    return { success: true, isPrivate };
+  } catch (err: any) {
+    console.error('[toggleUserPrivacy] ❌ Error:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 // ============= MEDIA =============
 export async function uploadImage(uri: string, path?: string): Promise<{ success: boolean; url?: string; error?: string }> {
-  const res = await apiService.post('/media/upload', { image: uri, path });
-  return { success: true, url: res?.url || res?.secureUrl || res?.location };
+  try {
+    const res = await apiService.post('/media/upload', { image: uri, path });
+    
+    // Handle nested response structure
+    const url = res?.data?.url || res?.url || res?.secureUrl || res?.location;
+    
+    if (!url) {
+      console.error('[uploadImage] No URL in response:', res);
+      return { success: false, error: 'No URL returned from upload' };
+    }
+    
+    console.log('[uploadImage] ✅ Upload successful:', url);
+    return { success: true, url };
+  } catch (err: any) {
+    console.error('[uploadImage] ❌ Error:', err.message);
+    return { success: false, error: err.message };
+  }
 }
 
 export async function deleteImage(path: string) {
@@ -423,15 +449,44 @@ export async function createPost(
   hashtags?: string[],
   mentions?: string[]
 ) {
-  const mediaUrls = [];
-  for (const uri of mediaUris || []) {
-    const upload = await uploadImage(uri);
-    if (!upload?.url) throw new Error(upload?.error || 'Upload failed');
-    mediaUrls.push(upload.url);
+  try {
+    const mediaUrls = [];
+    for (const uri of mediaUris || []) {
+      const upload = await uploadImage(uri);
+      if (!upload?.url) throw new Error(upload?.error || 'Upload failed');
+      mediaUrls.push(upload.url);
+    }
+    
+    const payload = { 
+      userId, 
+      caption, 
+      location, 
+      locationData, 
+      mediaType, 
+      mediaUrls, 
+      category, 
+      hashtags, 
+      mentions, 
+      taggedUserIds 
+    };
+    
+    console.log('[createPost] Posting to /posts with payload:', payload);
+    const res = await apiService.post('/posts', payload);
+    
+    // Handle nested response
+    const postId = res?.data?._id || res?.data?.postId || res?.postId || res?._id || res?.id;
+    
+    if (!postId) {
+      console.error('[createPost] No postId in response:', res);
+      throw new Error('No postId returned from server');
+    }
+    
+    console.log('[createPost] ✅ Post created:', postId);
+    return { success: true, postId };
+  } catch (err: any) {
+    console.error('[createPost] ❌ Error:', err.message);
+    throw err;
   }
-  const payload = { userId, caption, location, locationData, mediaType, mediaUrls, category, hashtags, mentions, taggedUserIds };
-  const res = await apiService.post('/posts', payload);
-  return { success: true, postId: res?.id || res?._id || res?.postId };
 }
 
 export async function getUserPosts(userId: string) {
@@ -466,8 +521,16 @@ export async function deletePost(postId: string, currentUserId?: string) {
 
 // ============= COMMENTS =============
 export async function addComment(postId: string, userId: string, userName: string, userAvatar: string, text: string) {
-  const res = await apiService.post(`/posts/${postId}/comments`, { userId, userName, userAvatar, text });
-  return { success: true, id: res?.id || res?._id || res?.commentId };
+  try {
+    const res = await apiService.post(`/posts/${postId}/comments`, { userId, userName, userAvatar, text });
+    const commentId = res?.data?._id || res?.id || res?._id || res?.commentId;
+    
+    console.log('[addComment] ✅ Comment added:', commentId);
+    return { success: true, id: commentId };
+  } catch (err: any) {
+    console.error('[addComment] ❌ Error:', err.message);
+    return { success: false, error: err.message };
+  }
 }
 
 export async function likeComment(postId: string, commentId: string, userId: string) {
@@ -481,9 +544,15 @@ export async function unlikeComment(postId: string, commentId: string, userId: s
 }
 
 export async function getPostComments(postId: string) {
-  const res = await apiService.get(`/posts/${postId}/comments`);
-  const comments = res?.comments || res?.data || res || [];
-  return { success: true, data: comments };
+  try {
+    const res = await apiService.get(`/posts/${postId}/comments`);
+    const comments = res?.data || res?.comments || [];
+    console.log('[getPostComments] ✅ Loaded', comments.length, 'comments for post:', postId);
+    return { success: true, data: comments };
+  } catch (err: any) {
+    console.error('[getPostComments] ❌ Error:', err.message);
+    return { success: true, data: [] };
+  }
 }
 
 export async function deleteComment(postId: string, commentId: string) {

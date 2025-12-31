@@ -24,13 +24,13 @@ export default function EditProfile() {
   const user = useUser();
   const authLoading = useAuthLoading();
   
-  // Get userId - prioritize paramUserId, then user.uid from context
-  // The paramUserId is passed from profile screen and should be the logged-in user's ID
+  // IMPORTANT: Get userId - prioritize user.uid from UserContext (logged-in user)
+  // paramUserId is only for viewing OTHER user's profile, but edit-profile should ALWAYS edit the logged-in user
   const paramUserId = params.userId as string | undefined;
   
   console.log('📋 EditProfile loaded with:');
-  console.log('   paramUserId:', paramUserId);
-  console.log('   user?.uid:', user?.uid);
+  console.log('   paramUserId (ignored):', paramUserId);
+  console.log('   user?.uid (logged-in user):', user?.uid);
   console.log('   authLoading:', authLoading);
   
   const [name, setName] = useState('');
@@ -46,7 +46,8 @@ export default function EditProfile() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
-  const [userId, setUserId] = useState<string | null>(paramUserId || user?.uid || null);
+  // Use logged-in user from context, NOT paramUserId - edit-profile always edits YOUR OWN profile
+  const [userId, setUserId] = useState<string | null>(user?.uid || null);
 
   // Load profile whenever auth state changes or user changes
   useEffect(() => {

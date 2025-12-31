@@ -62,6 +62,7 @@ export const subscribeToLiveStream = firebaseHelpersDefault?.subscribeToLiveStre
 export const addLikedStatusToPosts = firebaseHelpersDefault?.addLikedStatusToPosts;
 export const getRegions = firebaseHelpersDefault?.getRegions;
 export const fetchMessages = firebaseHelpersDefault?.fetchMessages;
+export const toggleUserPrivacy = firebaseHelpersDefault?.toggleUserPrivacy;
 
 // Default categories
 export const DEFAULT_CATEGORIES = [

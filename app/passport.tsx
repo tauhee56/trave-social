@@ -8,6 +8,7 @@ import {
     ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
@@ -56,6 +57,8 @@ export default function PassportScreen() {
   const [selectedStamp, setSelectedStamp] = useState<PassportStamp | null>(null);
   const [selectedStampIndex, setSelectedStampIndex] = useState<number>(-1);
   const [detectingLocation, setDetectingLocation] = useState(false);
+  const [manualCity, setManualCity] = useState('');
+  const [manualCountry, setManualCountry] = useState('');
 
   useEffect(() => {
     loadPassportData();
@@ -120,28 +123,31 @@ export default function PassportScreen() {
     }
   };
 
-  const handleAddToPassport = async () => {
+  const handleAddToPassport = async (manualLocation?: any) => {
+    // Use manual location if provided, otherwise use auto-detected
+    const locationToAdd = manualLocation || currentLocation;
+
     // Check if location is valid (not placeholder text)
     const isPlaceholderLocation = 
-      !currentLocation?.city || 
-      currentLocation.city === 'Your Location' ||
-      !currentLocation?.country ||
-      currentLocation.country === 'Enable location services' ||
-      currentLocation.country === 'Enable GPS to detect' ||
-      currentLocation.country === 'Location service unavailable';
+      !locationToAdd?.city || 
+      locationToAdd.city === 'Your Location' ||
+      !locationToAdd?.country ||
+      locationToAdd.country === 'Enable location services' ||
+      locationToAdd.country === 'Enable GPS to detect' ||
+      locationToAdd.country === 'Location service unavailable';
 
     if (isPlaceholderLocation) {
-      alert('Please enable location services to add a passport stamp.\n\nGo to Settings > App Permissions > Location');
+      alert('Please enable location services or enter location manually');
       return;
     }
 
     try {
       const ticket = {
-        city: currentLocation.city,
-        country: currentLocation.country,
-        countryCode: currentLocation.countryCode || '',
+        city: locationToAdd.city,
+        country: locationToAdd.country,
+        countryCode: locationToAdd.countryCode || '',
         visitDate: Date.now(),
-        imageUrl: `https://source.unsplash.com/800x600/?${currentLocation.city},${currentLocation.country}`,
+        imageUrl: `https://source.unsplash.com/800x600/?${locationToAdd.city},${locationToAdd.country}`,
         notes: `Visited on ${new Date().toLocaleDateString()}`
       };
 
@@ -374,9 +380,65 @@ export default function PassportScreen() {
               <Text style={styles.modalAddButtonText}>Add to my passport</Text>
             </TouchableOpacity>
 
+            {/* Divider */}
+            <View style={styles.modalDivider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>OR</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Manual Entry */}
+            <Text style={styles.manualEntryLabel}>Enter location manually:</Text>
+            
+            <View style={styles.manualInputContainer}>
+              <View style={styles.inputWrapper}>
+                <Text style={styles.inputLabel}>City</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g., Paris"
+                  placeholderTextColor="#999"
+                  value={manualCity}
+                  onChangeText={setManualCity}
+                />
+              </View>
+              
+              <View style={styles.inputWrapper}>
+                <Text style={styles.inputLabel}>Country</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g., France"
+                  placeholderTextColor="#999"
+                  value={manualCountry}
+                  onChangeText={setManualCountry}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.modalAddButton, { marginTop: 12 }]}
+              disabled={!manualCity || !manualCountry}
+              onPress={() => {
+                if (manualCity && manualCountry) {
+                  handleAddToPassport({
+                    city: manualCity,
+                    country: manualCountry,
+                    countryCode: manualCountry.substring(0, 2).toUpperCase()
+                  });
+                  setManualCity('');
+                  setManualCountry('');
+                }
+              }}
+            >
+              <Text style={styles.modalAddButtonText}>Add manual location</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.modalCancelButton}
-              onPress={() => setShowAddModal(false)}
+              onPress={() => {
+                setShowAddModal(false);
+                setManualCity('');
+                setManualCountry('');
+              }}
             >
               <Text style={styles.modalCancelButtonText}>Cancel</Text>
             </TouchableOpacity>
@@ -851,6 +913,55 @@ const styles = StyleSheet.create({
   modalCancelButtonText: {
     fontSize: 14,
     color: '#666',
+  },
+  
+  // Manual Entry Styles
+  modalDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+    width: '100%',
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E0E0E0',
+  },
+  dividerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#999',
+    marginHorizontal: 12,
+  },
+  manualEntryLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+    alignSelf: 'flex-start',
+  },
+  manualInputContainer: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  inputWrapper: {
+    marginBottom: 12,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 6,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    backgroundColor: '#F9F9F9',
+    color: '#333',
   },
 });
 

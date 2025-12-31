@@ -58,8 +58,9 @@ export default function EditSectionsModal({
     console.log('📋 Fetched sections after create:', res);
 
     if (res.success && res.data) {
-      console.log('✅ Updating sections in UI:', res.data);
-      onSectionsUpdate(res.data);
+      const sectionsData = Array.isArray(res.data) ? res.data : res.data.data || [];
+      console.log('✅ Updating sections in UI:', sectionsData);
+      onSectionsUpdate(sectionsData);
     } else {
       console.error('❌ Failed to fetch sections:', res);
     }
@@ -79,7 +80,8 @@ export default function EditSectionsModal({
           await deleteUserSection(userId, sectionName);
           const res = await getUserSectionsSorted(userId);
           if (res.success && res.data) {
-            onSectionsUpdate(res.data);
+            const sectionsData = Array.isArray(res.data) ? res.data : res.data.data || [];
+            onSectionsUpdate(sectionsData);
           }
           if (selectedSectionForEdit === sectionName) {
             setSelectedSectionForEdit(null);
