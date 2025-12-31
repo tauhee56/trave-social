@@ -111,6 +111,9 @@ export async function getUserProfile(uid: string) {
  */
 export async function updateUserProfile(uid: string, data: any) {
   try {
+    // Import apiService dynamically to avoid circular dependencies
+    const { apiService } = await import('../../app/_services/apiService');
+    
     let avatarValue = data?.avatar;
     if (!avatarValue || (typeof avatarValue === 'string' && avatarValue.trim() === '')) {
       avatarValue = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
@@ -122,14 +125,10 @@ export async function updateUserProfile(uid: string, data: any) {
       isPrivate: data.isPrivate !== undefined ? data.isPrivate : false,
     };
 
-    const res = await fetch(`/api/users/${uid}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(safeData)
-    });
-    const responseData = await res.json();
-    return responseData;
+    const responseData = await apiService.patch(`/users/${uid}`, safeData);
+    return { success: true, data: responseData };
   } catch (error: any) {
+    console.error('❌ updateUserProfile error:', error);
     return { success: false, error: error.message };
   }
 }

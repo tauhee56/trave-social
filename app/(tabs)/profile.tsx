@@ -771,7 +771,7 @@ export default function Profile({ userIdProp }: any) {
         {/* Pill buttons: Profile | Sections | Passport (only show for own profile) */}
         {isOwnProfile && (
           <View style={styles.pillRow}>
-            <TouchableOpacity style={styles.pillBtn} onPress={() => router.push('/edit-profile' as any)}>
+            <TouchableOpacity style={styles.pillBtn} onPress={() => router.push({pathname: '/edit-profile', params: {userId: viewedUserId}} as any)}>
               <Ionicons name="person-outline" size={16} color="#000" style={{ marginRight: 4 }} />
               <Text style={styles.pillText}>Profile</Text>
             </TouchableOpacity>

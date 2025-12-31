@@ -1,4 +1,4 @@
-import { apiService } from '../_services/apiService';
+import { apiService } from '../../app/_services/apiService';
 
 export async function getUserSectionsSorted(userId: string) {
   try {

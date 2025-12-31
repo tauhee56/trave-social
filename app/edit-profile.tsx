@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { uploadImage } from '../lib/firebaseHelpers';
-import { getUserProfile, updateUserProfile } from '../lib/firebaseHelpers/index';
+import { updateUserProfile } from '../lib/firebaseHelpers/index';
+import { getUserProfile } from '../src/_services/firebaseService';
 import { useUser, useAuthLoading } from './_components/UserContext';
 
 // Runtime import with fallback
@@ -19,8 +20,19 @@ export default function EditProfile() {
     // Default avatar from Firebase Storage
     const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   const router = useRouter();
+  const params = useLocalSearchParams();
   const user = useUser();
   const authLoading = useAuthLoading();
+  
+  // Get userId - prioritize paramUserId, then user.uid from context
+  // The paramUserId is passed from profile screen and should be the logged-in user's ID
+  const paramUserId = params.userId as string | undefined;
+  
+  console.log('📋 EditProfile loaded with:');
+  console.log('   paramUserId:', paramUserId);
+  console.log('   user?.uid:', user?.uid);
+  console.log('   authLoading:', authLoading);
+  
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
@@ -34,51 +46,106 @@ export default function EditProfile() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
+  const [userId, setUserId] = useState<string | null>(paramUserId || user?.uid || null);
 
+  // Load profile whenever auth state changes or user changes
   useEffect(() => {
-    // If auth is loaded and user exists, load profile immediately
-    if (!authLoading && user?.uid) {
-      loadProfile();
-      return;
-    }
-    
-    // Safety timeout: force load after 3 seconds regardless of authLoading state
-    // This prevents infinite loading if authLoading gets stuck
-    const timeoutId = setTimeout(() => {
-      if (loading) {
-        console.warn('⏱️ Edit profile timeout - checking user state');
-        if (user?.uid) {
-          console.log('⏱️ User exists, forcing profile load');
-          loadProfile();
-        } else {
-          console.warn('⏱️ No user after timeout, but continuing with empty form');
-          setLoading(false);
-          // Don't redirect - let user fill form manually
-          // router.replace('/auth/welcome');
+    let isMounted = true;
+
+    const initializeProfile = async () => {
+      try {
+        // If we have paramUserId from params, use that directly
+        if (paramUserId) {
+          console.log('📋 Loading profile for paramUserId:', paramUserId);
+          setUserId(paramUserId);
+          setLoading(true);
+          await loadProfileWithId(paramUserId);
+          return;
         }
+
+        // If auth is still loading, wait
+        if (authLoading) {
+          console.log('⏳ Auth is loading...');
+          setLoading(true);
+          return;
+        }
+
+        if (!isMounted) return;
+
+        // If user exists, load their profile data
+        if (user?.uid) {
+          console.log('👤 User found, loading profile:', user.uid);
+          setUserId(user.uid);
+          setLoading(true);
+          await loadProfileWithId(user.uid);
+        } else {
+          // No user - just show empty form
+          console.warn('⚠️ No authenticated user - showing empty edit form');
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('❌ Error in initializeProfile:', err);
+        if (isMounted) setLoading(false);
       }
-    }, 3000);
-    
-    return () => clearTimeout(timeoutId);
-  }, [authLoading, user?.uid]);
+    };
+
+    initializeProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading, user?.uid, paramUserId]);
+
+  async function loadProfileWithId(uid: string) {
+    console.log('🔄 Loading profile for uid:', uid);
+    try {
+      const result = await getUserProfile(uid);
+      
+      if (result?.success && result?.data) {
+        console.log('✅ Profile loaded:', {
+          displayName: result.data.displayName,
+          email: result.data.email,
+        });
+        
+        // Map fields correctly - response has displayName, not name
+        setName(result.data.displayName || result.data.name || '');
+        setUsername((result.data as any).username || (result.data as any).displayName || '');
+        setBio(result.data.bio || '');
+        setWebsite(result.data.website || '');
+        setLocation((result.data as any).location || '');
+        setPhone((result.data as any).phone || '');
+        setInterests((result.data as any).interests || '');
+        setAvatar(result.data.avatar || '');
+        setIsPrivate(!!(result.data as any).isPrivate);
+        setError(null);
+      } else {
+        console.warn('⚠️ Profile fetch returned no data - using empty form');
+        setError(null);
+      }
+    } catch (err) {
+      console.warn('⚠️ Error loading profile - still showing form:', err);
+      setError(null);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function loadProfile() {
-    if (!user || !user.uid) {
-      console.error('❌ User not authenticated');
-      router.replace('/auth/welcome');
+    if (!user?.uid) {
+      console.warn('⚠️ No user UID - showing empty form');
+      setLoading(false);
       return;
     }
     
     console.log('🔄 Loading profile for user:', user.uid);
+    setUserId(user.uid); // Store userId for later use in save
     try {
       const result = await getUserProfile(user.uid);
       
-      if (result && result.success && result.data) {
+      if (result?.success && result?.data) {
         console.log('✅ Profile loaded:', {
           name: result.data.name,
           username: result.data.username,
-          avatar: result.data.avatar?.substring(0, 50),
-          isPrivate: result.data.isPrivate
         });
         
         setName(result.data.name || '');
@@ -90,13 +157,14 @@ export default function EditProfile() {
         setInterests((result.data as any).interests || '');
         setAvatar(result.data.avatar || '');
         setIsPrivate(!!(result.data as any).isPrivate);
+        setError(null);
       } else {
-        console.error('❌ Failed to load profile:', result.error);
-        setError(result?.error || 'Failed to load profile');
+        console.warn('⚠️ Profile fetch returned no data - using empty form');
+        setError(null);
       }
     } catch (err) {
-      console.error('❌ Profile load error:', err);
-      setError('Error loading profile');
+      console.warn('⚠️ Error loading profile - still showing form:', err);
+      setError(null);
     } finally {
       setLoading(false);
     }
@@ -111,15 +179,23 @@ export default function EditProfile() {
     const v = validate();
     setError(v);
     if (v) return;
+
+    // Ensure user is available - try user.uid first, then fallback to stored userId
+    const currentUserId = user?.uid || userId;
     
-    // const user = getCurrentUser() as { uid: string } | null;
-    // if (!user || !user.uid) {
-    //   Alert.alert('Error', 'Not signed in');
-    //   return;
-    // }
-    // TODO: Use user from context or props
+    if (!currentUserId) {
+      console.error('❌ User not authenticated - cannot save profile');
+      console.log('   authLoading:', authLoading);
+      console.log('   user?.uid:', user?.uid);
+      console.log('   stored userId:', userId);
+      Alert.alert('Error', 'You must be logged in to save your profile');
+      return;
+    }
+
+    console.log('💾 Saving profile with userId:', currentUserId);
     
     console.log('💾 Saving profile changes...');
+    console.log('  UserId:', userId);
     console.log('  Name:', name);
     console.log('  Username:', username);
     console.log('  Bio:', bio);
@@ -139,7 +215,7 @@ export default function EditProfile() {
       // Upload new avatar if picked
       if (newAvatarUri) {
         console.log('📤 Uploading new avatar...');
-        const uploadResult = await uploadImage(newAvatarUri, `avatars/${user.uid}`);
+        const uploadResult = await uploadImage(newAvatarUri, `avatars/${currentUserId}`);
         if (uploadResult && uploadResult.success && uploadResult.url) {
           finalAvatar = uploadResult.url;
           console.log('✅ Avatar uploaded:', finalAvatar.substring(0, 50));
@@ -150,7 +226,7 @@ export default function EditProfile() {
       
       // Update profile with avatar URL
       console.log('💾 Updating Firestore profile...');
-      const result = await updateUserProfile(user.uid, {
+      const result = await updateUserProfile(currentUserId, {
         name,
         username,
         displayName: name, // Also set displayName for Firebase
@@ -239,14 +315,18 @@ export default function EditProfile() {
     }
   }
 
-  if (loading) {
+  if (loading && authLoading) {
+    // Only show full loading screen while auth is still loading AND loading profile
     return (
       <SafeAreaView style={[styles.safe, { alignItems: 'center', justifyContent: 'center' }]} edges={["top", "bottom"]}>
         <ActivityIndicator size="large" color="#f39c12" />
+        <Text style={{ marginTop: 16, color: '#666', fontSize: 14 }}>Loading your profile...</Text>
       </SafeAreaView>
     );
   }
 
+  // If auth is done but profile data still loading, show form with overlay indicator
+  // This prevents the user from being stuck on a blank loader screen
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <KeyboardAvoidingView
@@ -265,7 +345,7 @@ export default function EditProfile() {
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* Avatar */}
-          <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
+          <TouchableOpacity onPress={pickImage} style={styles.avatarContainer} disabled={loading}>
             <Image source={{ uri: avatar || DEFAULT_AVATAR_URL }} style={styles.avatar} />
           </TouchableOpacity>
 
@@ -277,7 +357,8 @@ export default function EditProfile() {
               onChangeText={setName} 
               style={styles.input} 
               placeholder="Emma Lumna" 
-              placeholderTextColor="#999" 
+              placeholderTextColor="#999"
+              editable={!loading}
             />
           </View>
 
@@ -290,6 +371,7 @@ export default function EditProfile() {
               placeholder="@username" 
               placeholderTextColor="#999"
               autoCapitalize="none"
+              editable={!loading}
             />
           </View>
 
@@ -420,6 +502,16 @@ export default function EditProfile() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      
+      {/* Loading overlay when fetching profile data (but auth is done) */}
+      {loading && !authLoading && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', zIndex: 999 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#f39c12" />
+            <Text style={{ marginTop: 12, color: '#666', fontSize: 14 }}>Loading profile data...</Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }

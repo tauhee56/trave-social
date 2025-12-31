@@ -91,13 +91,20 @@ export default function RootLayout() {
     if (loading || !fontsLoaded) return;
 
     const inAuthGroup = segments[0] === 'auth';
-
+    const isOnTabs = segments[0] === '(tabs)';
+    
+    // Only redirect if NOT already on tabs and user is authenticated
+    // Don't redirect constantly - only redirect on initial auth state change
     if (!user && !inAuthGroup) {
+      // No user and not in auth - go to welcome
+      console.log('[RootLayout] Redirecting to welcome - no user');
       router.replace('/auth/welcome');
     } else if (user && inAuthGroup) {
+      // Has user and in auth screens - go to home
+      console.log('[RootLayout] Redirecting to home - user logged in but on auth screen');
       router.replace('/(tabs)/home');
     }
-  }, [user, segments, loading, fontsLoaded]);
+  }, [user, loading, fontsLoaded]);
 
   return (
     <ErrorBoundary>
