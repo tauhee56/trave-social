@@ -512,8 +512,19 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
   
   const [currentAvatar, setCurrentAvatar] = useState<string>("https://via.placeholder.com/200x200.png?text=Profile");
     useEffect(() => {
+      // Use pre-populated user data from backend if available
+      if (post?.userId && typeof post.userId === 'object') {
+        // Backend populated userId with user object
+        const avatar = post.userId?.avatar || post.userId?.photoURL || post.userId?.profilePicture;
+        if (avatar) {
+          setCurrentAvatar(avatar);
+          return;
+        }
+      }
+      
+      // Fallback: fetch avatar if userId is just a string
       async function fetchAvatar() {
-        if (post?.userId) {
+        if (post?.userId && typeof post.userId === 'string') {
           try {
             const { getUserProfile } = await import('../../lib/firebaseHelpers/user');
             const res = await getUserProfile(post.userId);
@@ -713,10 +724,16 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
             onPress={() => {
               // Navigate to user profile
               if (post?.userId) {
-                router.push({
-                  pathname: '/(tabs)/profile',
-                  params: { user: post.userId }
-                } as any);
+                // Handle both string userId and object userId (from backend population)
+                const uid = typeof post.userId === 'string' ? post.userId : post.userId?._id || post.userId?.uid;
+                if (uid) {
+                  router.push({
+                    pathname: '/(tabs)/profile',
+                    params: { user: uid }
+                  } as any);
+                } else {
+                  console.log('No valid userId found for this post');
+                }
               } else {
                 console.log('No userId available for this post');
               }

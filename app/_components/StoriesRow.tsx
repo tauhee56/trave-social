@@ -92,12 +92,32 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
   }, [locationQuery]);
 
   const loadCurrentUserAvatar = async () => {
+    // Try to get avatar from authUser context first
+    if (authUser?.avatar) {
+      setCurrentUserAvatar(authUser.avatar);
+      return;
+    }
     if (authUser?.photoURL) {
       setCurrentUserAvatar(authUser.photoURL);
-    } else if (authUser && authUser.uid) {
-      const res = await getUserProfile(authUser.uid);
-      if (res && res.success && 'data' in res && res.data) {
-        setCurrentUserAvatar(res.data.avatar);
+      return;
+    }
+    if (authUser?.profilePicture) {
+      setCurrentUserAvatar(authUser.profilePicture);
+      return;
+    }
+    
+    // If no avatar in context, fetch from server
+    if (authUser && authUser.uid) {
+      try {
+        const res = await getUserProfile(authUser.uid);
+        if (res && res.success && 'data' in res && res.data) {
+          const avatar = res.data.avatar || res.data.photoURL || res.data.profilePicture;
+          if (avatar) {
+            setCurrentUserAvatar(avatar);
+          }
+        }
+      } catch (err) {
+        console.warn('[StoriesRow] Error loading avatar:', err);
       }
     }
   };
