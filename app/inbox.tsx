@@ -73,7 +73,7 @@ export default function Inbox() {
   }, [polledLoading]);
 
   useEffect(() => {
-    if (!currentUserTyped || !currentUserTyped.uid) {
+    if (!userId) {
       setConversations([]);
       return;
     }
@@ -89,7 +89,7 @@ export default function Inbox() {
           if (otherUser.isPrivate) {
             // Check if current user is in their followers list (approved)
             const followers = otherUser.followers || [];
-            const isApproved = followers.includes(currentUserTyped.uid);
+            const isApproved = followers.includes(userId);
             
             console.log(`🔒 Private account check: ${otherUser.name}, isApproved: ${isApproved}`);
             
@@ -154,7 +154,7 @@ export default function Inbox() {
   }
 
   if (!conversations || conversations.length === 0) {
-    console.log('Inbox: No conversations found for user', currentUserTyped?.uid, conversations);
+    console.log('Inbox: No conversations found for user', userId, conversations);
     return (
       <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}> 
         <Text style={{ color: '#999', fontSize: 18, marginTop: 40 }}>No messages yet</Text>
@@ -199,7 +199,7 @@ export default function Inbox() {
         })()
       ) : (
         <FlatList
-          data={conversations.filter(c => !c[`archived_${currentUserTyped?.uid}`])}
+          data={conversations.filter(c => !c[`archived_${userId}`])}
           keyExtractor={t => t.id}
           style={{ width: '100%' }}
           renderItem={({ item }) => (
@@ -208,8 +208,8 @@ export default function Inbox() {
                 <TouchableOpacity
                   style={styles.archiveBtn}
                   onPress={async () => {
-                    if (!currentUserTyped?.uid) return;
-                    await archiveConversation(item.id, currentUserTyped.uid);
+                    if (!userId) return;
+                    await archiveConversation(item.id, userId);
                     setConversations(conversations.filter(c => c.id !== item.id));
                   }}
                 >
@@ -220,7 +220,7 @@ export default function Inbox() {
               <InboxRow
                 item={{
                   ...item,
-                  currentUserId: currentUserTyped?.uid || '',
+                  currentUserId: userId || '',
                   lastMessage: typeof item.lastMessage === 'string' ? item.lastMessage : '',
                   otherUser: item.otherUser || null
                 }}
