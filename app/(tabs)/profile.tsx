@@ -14,6 +14,7 @@ import { getUserHighlights, getUserSectionsSorted, getUserStories } from '../../
 import { followUser, sendFollowRequest, unfollowUser } from '../../lib/firebaseHelpers/follow';
 import { likePost, unlikePost } from '../../lib/firebaseHelpers/post';
 import { getOptimizedImageUrl } from '../../lib/imageHelpers';
+import { userService } from '../../lib/userService';
 import { fetchBlockedUserIds, filterOutBlocked } from '../../services/moderation';
 import CommentSection from '../../src/_components/CommentSection';
 import CreateHighlightModal from '../../src/_components/CreateHighlightModal';
@@ -311,28 +312,28 @@ export default function Profile({ userIdProp }: any) {
           style: 'destructive',
           onPress: async () => {
             try {
-              // TODO: Block user via backend API
-              // await fetch(`/api/users/${authUser.uid}/blocked`, {
-              //   method: 'POST',
-              //   headers: { 'Content-Type': 'application/json' },
-              //   body: JSON.stringify({ blockedUserId: viewedUserId })
-              // });
+              // Block user via backend API
+              const success = await userService.blockUser(authUser.uid, viewedUserId);
               
-              // Also unfollow if following
-              if (isFollowing) {
-                await unfollowUser(authUser.uid, viewedUserId);
+              if (success) {
+                // Also unfollow if following
+                if (isFollowing) {
+                  await unfollowUser(authUser.uid, viewedUserId);
+                }
+                
+                // Remove from your followers if they follow you
+                const theyFollowYou = profile?.followers?.includes(authUser.uid);
+                if (theyFollowYou) {
+                  await unfollowUser(viewedUserId, authUser.uid);
+                }
+                
+                setUserMenuVisible(false);
+                Alert.alert('Blocked', `${profile?.name || 'User'} has been blocked.`, [
+                  { text: 'OK', onPress: () => router.back() }
+                ]);
+              } else {
+                throw new Error('Block request failed');
               }
-              
-              // Remove from your followers if they follow you
-              const theyFollowYou = profile?.followers?.includes(authUser.uid);
-              if (theyFollowYou) {
-                await unfollowUser(viewedUserId, authUser.uid);
-              }
-              
-              setUserMenuVisible(false);
-              Alert.alert('Blocked', `${profile?.name || 'User'} has been blocked.`, [
-                { text: 'OK', onPress: () => router.back() }
-              ]);
             } catch (error) {
               console.error('Error blocking user:', error);
               Alert.alert('Error', 'Failed to block user. Please try again.');
@@ -362,17 +363,23 @@ export default function Profile({ userIdProp }: any) {
     if (!authUser?.uid || !viewedUserId) return;
     
     try {
-      const { addDoc, collection } = await import('firebase/firestore');
-      await addDoc(collection(db, 'reports'), {
-        reportedUserId: viewedUserId,
-        reportedBy: authUser.uid,
-        reason,
-        createdAt: serverTimestamp(),
-        status: 'pending',
-      });
-      Alert.alert('Report Submitted', 'Thank you for your report. We will review it shortly.');
+      // Report user via backend API
+      const success = await userService.reportUser(
+        viewedUserId,
+        authUser.uid,
+        reason
+      );
+
+      if (success) {
+        Alert.alert('Report Submitted', 'Thank you for your report. We will review it shortly.');
+      } else {
+        throw new Error('Report request failed');
+      }
     } catch (error) {
       console.error('Error submitting report:', error);
+      Alert.alert('Error', 'Failed to submit report. Please try again.');
+    }
+  };
       Alert.alert('Error', 'Failed to submit report. Please try again.');
     }
   };

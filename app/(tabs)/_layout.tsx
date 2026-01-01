@@ -2,7 +2,9 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from 'expo-image';
 import { Tabs, useFocusEffect, useRouter, useSegments } from "expo-router";
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, StyleSheet, Text, TouchableOpacity, View, FlatList, Modal, ScrollView } from 'react-native';
+import { useNotifications } from '../../hooks/useNotifications';
+import { notificationService } from '../../lib/notificationService';
 let RtcSurfaceView: any = null;
 let VideoSourceType: any = null;
 let RenderModeType: any = null;
@@ -231,10 +233,14 @@ function TopMenu() {
   const [unreadNotif, setUnreadNotif] = React.useState(0);
   const [unreadMsg, setUnreadMsg] = React.useState(0);
   const [menuVisible, setMenuVisible] = React.useState(false);
+  const [notificationsModalVisible, setNotificationsModalVisible] = React.useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoLoading, setLogoLoading] = useState(true);
   const segments = useSegments();
   const isProfileScreen = segments[segments.length - 1] === 'profile';
+  
+  // Get notifications from hook
+  const { notifications, unreadCount, fetchNotifications, markAsRead } = useNotifications(user?.uid || '');
 
   useEffect(() => {
     const u = user;
@@ -275,6 +281,22 @@ function TopMenu() {
     }, [])
   );
 
+  const renderNotificationItem = (item: any) => (
+    <TouchableOpacity
+      style={styles.notificationItem}
+      onPress={() => markAsRead(item._id)}
+    >
+      <View style={styles.notificationContent}>
+        <Text style={styles.notificationMessage}>{item.message}</Text>
+        <Text style={styles.notificationType}>{item.type}</Text>
+        <Text style={styles.notificationTime}>
+          {new Date(item.createdAt).toLocaleDateString()}
+        </Text>
+      </View>
+      {!item.read && <View style={styles.unreadDot} />}
+    </TouchableOpacity>
+  );
+
   return (
     <View style={[styles.topMenu, { justifyContent: 'flex-start' }]}> 
       <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
@@ -293,18 +315,18 @@ function TopMenu() {
       </View>
       {isProfileScreen ? (
         <View style={{ flexDirection: 'row' }}>
-          <TouchableOpacity style={styles.topBtn} onPress={() => { logAnalyticsEvent('open_notifications'); router.push('/notifications' as any); }}>
+          <TouchableOpacity style={styles.topBtn} onPress={() => { logAnalyticsEvent('open_notifications'); setNotificationsModalVisible(true); }}>
             <Feather name="bell" size={ICON_SIZE} color="#333" />
-            {unreadNotif > 0 && (
+            {unreadCount > 0 && (
               <View style={{
                 position: 'absolute',
                 top: isSmallDevice ? -4 : -6,
                 right: isSmallDevice ? -4 : -6,
                 backgroundColor: '#ff3b30',
                 borderRadius: isSmallDevice ? 7 : 8,
-                minWidth: unreadNotif > 99 ? (isSmallDevice ? 16 : 18) : (isSmallDevice ? 14 : 16),
-                height: unreadNotif > 99 ? (isSmallDevice ? 14 : 16) : (isSmallDevice ? 12 : 14),
-                paddingHorizontal: unreadNotif > 99 ? 1 : (isSmallDevice ? 2 : 3),
+                minWidth: unreadCount > 99 ? (isSmallDevice ? 16 : 18) : (isSmallDevice ? 14 : 16),
+                height: unreadCount > 99 ? (isSmallDevice ? 14 : 16) : (isSmallDevice ? 12 : 14),
+                paddingHorizontal: unreadCount > 99 ? 1 : (isSmallDevice ? 2 : 3),
                 alignItems: 'center',
                 justifyContent: 'center',
                 zIndex: 100,
@@ -314,9 +336,9 @@ function TopMenu() {
                 <Text style={{ 
                   color: '#fff', 
                   fontWeight: 'bold', 
-                  fontSize: unreadNotif > 99 ? (isSmallDevice ? 6 : 7) : unreadNotif > 9 ? (isSmallDevice ? 7 : 8) : (isSmallDevice ? 9 : 10), 
-                  lineHeight: unreadNotif > 99 ? (isSmallDevice ? 9 : 10) : (isSmallDevice ? 11 : 12) 
-                }}>{unreadNotif}</Text>
+                  fontSize: unreadCount > 99 ? (isSmallDevice ? 6 : 7) : unreadCount > 9 ? (isSmallDevice ? 7 : 8) : (isSmallDevice ? 9 : 10), 
+                  lineHeight: unreadCount > 99 ? (isSmallDevice ? 9 : 10) : (isSmallDevice ? 11 : 12) 
+                }}>{unreadCount}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -344,9 +366,9 @@ function TopMenu() {
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.topBtn} onPress={() => { logAnalyticsEvent('open_notifications'); router.push('/notifications' as any); }}>
+          <TouchableOpacity style={styles.topBtn} onPress={() => { logAnalyticsEvent('open_notifications'); setNotificationsModalVisible(true); }}>
             <Feather name="bell" size={18} color="#333" />
-            {unreadNotif > 0 && (
+            {unreadCount > 0 && (
               <View style={{
                 position: 'absolute',
                 top: -4,
@@ -354,17 +376,49 @@ function TopMenu() {
                 backgroundColor: '#ff3b30',
                 borderRadius: 10,
                 minWidth: 16,
-                paddingHorizontal: unreadNotif > 99 ? 2 : 4,
+                paddingHorizontal: unreadCount > 99 ? 2 : 4,
                 alignItems: 'center',
                 justifyContent: 'center',
                 zIndex: 100
               }}>
-                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: unreadNotif > 99 ? 8 : 10 }}>{unreadNotif}</Text>
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: unreadCount > 99 ? 8 : 10 }}>{unreadCount}</Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Notifications Modal */}
+      <Modal
+        visible={notificationsModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setNotificationsModalVisible(false)}
+      >
+        <View style={styles.notificationsModal}>
+          <View style={styles.notificationsHeader}>
+            <Text style={styles.notificationsTitle}>Notifications</Text>
+            <TouchableOpacity onPress={() => setNotificationsModalVisible(false)}>
+              <Feather name="x" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
+          
+          {notifications.length > 0 ? (
+            <FlatList
+              data={notifications}
+              keyExtractor={(item) => item._id}
+              renderItem={({ item }) => renderNotificationItem(item)}
+              contentContainerStyle={styles.notificationsList}
+            />
+          ) : (
+            <View style={styles.emptyNotifications}>
+              <Feather name="bell-off" size={48} color="#ccc" />
+              <Text style={styles.emptyNotificationsText}>No notifications yet</Text>
+            </View>
+          )}
+        </View>
+      </Modal>
+
       {/* Modern clean bottom sheet for settings/activity */}
       {menuVisible && (
         <View style={styles.menuOverlay}>
@@ -658,6 +712,74 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontSize: isSmallDevice ? 15 : (isLargeDevice ? 17 : 16),
     fontWeight: '600',
+  },
+  notificationsModal: {
+    flex: 1,
+    backgroundColor: '#fff',
+    marginTop: isSmallDevice ? 50 : 60,
+  },
+  notificationsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  notificationsTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  notificationsList: {
+    paddingVertical: 8,
+  },
+  notificationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#f0f0f0',
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationMessage: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
+  notificationType: {
+    fontSize: 12,
+    color: '#f39c12',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  notificationTime: {
+    fontSize: 12,
+    color: '#999',
+  },
+  unreadDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#f39c12',
+    marginLeft: 8,
+  },
+  emptyNotifications: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  emptyNotificationsText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#999',
+    fontWeight: '500',
   },
   miniOverlay: {
     position: 'absolute',

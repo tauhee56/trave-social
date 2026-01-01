@@ -8,6 +8,7 @@ import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, PanResponde
 import { feedEventEmitter } from '../../lib/feedEventEmitter';
 import { getLocationVisitCount, likePost, unlikePost } from "../../lib/firebaseHelpers";
 import { getOptimizedImageUrl } from "../../lib/imageHelpers";
+import { notificationService } from '../../lib/notificationService';
 import { CommentSection } from "./CommentSection";
 import SaveButton from "./SaveButton";
 import { useUser } from "./UserContext";
@@ -1041,6 +1042,11 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                     console.error('Like error:', res.error);
                     // Re-broadcast revert
                     feedEventEmitter.emitPostUpdated(post.id, { liked: false, likesCount: Math.max(0, (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) - 1) });
+                  } else {
+                    // Send notification to post owner
+                    if (post.userId !== userId) {
+                      await notificationService.notifyLike(post.userId, userId, post.id);
+                    }
                   }
                 }
               } catch (err) {
