@@ -23,7 +23,7 @@ import HighlightCarousel from '../../src/_components/HighlightCarousel';
 import HighlightViewer from '../../src/_components/HighlightViewer';
 import PostViewerModal from '../../src/_components/PostViewerModal';
 import StoriesViewer from '../../src/_components/StoriesViewer';
-import { useAuthUser } from '../../src/_components/UserContext';
+// Removed Firebase import - using AsyncStorage for auth instead
 import { useAuthLoading } from '../../src/_components/UserContext';
 import { getUserHighlights as getUserHighlightsAPI, getUserPosts as getUserPostsAPI, getUserProfile as getUserProfileAPI, getUserSections as getUserSectionsAPI, getUserStories as getUserStoriesAPI } from '../../src/_services/firebaseService';
 import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
@@ -153,10 +153,23 @@ export default function Profile({ userIdProp }: any) {
   const [userMenuVisible, setUserMenuVisible] = useState(false);
   const [highlightViewerVisible, setHighlightViewerVisible] = useState(false);
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
   const router = useRouter();
   const params = useLocalSearchParams();
-  const authUser = useAuthUser();
-  const authLoading = useAuthLoading();
+
+  // Get current user ID from AsyncStorage (token-based auth)
+  useEffect(() => {
+    const getUserId = async () => {
+      try {
+        const userId = await AsyncStorage.getItem('userId');
+        setCurrentUserId(userId);
+      } catch (error) {
+        console.error('[Profile] Failed to get userId from storage:', error);
+      }
+    };
+    getUserId();
+  }, []);
   
   // Extract viewedUserId - handle both cases
   let viewedUserId: string | undefined;
@@ -166,13 +179,13 @@ export default function Profile({ userIdProp }: any) {
     // params.user could be an array or string
     viewedUserId = Array.isArray(params.user) ? params.user[0] : params.user;
   } else {
-    viewedUserId = authUser?.uid as string | undefined;
+    viewedUserId = currentUserId || undefined;
   }
   
   console.log('[Profile] viewedUserId extracted:', viewedUserId, 'from params:', params, 'userIdProp:', userIdProp);
   
   // Determine if viewing own profile
-  const isOwnProfile = viewedUserId === authUser?.uid || (!params.user && !userIdProp);
+  const isOwnProfile = viewedUserId === currentUserId || (!params.user && !userIdProp);
   
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
@@ -196,32 +209,32 @@ export default function Profile({ userIdProp }: any) {
   const [commentModalAvatar, setCommentModalAvatar] = useState<string>('');
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [createHighlightModalVisible, setCreateHighlightModalVisible] = useState(false);
-  const isFollowing = !!(profile?.followers || []).includes(authUser?.uid || '');
+  const isFollowing = !!(profile?.followers || []).includes(currentUserId || '');
   const visiblePosts = selectedSection
     ? posts.filter((p: any) => (sections.find((s: any) => s.name === selectedSection)?.postIds || []).includes(p.id))
     : posts;
 
   // Handlers
   const handleFollowToggle = async () => {
-    if (!authUser?.uid || !viewedUserId || followLoading || isOwnProfile) return;
+    if (!currentUserId || !viewedUserId || followLoading || isOwnProfile) return;
     setFollowLoading(true);
     try {
       if (isPrivate) {
-        const res = await sendFollowRequest(authUser.uid, viewedUserId);
+        const res = await sendFollowRequest(currentUserId, viewedUserId);
         if (res.success) {
           setFollowRequestPending(true);
         }
       } else {
         if (isFollowing) {
-          const res = await unfollowUser(authUser.uid, viewedUserId);
+          const res = await unfollowUser(currentUserId, viewedUserId);
           setApprovedFollower(false);
           if (res.success) {
-            setProfile((prev) => prev ? { ...prev, followers: (prev.followers || []).filter((id: string) => id !== authUser.uid), followersCount: Math.max(0, (prev.followersCount || 1) - 1) } : prev);
+            setProfile((prev) => prev ? { ...prev, followers: (prev.followers || []).filter((id: string) => id !== currentUserId), followersCount: Math.max(0, (prev.followersCount || 1) - 1) } : prev);
           }
         } else {
-          const res = await followUser(authUser.uid, viewedUserId);
+          const res = await followUser(currentUserId, viewedUserId);
           if (res.success) {
-            setProfile((prev) => prev ? { ...prev, followers: [...(prev.followers || []), authUser.uid], followersCount: (prev.followersCount || 0) + 1 } : prev);
+            setProfile((prev) => prev ? { ...prev, followers: [...(prev.followers || []), currentUserId], followersCount: (prev.followersCount || 0) + 1 } : prev);
           }
         }
       }
@@ -249,18 +262,18 @@ export default function Profile({ userIdProp }: any) {
   };
 
   const handleLikePost = async (post: any) => {
-    if (!authUser?.uid || !post?.id) return;
+    if (!currentUserId || !post?.id) return;
     if (likedPosts[post.id]) {
-      await unlikePost(post.id, authUser.uid);
+      await unlikePost(post.id, currentUserId);
       setLikedPosts(prev => ({ ...prev, [post.id]: false }));
     } else {
-      await likePost(post.id, authUser.uid);
+      await likePost(post.id, currentUserId);
       setLikedPosts(prev => ({ ...prev, [post.id]: true }));
     }
   };
 
   const handleSavePost = async (post: any) => {
-    if (!authUser?.uid || !post?.id) return;
+    if (!currentUserId || !post?.id) return;
 
     const isSaved = savedPosts[post.id];
 
@@ -271,15 +284,15 @@ export default function Profile({ userIdProp }: any) {
       if (isSaved) {
         // Unsave
         const postRef = doc(db, 'posts', post.id);
-        await updateDoc(postRef, { savedBy: arrayRemove(authUser.uid) });
-        const userSavedRef = doc(db, 'users', authUser.uid, 'saved', post.id);
+        await updateDoc(postRef, { savedBy: arrayRemove(currentUserId) });
+        const userSavedRef = doc(db, 'users', currentUserId, 'saved', post.id);
         await deleteDoc(userSavedRef);
         setSavedPosts(prev => ({ ...prev, [post.id]: false }));
       } else {
         // Save
         const postRef = doc(db, 'posts', post.id);
-        await updateDoc(postRef, { savedBy: arrayUnion(authUser.uid) });
-        const userSavedRef = doc(db, 'users', authUser.uid, 'saved', post.id);
+        await updateDoc(postRef, { savedBy: arrayUnion(currentUserId) });
+        const userSavedRef = doc(db, 'users', currentUserId, 'saved', post.id);
         await setDoc(userSavedRef, { savedAt: Date.now() });
         setSavedPosts(prev => ({ ...prev, [post.id]: true }));
       }
@@ -300,7 +313,7 @@ export default function Profile({ userIdProp }: any) {
 
   // Block user handler
   const handleBlockUser = async () => {
-    if (!authUser?.uid || !viewedUserId || isOwnProfile) return;
+    if (!currentUserId || !viewedUserId || isOwnProfile) return;
     
     Alert.alert(
       'Block User',
@@ -313,18 +326,18 @@ export default function Profile({ userIdProp }: any) {
           onPress: async () => {
             try {
               // Block user via backend API
-              const success = await userService.blockUser(authUser.uid, viewedUserId);
+              const success = await userService.blockUser(currentUserId, viewedUserId);
               
               if (success) {
                 // Also unfollow if following
                 if (isFollowing) {
-                  await unfollowUser(authUser.uid, viewedUserId);
+                  await unfollowUser(currentUserId, viewedUserId);
                 }
                 
                 // Remove from your followers if they follow you
-                const theyFollowYou = profile?.followers?.includes(authUser.uid);
+                const theyFollowYou = profile?.followers?.includes(currentUserId);
                 if (theyFollowYou) {
-                  await unfollowUser(viewedUserId, authUser.uid);
+                  await unfollowUser(viewedUserId, currentUserId);
                 }
                 
                 setUserMenuVisible(false);
@@ -360,13 +373,13 @@ export default function Profile({ userIdProp }: any) {
   };
 
   const submitReport = async (reason: string) => {
-    if (!authUser?.uid || !viewedUserId) return;
+    if (!currentUserId || !viewedUserId) return;
     
     try {
       // Report user via backend API
       const success = await userService.reportUser(
         viewedUserId,
-        authUser.uid,
+        currentUserId,
         reason
       );
 
@@ -432,7 +445,7 @@ export default function Profile({ userIdProp }: any) {
             console.log('[Profile] Profile state update - isOwnProfile:', isOwnProfile, 'viewedUserId:', viewedUserId);
             setProfile(profileData);
             setIsPrivate(profileData?.isPrivate || false);
-            setApprovedFollower(profileData?.approvedFollowers?.includes(authUser?.uid || '') || false);
+            setApprovedFollower(profileData?.approvedFollowers?.includes(currentUserId || '') || false);
             setFollowRequestPending(profileData?.followRequestPending || false);
           } else {
             console.warn('[Profile] Profile fetch failed:', profileRes.error);
@@ -440,14 +453,14 @@ export default function Profile({ userIdProp }: any) {
           }
           
           // Fetch posts
-          const postsRes = await getUserPostsAPI(viewedUserId || '', authUser?.uid);
+          const postsRes = await getUserPostsAPI(viewedUserId || '', currentUserId);
           console.log('[Profile] Posts response success:', postsRes.success);
           
           let postsData: any[] = [];
           if (postsRes.success) {
             if ('data' in postsRes && Array.isArray(postsRes.data)) postsData = postsRes.data;
             else if ('posts' in postsRes && Array.isArray(postsRes.posts)) postsData = postsRes.posts;
-            const blocked = authUser?.uid ? await fetchBlockedUserIds(authUser.uid) : new Set<string>();
+            const blocked = currentUserId ? await fetchBlockedUserIds(currentUserId) : new Set<string>();
             setPosts(filterOutBlocked(postsData, blocked));
           } else {
             setPosts([]);
@@ -456,7 +469,7 @@ export default function Profile({ userIdProp }: any) {
           // Fetch sections (sorted by user's preferred order)
           let sectionsData: any[] = [];
           if (viewedUserId) {
-            const sectionsRes = await getUserSectionsAPI(viewedUserId, authUser?.uid);
+            const sectionsRes = await getUserSectionsAPI(viewedUserId, currentUserId);
             if (sectionsRes.success) {
               if ('data' in sectionsRes && Array.isArray(sectionsRes.data)) sectionsData = sectionsRes.data;
               else if ('sections' in sectionsRes && Array.isArray(sectionsRes.sections)) sectionsData = sectionsRes.sections;
@@ -469,7 +482,7 @@ export default function Profile({ userIdProp }: any) {
           }
           
           // Fetch highlights
-          const highlightsRes = await getUserHighlightsAPI(viewedUserId || '', authUser?.uid);
+          const highlightsRes = await getUserHighlightsAPI(viewedUserId || '', currentUserId);
           let highlightsData: any[] = [];
           if (highlightsRes.success) {
             if ('data' in highlightsRes && Array.isArray(highlightsRes.data)) highlightsData = highlightsRes.data;
@@ -480,7 +493,7 @@ export default function Profile({ userIdProp }: any) {
           }
 
           // Fetch stories
-          const storiesRes = await getUserStoriesAPI(viewedUserId || '', authUser?.uid);
+          const storiesRes = await getUserStoriesAPI(viewedUserId || '', currentUserId);
           let storiesData: any[] = [];
           if (storiesRes.success) {
             if ('data' in storiesRes && Array.isArray(storiesRes.data)) storiesData = storiesRes.data;
@@ -498,7 +511,7 @@ export default function Profile({ userIdProp }: any) {
       };
 
       fetchData();
-    }, [viewedUserId, authUser?.uid])
+    }, [viewedUserId, currentUserId])
   );
 
   useEffect(() => {
@@ -511,28 +524,28 @@ export default function Profile({ userIdProp }: any) {
         else if ('profile' in profileRes && profileRes.profile && typeof profileRes.profile === 'object') profileData = profileRes.profile as ProfileData;
         setProfile(profileData);
         setIsPrivate(profileData?.isPrivate || false);
-        setApprovedFollower(profileData?.approvedFollowers?.includes(authUser?.uid || '') || false);
+        setApprovedFollower(profileData?.approvedFollowers?.includes(currentUserId || '') || false);
         setFollowRequestPending(profileData?.followRequestPending || false);
       } else {
         setProfile(null);
       }
-      const postsRes = await getUserPostsAPI(viewedUserId, authUser?.uid);
+      const postsRes = await getUserPostsAPI(viewedUserId, currentUserId);
       let postsData: any[] = [];
       if (postsRes.success) {
         if ('data' in postsRes && Array.isArray(postsRes.data)) postsData = postsRes.data;
         else if ('posts' in postsRes && Array.isArray(postsRes.posts)) postsData = postsRes.posts;
-        const blocked = authUser?.uid ? await fetchBlockedUserIds(authUser.uid) : new Set<string>();
+        const blocked = currentUserId ? await fetchBlockedUserIds(currentUserId) : new Set<string>();
         // Show all posts (no pagination limit for now)
         const filteredPosts = filterOutBlocked(postsData, blocked);
         setPosts(filteredPosts);
 
         // Initialize liked and saved states for posts
-        if (authUser?.uid) {
+        if (currentUserId) {
           const likedState: { [key: string]: boolean } = {};
           const savedState: { [key: string]: boolean } = {};
           filteredPosts.forEach((post: any) => {
-            likedState[post.id] = post.likes?.includes(authUser.uid) || false;
-            savedState[post.id] = post.savedBy?.includes(authUser.uid) || false;
+            likedState[post.id] = post.likes?.includes(currentUserId) || false;
+            savedState[post.id] = post.savedBy?.includes(currentUserId) || false;
           });
           setLikedPosts(likedState);
           setSavedPosts(savedState);
@@ -548,7 +561,7 @@ export default function Profile({ userIdProp }: any) {
           const taggedQ = query(collection(db, 'posts'), where('taggedUsers', 'array-contains', viewedUserId));
           const taggedSnap = await getDocs(taggedQ);
           const tagged = taggedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          const blocked = authUser?.uid ? await fetchBlockedUserIds(authUser.uid) : new Set<string>();
+          const blocked = currentUserId ? await fetchBlockedUserIds(currentUserId) : new Set<string>();
           setTaggedPosts(filterOutBlocked(tagged, blocked));
         } else {
           setTaggedPosts([]);
@@ -557,7 +570,7 @@ export default function Profile({ userIdProp }: any) {
         console.error('Error fetching tagged posts:', err);
         setTaggedPosts([]);
       }
-      const sectionsRes = await getUserSectionsSorted(viewedUserId, authUser?.uid);
+      const sectionsRes = await getUserSectionsSorted(viewedUserId, currentUserId);
       let sectionsData: any[] = [];
       if (sectionsRes.success) {
         if ('data' in sectionsRes && Array.isArray(sectionsRes.data)) sectionsData = sectionsRes.data;
@@ -566,7 +579,7 @@ export default function Profile({ userIdProp }: any) {
       } else {
         setSections([]);
       }
-      const highlightsRes = await getUserHighlights(viewedUserId, authUser?.uid);
+      const highlightsRes = await getUserHighlights(viewedUserId, currentUserId);
       let highlightsData: any[] = [];
       if (highlightsRes.success) {
         if ('data' in highlightsRes && Array.isArray(highlightsRes.data)) highlightsData = highlightsRes.data;
@@ -605,7 +618,7 @@ export default function Profile({ userIdProp }: any) {
   }
 
   // Show error if not logged in on own profile tab
-  if (!authUser && isOwnProfile) {
+  if (!currentUserId && isOwnProfile) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -663,7 +676,7 @@ export default function Profile({ userIdProp }: any) {
               }}
             >
               <ExpoImage
-                source={{ uri: profile?.avatar || (profile as any)?.photoURL || (isOwnProfile ? authUser?.photoURL : null) || DEFAULT_AVATAR_URL }}
+                source={{ uri: profile?.avatar || (profile as any)?.photoURL || DEFAULT_AVATAR_URL }}
                 style={[styles.avatar, isPrivate && !isOwnProfile && !approvedFollower && { opacity: 0.3 }]}
                 contentFit="cover"
                 transition={200}
@@ -692,7 +705,7 @@ export default function Profile({ userIdProp }: any) {
                       base64: false // Don't get base64, we handle it ourselves
                     });
                     
-                    if (!result.canceled && result.assets && result.assets[0]?.uri && authUser?.uid) {
+                    if (!result.canceled && result.assets && result.assets[0]?.uri && currentUserId) {
                       try {
                         // Upload image with proper error handling
                         const { uploadImage: uploadImageFn, updateUserProfile } = await import('../../lib/firebaseHelpers');
@@ -703,18 +716,12 @@ export default function Profile({ userIdProp }: any) {
                           return;
                         }
                         
-                        const uploadRes = await uploadImageFn(imageUri, `avatars/${authUser.uid}`);
+                        const uploadRes = await uploadImageFn(imageUri, `avatars/${currentUserId}`);
                         
                         if (uploadRes.success && uploadRes.url) {
                           // Update backend profile
-                          const updateRes = await updateUserProfile(authUser.uid, { avatar: uploadRes.url });
-                          // Update Firebase Auth user photoURL
-                          try {
-                            const { updateProfile } = await import('firebase/auth');
-                            await updateProfile(authUser, { photoURL: uploadRes.url });
-                          } catch (e) {
-                            console.log('Failed to update Firebase Auth photoURL:', e);
-                          }
+                          const updateRes = await updateUserProfile(currentUserId, { avatar: uploadRes.url });
+                          // Note: Firebase photoURL update removed (using backend auth)
                           if (updateRes.success) {
                             setProfile(prev => prev ? { ...prev, avatar: uploadRes.url ?? '' } : prev);
                             alert('Profile picture updated!');
@@ -925,7 +932,7 @@ export default function Profile({ userIdProp }: any) {
                 const lon = parseCoord(post.location?.longitude ?? post.location?.lon ?? post.lon ?? post.locationData?.lon);
                 if (lat === null || lon === null) return null;
                 const imageUrl = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls[0] : DEFAULT_IMAGE_URL);
-                const avatarUrl = post.userAvatar || profile?.avatar || authUser?.photoURL || DEFAULT_AVATAR_URL;
+                const avatarUrl = post.userAvatar || profile?.avatar || DEFAULT_AVATAR_URL;
                 
                 // Marker with tracksViewChanges true until images are loaded
                 return (
@@ -1009,7 +1016,7 @@ export default function Profile({ userIdProp }: any) {
         posts: segmentTab === 'grid' ? (selectedSection ? visiblePosts : posts) : taggedPosts,
         selectedPostIndex: selectedPostIndex,
         profile: profile,
-        authUser: authUser,
+        userId: currentUserId,
         likedPosts: likedPosts,
         savedPosts: savedPosts,
         handleLikePost: handleLikePost,
@@ -1082,11 +1089,11 @@ export default function Profile({ userIdProp }: any) {
       <CreateHighlightModal
         visible={createHighlightModalVisible}
         onClose={() => setCreateHighlightModalVisible(false)}
-        userId={authUser?.uid || ''}
+        userId={currentUserId || ''}
         onSuccess={async () => {
           // Refresh highlights after creating new one
           if (viewedUserId) {
-            const highlightsRes = await getUserHighlights(viewedUserId, authUser?.uid);
+            const highlightsRes = await getUserHighlights(viewedUserId, currentUserId);
             let highlightsData: any[] = [];
             if (highlightsRes.success) {
               if ('data' in highlightsRes && Array.isArray(highlightsRes.data)) highlightsData = highlightsRes.data;
