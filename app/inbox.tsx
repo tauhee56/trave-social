@@ -107,8 +107,10 @@ export default function Inbox() {
     if (days < 7) return `${days}d`;
     return date.toLocaleDateString();
   }
+  console.log('🔵 INBOX CHECK: authLoading=', authLoading, 'currentUser=', currentUserTyped?.uid ? '✅' : '❌', 'uid:', currentUserTyped?.uid);
 
   if (authLoading) {
+    console.log('🔴 SHOWING AUTH LOADING SPINNER');
     return (
       <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
         <ActivityIndicator size="large" color="#007aff" />
@@ -118,6 +120,7 @@ export default function Inbox() {
   }
 
   if (!currentUserTyped || !currentUserTyped.uid) {
+    console.log('🔴 USER NOT LOGGED IN');
     return (
       <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}> 
         <Text style={{ color: '#999', fontSize: 18, marginTop: 40 }}>Please sign in to view your messages.</Text>
