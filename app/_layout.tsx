@@ -66,6 +66,8 @@ export default function RootLayout() {
         const token = await AsyncStorage.getItem('token');
         const userId = await AsyncStorage.getItem('userId');
         
+        console.log('🔐 RootLayout checkAuth: token=', token ? 'YES' : 'NO', 'userId=', userId ? 'YES' : 'NO');
+        
         if (token && userId) {
           setUser({ token, userId });
         } else {
@@ -79,12 +81,22 @@ export default function RootLayout() {
       }
     }
     
+    console.log('🔐 RootLayout AUTH EFFECT RUNNING');
     checkAuth();
     
     // Only check for token changes every 5 seconds (less aggressive)
     const checkAuthInterval = setInterval(checkAuth, 5000);
     
-    return () => clearInterval(checkAuthInterval);
+    // EMERGENCY: Force loading off after 3 seconds max
+    const emergencyTimeout = setTimeout(() => {
+      console.warn('🔴 RootLayout EMERGENCY TIMEOUT: Forcing loading=false');
+      setLoading(false);
+    }, 3000);
+    
+    return () => {
+      clearInterval(checkAuthInterval);
+      clearTimeout(emergencyTimeout);
+    };
   }, []);
 
   useEffect(() => {

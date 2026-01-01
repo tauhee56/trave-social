@@ -16,16 +16,32 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   useEffect(() => {
     console.log('🔵 UserProvider INIT: Setting up auth listener');
     
+    let isMounted = true;
+    let authFired = false;
+    
     // Listen to Firebase auth state changes
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       console.log('🟢 onAuthStateChanged FIRED:', firebaseUser?.uid || 'no user (logged out)');
-      setUser(firebaseUser);
-      setLoading(false);
+      if (isMounted) {
+        authFired = true;
+        setUser(firebaseUser);
+        setLoading(false);
+      }
     });
     
     console.log('🟡 onAuthStateChanged listener registered');
     
+    // EMERGENCY: If Firebase doesn't respond in 2 seconds, force close loading
+    const emergencyTimeout = setTimeout(() => {
+      if (isMounted && !authFired) {
+        console.warn('🔴 UserProvider EMERGENCY: Firebase timeout - forcing loading=false');
+        setLoading(false);
+      }
+    }, 2000);
+    
     return () => {
+      isMounted = false;
+      clearTimeout(emergencyTimeout);
       console.log('🧹 Unsubscribing from auth listener');
       unsubscribe();
     };
