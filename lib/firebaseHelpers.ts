@@ -353,7 +353,21 @@ export async function addNotification(payload: any) {
 
 // ============= USER PROFILE =============
 export async function updateUserProfile(uid: string, data: any) {
-  return apiService.put(`/users/${uid}`, data);
+  try {
+    const res = await apiService.patch(`/users/${uid}`, data);
+    
+    // Check response structure
+    if (!res || !res.success) {
+      console.error('[updateUserProfile] ❌ Backend error:', res?.error);
+      return { success: false, error: res?.error || 'Failed to update profile' };
+    }
+    
+    console.log('[updateUserProfile] ✅ Profile updated');
+    return res;
+  } catch (err: any) {
+    console.error('[updateUserProfile] ❌ Error:', err.message);
+    return { success: false, error: err.message };
+  }
 }
 
 export async function toggleUserPrivacy(uid: string, isPrivate: boolean) {
