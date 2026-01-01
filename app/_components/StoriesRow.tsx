@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from "expo-linear-gradient";
@@ -7,7 +8,6 @@ import { ActivityIndicator, Dimensions, Image, Keyboard, KeyboardAvoidingView, M
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import {} from "../../lib/firebaseHelpers";
 import { createStory, getAllStoriesForFeed, getUserProfile } from "../../lib/firebaseHelpers/index";
-import { useUser } from './UserContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -53,12 +53,24 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
   const [locationQuery, setLocationQuery] = useState('');
   const [locationSuggestions, setLocationSuggestions] = useState<any[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
+  const [authUser, setAuthUser] = useState<any>(null);
   // Default avatar placeholder
   const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
-  // const currentUser = getCurrentUser();
-  // const currentUserTyped = getCurrentUser() as { uid?: string } | null;
-  // Use authUser from context instead
-  const authUser = useUser();
+  
+  // Get current user from AsyncStorage (token-based auth)
+  useEffect(() => {
+    const getUserData = async () => {
+      try {
+        const userId = await AsyncStorage.getItem('userId');
+        if (userId) {
+          setAuthUser({ uid: userId });
+        }
+      } catch (error) {
+        console.error('[StoriesRow] Failed to get userId from storage:', error);
+      }
+    };
+    getUserData();
+  }, []);
 
   useEffect(() => {
     loadStories();
@@ -92,22 +104,18 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
   }, [locationQuery]);
 
   const loadCurrentUserAvatar = async () => {
-    // Try to get avatar from authUser context first
-    if (authUser?.avatar) {
-      setCurrentUserAvatar(authUser.avatar);
-      return;
-    }
-    if (authUser?.photoURL) {
-      setCurrentUserAvatar(authUser.photoURL);
-      return;
-    }
-    if (authUser?.profilePicture) {
-      setCurrentUserAvatar(authUser.profilePicture);
-      return;
-    }
-    
-    // If no avatar in context, fetch from server
+    // Try to get avatar from stored profile
     if (authUser && authUser.uid) {
+      try {
+        const userProfile = await getUserProfile(authUser.uid);
+        if (userProfile.data?.avatar) {
+          setCurrentUserAvatar(userProfile.data.avatar);
+          return;
+        }
+      } catch (err) {
+        console.error('[StoriesRow] Error fetching user profile:', err);
+      }
+    }
       try {
         const res = await getUserProfile(authUser.uid);
         if (res && res.success && 'data' in res && res.data) {
