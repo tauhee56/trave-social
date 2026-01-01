@@ -27,21 +27,49 @@ export async function compressImage(
   maxWidth: number = 2048
 ): Promise<CompressedImage> {
   try {
-    // Get original dimensions
-    const originalImage = await ImageManipulator.manipulateAsync(imageUri, [], { compress: 1, format: ImageManipulator.SaveFormat.JPEG });
+    console.log(`[imageCompressor] Starting compression for: ${imageUri}`);
     
-    // Compress and resize
-    const compressedImage = await ImageManipulator.manipulateAsync(imageUri, [{ resize: { width: maxWidth } }], {
-      compress: quality,
-      format: ImageManipulator.SaveFormat.JPEG,
-    });
+    // Get original dimensions first (without modifying)
+    let originalImage: any = null;
+    try {
+      originalImage = await ImageManipulator.manipulateAsync(imageUri, [], { 
+        compress: 1, 
+        format: ImageManipulator.SaveFormat.JPEG 
+      });
+      console.log(`[imageCompressor] Original image: ${originalImage.width}x${originalImage.height}`);
+    } catch (err) {
+      console.warn(`[imageCompressor] Could not get original image info, continuing...`, err);
+    }
+    
+    // Compress and resize with better error handling
+    let compressedImage: any = null;
+    try {
+      console.log(`[imageCompressor] Compressing with quality: ${quality}, maxWidth: ${maxWidth}`);
+      compressedImage = await ImageManipulator.manipulateAsync(
+        imageUri, 
+        [{ resize: { width: maxWidth } }], 
+        {
+          compress: Math.max(0, Math.min(1, quality)), // Ensure quality is between 0-1
+          format: ImageManipulator.SaveFormat.JPEG,
+        }
+      );
+      console.log(`[imageCompressor] Compressed image: ${compressedImage.width}x${compressedImage.height}`);
+    } catch (err) {
+      console.error(`[imageCompressor] Compression failed:`, err);
+      throw new Error(`Image compression failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
 
     // Calculate size
-    const response = await fetch(compressedImage.uri);
-    const blob = await response.blob();
-    const sizeInBytes = blob.size;
-
-    console.log(`📦 Image compressed: ${(blob.size / 1024).toFixed(2)}KB (quality: ${(quality * 100).toFixed(0)}%)`);
+    let sizeInBytes = 0;
+    try {
+      const response = await fetch(compressedImage.uri);
+      const blob = await response.blob();
+      sizeInBytes = blob.size;
+      console.log(`✅ [imageCompressor] Image compressed: ${(sizeInBytes / 1024).toFixed(2)}KB (quality: ${(quality * 100).toFixed(0)}%)`);
+    } catch (err) {
+      console.warn(`[imageCompressor] Could not calculate size:`, err);
+      sizeInBytes = 0;
+    }
 
     return {
       uri: compressedImage.uri,
@@ -51,7 +79,7 @@ export async function compressImage(
       mimeType: 'image/jpeg',
     };
   } catch (error) {
-    console.error('❌ Image compression error:', error);
+    console.error(`❌ [imageCompressor] Compression error:`, error);
     throw error;
   }
 }
@@ -64,26 +92,41 @@ export async function compressImage(
  */
 export async function createThumbnail(imageUri: string, size: number = 200): Promise<CompressedImage> {
   try {
-    const thumbnail = await ImageManipulator.manipulateAsync(
-      imageUri,
-      [{ resize: { width: size, height: size } }],
-      { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-    );
+    console.log(`[imageCompressor] Creating thumbnail with size: ${size}px`);
+    
+    let thumbnail: any = null;
+    try {
+      thumbnail = await ImageManipulator.manipulateAsync(
+        imageUri,
+        [{ resize: { width: size, height: size } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      console.log(`[imageCompressor] Thumbnail created: ${thumbnail.width}x${thumbnail.height}`);
+    } catch (err) {
+      console.error(`[imageCompressor] Thumbnail creation failed:`, err);
+      throw new Error(`Thumbnail creation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
 
-    const response = await fetch(thumbnail.uri);
-    const blob = await response.blob();
-
-    console.log(`🔍 Thumbnail created: ${(blob.size / 1024).toFixed(2)}KB`);
+    let blobSize = 0;
+    try {
+      const response = await fetch(thumbnail.uri);
+      const blob = await response.blob();
+      blobSize = blob.size;
+      console.log(`✅ 🔍 [imageCompressor] Thumbnail created: ${(blobSize / 1024).toFixed(2)}KB`);
+    } catch (err) {
+      console.warn(`[imageCompressor] Could not calculate thumbnail size:`, err);
+      blobSize = 0;
+    }
 
     return {
       uri: thumbnail.uri,
       width: size,
       height: size,
-      size: blob.size,
+      size: blobSize,
       mimeType: 'image/jpeg',
     };
   } catch (error) {
-    console.error('❌ Thumbnail creation error:', error);
+    console.error('❌ [imageCompressor] Thumbnail creation error:', error);
     throw error;
   }
 }
