@@ -29,19 +29,26 @@ export function useInboxPolling(
 
 
   useEffect(() => {
-    if (!userId || !autoStart) return;
+    if (!userId || !autoStart) {
+      setLoading(false);
+      return;
+    }
 
     // Subscribe to app state changes
     const subscription = AppState.addEventListener('change', setAppState);
 
     let unsubscribeFn: (() => void) | null = null;
     let isMounted = true;
+    let pollStarted = false;
 
     // Start polling when app is active
     if (appState === 'active') {
+      console.log(`📱 Starting inbox polling for user: ${userId}`);
+      
       startConversationsPolling(
         userId,
         (data) => {
+          console.log(`📬 Inbox callback received ${data.length} conversations`);
           if (!isMounted) return;
           setConversations(data);
           setLoading(false);
@@ -49,23 +56,29 @@ export function useInboxPolling(
         },
         pollingInterval
       ).then(unsub => {
-        unsubscribeFn = unsub;
+        if (isMounted) {
+          unsubscribeFn = unsub;
+          pollStarted = true;
+        }
       }).catch((err) => {
-        // Even if polling fails, stop showing loading after 5 seconds
+        console.error('❌ Failed to start polling:', err);
+        // Even if polling fails, stop showing loading after 3 seconds
         if (isMounted) {
           setLoading(false);
           setError(err.message || 'Failed to load conversations');
+          setConversations([]); // Show empty state
         }
       });
     } else {
       // Stop polling when app goes to background
+      console.log('📵 Stopping inbox polling - app backgrounded');
       stopPolling(`conversations-${userId}`);
     }
 
     // Timeout to prevent infinite loading - max 5 seconds
     const timeoutId = setTimeout(() => {
-      if (isMounted && loading) {
-        console.warn('⏱️ Inbox polling timeout - forcing loading off');
+      if (isMounted && loading && !pollStarted) {
+        console.warn('⏱️ Inbox polling timeout - forcing loading off after 5s');
         setLoading(false);
       }
     }, 5000);
@@ -73,7 +86,10 @@ export function useInboxPolling(
     return () => {
       isMounted = false;
       clearTimeout(timeoutId);
-      if (unsubscribeFn) unsubscribeFn();
+      if (unsubscribeFn) {
+        console.log('🧹 Cleaning up inbox polling');
+        unsubscribeFn();
+      }
       subscription.remove();
     };
   }, [userId, autoStart, pollingInterval, appState]);

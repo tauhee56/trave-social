@@ -42,45 +42,25 @@ export async function startConversationsPolling(
 
   const poll = async () => {
     try {
+      console.log(`🔄 Polling conversations for userId: ${userId}`);
+      
       // Pass userId as query parameter
       const response = await apiService.get(`/conversations?userId=${userId}`);
       
-      // Unwrap response data structure
-      const conversations = response.data || response || [];
+      console.log('📡 Conversations API response:', response);
+      
+      // Unwrap response data structure - handle multiple response formats
+      let conversations = response.data?.data || response.data || [];
       
       if (!Array.isArray(conversations)) {
-        console.error('❌ Conversations endpoint returned non-array:', typeof conversations, conversations);
-        callback([]);
-        return;
+        console.warn('⚠️ Conversations not an array, converting:', typeof conversations);
+        conversations = Array.isArray(conversations) ? conversations : [];
       }
 
-      // Batch fetch user profiles for all conversations
-      const uniqueUserIds = new Set(
-        conversations.flatMap((conv: any) =>
-          (Array.isArray(conv.participants) ? conv.participants : []).filter((id: string) => id !== userId)
-        )
-      );
-
-      // Dynamically import getUserProfile from correct file
-      const { getUserProfile } = await import('./firebaseHelpers/user');
-      const userProfiles = new Map();
-      for (const uid of uniqueUserIds) {
-        const userResult = await getUserProfile(uid as string);
-        if (userResult && userResult.success && userResult.data) {
-          userProfiles.set(uid, userResult.data);
-        }
-      }
-
-      // Enrich conversations with user data
-      const enrichedConversations = conversations.map((conv: any) => {
-        const otherUserId = (Array.isArray(conv.participants) ? conv.participants : []).find((id: string) => id !== userId);
-        return {
-          ...conv,
-          otherUser: otherUserId ? userProfiles.get(otherUserId) || null : null,
-        };
-      });
-
-      callback(enrichedConversations);
+      console.log(`✅ Got ${conversations.length} conversations`);
+      
+      // Call callback with raw conversations (skip user profile enrichment for now)
+      callback(conversations);
       
       // Reset retries on success
       const poller = activePollers.get(pollerId);
@@ -89,7 +69,9 @@ export async function startConversationsPolling(
         poller.lastError = undefined;
       }
     } catch (error: any) {
-      console.error('Conversations polling error:', error);
+      console.error('❌ Conversations polling error:', error.message);
+      // Still call callback with empty array to stop loading spinner
+      callback([]);
       const poller = activePollers.get(pollerId);
       if (poller) {
         poller.lastError = error.message;
