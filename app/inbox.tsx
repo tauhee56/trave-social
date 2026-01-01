@@ -3,9 +3,10 @@ import { useNavigation } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuthLoading, useUser } from './_components/UserContext';
+// import { useAuthLoading, useUser } from './_components/UserContext';
 // import {} from '../lib/firebaseHelpers';
 // @ts-ignore
 import { useInboxPolling } from '../hooks/useInboxPolling';
@@ -17,21 +18,36 @@ export default function Inbox() {
     const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   const router = useRouter();
   const navigation = useNavigation();
-  const currentUserTyped = useUser();
-  const authLoading = useAuthLoading();
   
-  console.log('🔵 INBOX COMPONENT RENDERED');
+  // Get userId from AsyncStorage (token-based auth)
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
+  
+  useEffect(() => {
+    const getUser = async () => {
+      try {
+        const uid = await AsyncStorage.getItem('userId');
+        console.log('📱 Inbox: Got userId from storage:', uid);
+        setUserId(uid);
+      } catch (error) {
+        console.error('Error getting userId:', error);
+      } finally {
+        setUserLoading(false);
+      }
+    };
+    getUser();
+  }, []);
   
   // Use optimized polling instead of real-time listeners (saves 70-80% on costs)
-  const { conversations: polledConversations, loading: polledLoading } = useInboxPolling(currentUserTyped?.uid || null, {
+  const { conversations: polledConversations, loading: polledLoading } = useInboxPolling(userId || null, {
     pollingInterval: 15000, // Poll every 15 seconds instead of real-time
     autoStart: true
   });
 
-  console.log('🟠 INBOX: polledLoading=', polledLoading, 'polledConversations.length=', polledConversations?.length);
+  console.log('🟠 INBOX: userId=', userId, 'userLoading=', userLoading, 'polledLoading=', polledLoading, 'polledConversations.length=', polledConversations?.length);
 
   const [conversations, setConversations] = useState<any[]>([]);
-  const [loading, setLoading] = useState(polledLoading);
+  const [loading, setLoading] = useState(polledLoading || userLoading);
   const [forceLoadTimeout, setForceLoadTimeout] = useState(false);
 
   useEffect(() => {
@@ -92,7 +108,7 @@ export default function Inbox() {
     filterPrivateAccounts(polledConversations).then(filtered => {
       setConversations(filtered);
     });
-  }, [polledConversations, currentUserTyped?.uid]);
+  }, [polledConversations, userId]);
 
   function formatTime(timestamp: any) {
     if (!timestamp) return '';
@@ -107,10 +123,9 @@ export default function Inbox() {
     if (days < 7) return `${days}d`;
     return date.toLocaleDateString();
   }
-  console.log('🔵 INBOX CHECK: authLoading=', authLoading, 'currentUser=', currentUserTyped?.uid ? '✅' : '❌', 'uid:', currentUserTyped?.uid);
 
-  if (authLoading) {
-    console.log('🔴 SHOWING AUTH LOADING SPINNER');
+  if (userLoading) {
+    console.log('🔴 SHOWING USER LOADING SPINNER');
     return (
       <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
         <ActivityIndicator size="large" color="#007aff" />
@@ -119,7 +134,7 @@ export default function Inbox() {
     );
   }
 
-  if (!currentUserTyped || !currentUserTyped.uid) {
+  if (!userId) {
     console.log('🔴 USER NOT LOGGED IN');
     return (
       <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}> 
