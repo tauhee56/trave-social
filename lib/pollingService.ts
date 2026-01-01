@@ -42,7 +42,8 @@ export async function startConversationsPolling(
 
   const poll = async () => {
     try {
-      const response = await apiService.get('/conversations', { userId });
+      // Pass userId as query parameter
+      const response = await apiService.get(`/conversations?userId=${userId}`);
       
       // Unwrap response data structure
       const conversations = response.data || response || [];
