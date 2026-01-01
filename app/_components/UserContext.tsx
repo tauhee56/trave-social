@@ -14,13 +14,21 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('🔵 UserProvider INIT: Setting up auth listener');
+    
     // Listen to Firebase auth state changes
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      console.log('🟢 onAuthStateChanged FIRED:', firebaseUser?.uid || 'no user (logged out)');
       setUser(firebaseUser);
       setLoading(false);
-      console.log('[UserContext] Auth state changed:', firebaseUser?.uid || 'no user');
     });
-    return () => unsubscribe();
+    
+    console.log('🟡 onAuthStateChanged listener registered');
+    
+    return () => {
+      console.log('🧹 Unsubscribing from auth listener');
+      unsubscribe();
+    };
   }, []);
 
   return (
