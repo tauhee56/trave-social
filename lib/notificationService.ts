@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { BACKEND_URL } from './api';
+import { BACKEND_URL } from '@/lib/api';
 
 const API_URL = `${BACKEND_URL}/api/notifications`;
 
