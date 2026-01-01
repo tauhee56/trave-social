@@ -22,6 +22,8 @@ export function useInboxPolling(
 ) {
   const { pollingInterval = 15000, autoStart = true } = options;
 
+  console.log('🟡 useInboxPolling INIT: userId=', userId, 'autoStart=', autoStart);
+
   const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,16 +32,19 @@ export function useInboxPolling(
 
   useEffect(() => {
     if (!userId || !autoStart) {
+      console.log('🟡 useInboxPolling SKIP: userId or autoStart false');
       setLoading(false);
       return;
     }
+
+    console.log('🟡 useInboxPolling STARTING for userId:', userId);
 
     // Subscribe to app state changes
     const subscription = AppState.addEventListener('change', setAppState);
 
     let unsubscribeFn: (() => void) | null = null;
     let isMounted = true;
-    let pollStarted = false;
+    let loadingEnded = false;
 
     // Start polling when app is active
     if (appState === 'active') {
@@ -48,22 +53,24 @@ export function useInboxPolling(
       startConversationsPolling(
         userId,
         (data) => {
-          console.log(`📬 Inbox callback received ${data.length} conversations`);
-          if (!isMounted) return;
+          console.log('🟢 CALLBACK FIRED: received', data.length, 'conversations');
+          if (!isMounted || loadingEnded) return;
+          loadingEnded = true;
           setConversations(data);
           setLoading(false);
           setError(null);
         },
         pollingInterval
       ).then(unsub => {
+        console.log('🟢 startConversationsPolling RESOLVED');
         if (isMounted) {
           unsubscribeFn = unsub;
-          pollStarted = true;
         }
       }).catch((err) => {
         console.error('❌ Failed to start polling:', err);
-        // Even if polling fails, stop showing loading after 3 seconds
-        if (isMounted) {
+        // Even if polling fails, stop showing loading
+        if (isMounted && !loadingEnded) {
+          loadingEnded = true;
           setLoading(false);
           setError(err.message || 'Failed to load conversations');
           setConversations([]); // Show empty state
@@ -75,17 +82,19 @@ export function useInboxPolling(
       stopPolling(`conversations-${userId}`);
     }
 
-    // Timeout to prevent infinite loading - max 5 seconds
-    const timeoutId = setTimeout(() => {
-      if (isMounted && loading && !pollStarted) {
-        console.warn('⏱️ Inbox polling timeout - forcing loading off after 5s');
+    // EMERGENCY TIMEOUT: Force loading off after 3 seconds NO MATTER WHAT
+    const emergencyTimeout = setTimeout(() => {
+      if (isMounted && !loadingEnded) {
+        console.warn('🔴 EMERGENCY TIMEOUT: Force loading off after 3s');
+        loadingEnded = true;
         setLoading(false);
+        if (!error) setError(null);
       }
-    }, 5000);
+    }, 3000);
 
     return () => {
       isMounted = false;
-      clearTimeout(timeoutId);
+      clearTimeout(emergencyTimeout);
       if (unsubscribeFn) {
         console.log('🧹 Cleaning up inbox polling');
         unsubscribeFn();

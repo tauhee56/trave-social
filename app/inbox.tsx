@@ -20,11 +20,15 @@ export default function Inbox() {
   const currentUserTyped = useUser();
   const authLoading = useAuthLoading();
   
+  console.log('🔵 INBOX COMPONENT RENDERED');
+  
   // Use optimized polling instead of real-time listeners (saves 70-80% on costs)
   const { conversations: polledConversations, loading: polledLoading } = useInboxPolling(currentUserTyped?.uid || null, {
     pollingInterval: 15000, // Poll every 15 seconds instead of real-time
     autoStart: true
   });
+
+  console.log('🟠 INBOX: polledLoading=', polledLoading, 'polledConversations.length=', polledConversations?.length);
 
   const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(polledLoading);
