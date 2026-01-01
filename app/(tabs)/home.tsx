@@ -264,7 +264,11 @@ export default function Home() {
                                         key={cat.name}
                                         style={styles.chip}
                                         onPress={() => {
+                                            console.log('[Category] Clicked category:', cat.name);
                                             const next = cat.name === filter ? '' : cat.name;
+                                            console.log('[Category] New filter:', next);
+                                            // Scroll to top when changing filter
+                                            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
                                             router.push(next ? `/(tabs)/home?filter=${encodeURIComponent(next)}` : `/(tabs)/home`);
                                         }}
                                     >

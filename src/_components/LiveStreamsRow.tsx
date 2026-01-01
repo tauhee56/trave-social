@@ -22,29 +22,22 @@ function LiveStreamsRowComponent() {
 	const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
 	const lastFetchRef = React.useRef<number>(0);
 	const isFetchingRef = React.useRef<boolean>(false);
+	const hasInitializedRef = React.useRef<boolean>(false);
 
 	useEffect(() => {
+		// Only fetch once on initial mount
+		if (hasInitializedRef.current) return;
+		hasInitializedRef.current = true;
+
 		let isMounted = true;
 
 		const fetchLiveStreams = async () => {
 			// Prevent multiple concurrent fetches
-			if (isFetchingRef.current) {
-				console.log('🔄 Already fetching, skipping...');
-				return;
-			}
-
-			// Prevent multiple rapid calls (5 second minimum between calls)
-			const now = Date.now();
-			if (now - lastFetchRef.current < 5000) {
-				console.log('🔇 Livestream fetch throttled - too recent');
-				return;
-			}
+			if (isFetchingRef.current) return;
 
 			isFetchingRef.current = true;
-			lastFetchRef.current = now;
 
 			try {
-				console.log('🎬 Fetching live streams...');
 				const streams = await getActiveLiveStreams();
 				if (!isMounted) {
 					isFetchingRef.current = false;
@@ -53,7 +46,6 @@ function LiveStreamsRowComponent() {
 				
 				streams.sort((a: any, b: any) => (b.viewerCount || 0) - (a.viewerCount || 0));
 				setLiveStreams(streams);
-				console.log(`✅ Loaded ${streams.length} live streams`);
 			} catch (error) {
 				console.error('❌ Error fetching live streams:', error);
 			} finally {
@@ -132,9 +124,7 @@ function LiveStreamsRowComponent() {
 	);
 }
 
-export default React.memo(LiveStreamsRowComponent, (prevProps, nextProps) => {
-	return true;
-});
+export default memo(LiveStreamsRowComponent);
 
 const styles = StyleSheet.create({
 	container: {

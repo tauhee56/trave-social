@@ -380,9 +380,6 @@ export default function Profile({ userIdProp }: any) {
       Alert.alert('Error', 'Failed to submit report. Please try again.');
     }
   };
-      Alert.alert('Error', 'Failed to submit report. Please try again.');
-    }
-  };
 
   // Add missing highlight handler
   const handlePressHighlight = (highlight: Highlight) => {
