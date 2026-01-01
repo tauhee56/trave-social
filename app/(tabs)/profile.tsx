@@ -1,4 +1,5 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -24,7 +25,6 @@ import HighlightViewer from '../../src/_components/HighlightViewer';
 import PostViewerModal from '../../src/_components/PostViewerModal';
 import StoriesViewer from '../../src/_components/StoriesViewer';
 // Removed Firebase import - using AsyncStorage for auth instead
-import { useAuthLoading } from '../../src/_components/UserContext';
 import { getUserHighlights as getUserHighlightsAPI, getUserPosts as getUserPostsAPI, getUserProfile as getUserProfileAPI, getUserSections as getUserSectionsAPI, getUserStories as getUserStoriesAPI } from '../../src/_services/firebaseService';
 import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
 

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -6,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { uploadImage } from '../lib/firebaseHelpers';
 import { updateUserProfile } from '../lib/firebaseHelpers/index';
 import { getUserProfile } from '../src/_services/firebaseService';
-import { useUser, useAuthLoading } from './_components/UserContext';
 
 // Runtime import with fallback
 let ImagePicker: any = null;
@@ -21,17 +21,23 @@ export default function EditProfile() {
     const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   const router = useRouter();
   const params = useLocalSearchParams();
-  const user = useUser();
-  const authLoading = useAuthLoading();
+  const [userId, setUserId] = useState<string | null>(null);
   
-  // IMPORTANT: Get userId - prioritize user.uid from UserContext (logged-in user)
-  // paramUserId is only for viewing OTHER user's profile, but edit-profile should ALWAYS edit the logged-in user
-  const paramUserId = params.userId as string | undefined;
+  // Get current user ID from AsyncStorage (token-based auth)
+  useEffect(() => {
+    const getUserId = async () => {
+      try {
+        const uid = await AsyncStorage.getItem('userId');
+        setUserId(uid);
+        console.log('📋 EditProfile loaded with userId:', uid);
+      } catch (error) {
+        console.error('[EditProfile] Failed to get userId from storage:', error);
+      }
+    };
+    getUserId();
+  }, []);
   
-  console.log('📋 EditProfile loaded with:');
-  console.log('   paramUserId (ignored):', paramUserId);
-  console.log('   user?.uid (logged-in user):', user?.uid);
-  console.log('   authLoading:', authLoading);
+  console.log('📋 EditProfile current userId:', userId);
   
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -46,43 +52,22 @@ export default function EditProfile() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
-  // Use logged-in user from context, NOT paramUserId - edit-profile always edits YOUR OWN profile
-  const [userId, setUserId] = useState<string | null>(user?.uid || null);
 
-  // Load profile whenever auth state changes or user changes
+  // Load profile whenever userId changes
   useEffect(() => {
     let isMounted = true;
 
     const initializeProfile = async () => {
       try {
-        // If we have paramUserId from params, use that directly
-        if (paramUserId) {
-          console.log('📋 Loading profile for paramUserId:', paramUserId);
-          setUserId(paramUserId);
+        // If userId is set, load their profile
+        if (userId) {
+          console.log('👤 Loading profile for userId:', userId);
           setLoading(true);
-          await loadProfileWithId(paramUserId);
-          return;
-        }
-
-        // If auth is still loading, wait
-        if (authLoading) {
-          console.log('⏳ Auth is loading...');
-          setLoading(true);
-          return;
-        }
-
-        if (!isMounted) return;
-
-        // If user exists, load their profile data
-        if (user?.uid) {
-          console.log('👤 User found, loading profile:', user.uid);
-          setUserId(user.uid);
-          setLoading(true);
-          await loadProfileWithId(user.uid);
+          await loadProfileWithId(userId);
         } else {
-          // No user - just show empty form
-          console.warn('⚠️ No authenticated user - showing empty edit form');
-          setLoading(false);
+          // Still waiting for userId from AsyncStorage
+          console.log('⏳ Waiting for userId from AsyncStorage...');
+          setLoading(true);
         }
       } catch (err) {
         console.error('❌ Error in initializeProfile:', err);
@@ -95,7 +80,7 @@ export default function EditProfile() {
     return () => {
       isMounted = false;
     };
-  }, [authLoading, user?.uid, paramUserId]);
+  }, [userId]);
 
   async function loadProfileWithId(uid: string) {
     console.log('🔄 Loading profile for uid:', uid);
@@ -181,19 +166,14 @@ export default function EditProfile() {
     setError(v);
     if (v) return;
 
-    // Ensure user is available - try user.uid first, then fallback to stored userId
-    const currentUserId = user?.uid || userId;
-    
-    if (!currentUserId) {
+    if (!userId) {
       console.error('❌ User not authenticated - cannot save profile');
-      console.log('   authLoading:', authLoading);
-      console.log('   user?.uid:', user?.uid);
-      console.log('   stored userId:', userId);
+      console.log('   userId:', userId);
       Alert.alert('Error', 'You must be logged in to save your profile');
       return;
     }
 
-    console.log('💾 Saving profile with userId:', currentUserId);
+    console.log('💾 Saving profile with userId:', userId);
     
     console.log('💾 Saving profile changes...');
     console.log('  UserId:', userId);
@@ -216,7 +196,7 @@ export default function EditProfile() {
       // Upload new avatar if picked
       if (newAvatarUri) {
         console.log('📤 Uploading new avatar...');
-        const uploadResult = await uploadImage(newAvatarUri, `avatars/${currentUserId}`);
+        const uploadResult = await uploadImage(newAvatarUri, `avatars/${userId}`);
         if (uploadResult && uploadResult.success && uploadResult.url) {
           finalAvatar = uploadResult.url;
           console.log('✅ Avatar uploaded:', finalAvatar.substring(0, 50));
@@ -227,7 +207,7 @@ export default function EditProfile() {
       
       // Update profile with avatar URL
       console.log('💾 Updating Firestore profile...');
-      const result = await updateUserProfile(currentUserId, {
+      const result = await updateUserProfile(userId, {
         name,
         username,
         displayName: name, // Also set displayName for Firebase

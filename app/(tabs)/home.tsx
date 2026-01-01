@@ -19,8 +19,8 @@ import StoriesRow from '../../app/_components/StoriesRow';
 import LiveStreamsRow from '../../src/_components/LiveStreamsRow';
 import StoriesViewer from '../../src/_components/StoriesViewer';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_CATEGORIES, getCategories } from '../../lib/firebaseHelpers/index';
-import { useAuthUser } from '../../src/_components/UserContext';
 import { apiService } from '../_services/apiService';
 
 const { width } = Dimensions.get("window");
@@ -39,7 +39,7 @@ export default function Home() {
     const filter = (params.filter as string) || '';
     const router = useRouter();
     const [posts, setPosts] = useState<any[]>([]);
-    const authUser = useAuthUser() as any;
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [feedReloadKey, setFeedReloadKey] = useState(0); 
@@ -53,8 +53,18 @@ export default function Home() {
     const flatListRef = React.useRef<FlatList>(null);
     const [privacyFiltered, setPrivacyFiltered] = useState<any[]>([]);
 
-    const currentUser = useAuthUser();
-    const currentUserId = currentUser?.uid;
+    // Get current user ID from AsyncStorage (token-based auth)
+    useEffect(() => {
+      const getUserId = async () => {
+        try {
+          const userId = await AsyncStorage.getItem('userId');
+          setCurrentUserId(userId);
+        } catch (error) {
+          console.error('[Home] Failed to get userId from storage:', error);
+        }
+      };
+      getUserId();
+    }, []);
 
     // Memoized shuffle
     const shufflePosts = useCallback((postsArray: any[]) => {
