@@ -47,19 +47,19 @@ export async function startConversationsPolling(
       // Pass userId as query parameter
       const response = await apiService.get(`/conversations?userId=${userId}`);
       
-      console.log('📡 Conversations API response:', response);
+      console.log('📡 Conversations API response:', JSON.stringify(response.data).substring(0, 200));
       
-      // Unwrap response data structure - handle multiple response formats
-      let conversations = response.data?.data || response.data || [];
+      // Unwrap response data structure - backend returns { success, data: [] }
+      let conversations = response.data?.data;
       
       if (!Array.isArray(conversations)) {
-        console.warn('⚠️ Conversations not an array, converting:', typeof conversations);
-        conversations = Array.isArray(conversations) ? conversations : [];
+        console.warn('⚠️ Conversations not an array, got:', typeof conversations, conversations);
+        conversations = [];
       }
 
       console.log(`✅ Got ${conversations.length} conversations`);
       
-      // Call callback with raw conversations (skip user profile enrichment for now)
+      // Call callback with raw conversations
       callback(conversations);
       
       // Reset retries on success
@@ -70,7 +70,7 @@ export async function startConversationsPolling(
       }
     } catch (error: any) {
       console.error('❌ Conversations polling error:', error.message);
-      // Still call callback with empty array to stop loading spinner
+      // Call callback with empty array to unblock loading
       callback([]);
       const poller = activePollers.get(pollerId);
       if (poller) {
@@ -80,10 +80,18 @@ export async function startConversationsPolling(
     }
   };
 
-  // Initial fetch
-  await poll();
+  // Initial fetch with timeout
+  try {
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Initial poll timeout')), 5000)
+    );
+    await Promise.race([poll(), timeoutPromise]);
+  } catch (err) {
+    console.warn('⚠️ Initial poll failed, will retry:', err.message);
+    callback([]); // Unblock loading
+  }
 
-  // Set up interval
+  // Set up interval for subsequent polls
   const intervalId = setInterval(poll, interval);
 
   activePollers.set(pollerId, {
