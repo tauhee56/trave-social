@@ -464,19 +464,25 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                   setUploadProgress(10);
                   let uploadUri = selectedMedia.uri;
                   const mediaType = selectedMedia.type === 'video' ? 'video' : 'image';
-                  // Compress image before upload
+                  
+                  // Compress image before upload (handle errors gracefully)
                   if (mediaType === 'image') {
                     try {
+                      console.log('[StoriesRow] Attempting to compress image:', selectedMedia.uri);
                       const manipResult = await ImageManipulator.manipulateAsync(
                         selectedMedia.uri,
                         [{ resize: { width: 1080 } }],
                         { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
                       );
                       uploadUri = manipResult.uri;
+                      console.log('[StoriesRow] ✅ Image compressed successfully');
                     } catch (err) {
-                      // fallback to original
+                      // Fallback to original if compression fails
+                      console.warn('[StoriesRow] ⚠️ Image compression failed, using original:', err);
+                      uploadUri = selectedMedia.uri;
                     }
                   }
+                  
                   let progress = 10;
                   const interval = setInterval(() => {
                     progress += 20;

@@ -16,7 +16,12 @@ export async function createHighlight(
       body: JSON.stringify({ userId, title: name, items: storyIds.map(id => ({ id, coverImage })) })
     });
     const data = await res.json();
-    return { success: data.success, highlightId: data.id };
+    
+    // Unwrap response
+    const highlightData = data?.data || data;
+    const highlightId = highlightData?._id || highlightData?.id || data?.id;
+    
+    return { success: data.success, highlightId, highlight: highlightData };
   } catch (error: any) {
     console.error('❌ createHighlight error:', error);
     return { success: false, error: error.message };

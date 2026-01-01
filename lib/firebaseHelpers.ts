@@ -425,8 +425,15 @@ export async function getUserSections(userId: string) {
 }
 
 export async function addUserSection(userId: string, section: { name: string; postIds: string[]; coverImage?: string }) {
-  await apiService.post(`/users/${userId}/sections`, section);
-  return { success: true };
+  try {
+    const res = await apiService.post(`/users/${userId}/sections`, section);
+    // Unwrap response
+    const sectionData = res?.data || res;
+    return { success: true, sectionId: sectionData?._id || sectionData?.id, section: sectionData };
+  } catch (error: any) {
+    console.error('[addUserSection] Error:', error.message);
+    return { success: false, error: error.message };
+  }
 }
 
 export async function updateUserSection(userId: string, section: { name: string; postIds: string[]; coverImage?: string }) {
@@ -615,8 +622,17 @@ export async function createStory(
 ) {
   const upload = await uploadImage(mediaUri);
   if (!upload?.url) throw new Error(upload?.error || 'Upload failed');
+  
   const res = await apiService.post('/stories', { userId, mediaUrl: upload.url, mediaType, locationData });
-  return { success: true, storyId: res?.id || res?._id || res?.storyId };
+  
+  // Unwrap API response
+  const storyData = res?.data || res;
+  
+  return { 
+    success: true, 
+    storyId: storyData?._id || storyData?.id || storyData?.storyId,
+    story: storyData
+  };
 }
 
 export async function getActiveStories() {
