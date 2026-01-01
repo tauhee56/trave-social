@@ -1016,7 +1016,7 @@ export default function Profile({ userIdProp }: any) {
         posts: segmentTab === 'grid' ? (selectedSection ? visiblePosts : posts) : taggedPosts,
         selectedPostIndex: selectedPostIndex,
         profile: profile,
-        userId: currentUserId,
+        authUser: currentUserId ? { uid: currentUserId } : null,
         likedPosts: likedPosts,
         savedPosts: savedPosts,
         handleLikePost: handleLikePost,
