@@ -39,19 +39,18 @@ export default function Home() {
     const filter = (params.filter as string) || '';
     const router = useRouter();
     const [posts, setPosts] = useState<any[]>([]);
+    const [allLoadedPosts, setAllLoadedPosts] = useState<any[]>([]);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [feedReloadKey, setFeedReloadKey] = useState(0); 
-    const [unreadCount, setUnreadCount] = useState(0);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [privacyFiltered, setPrivacyFiltered] = useState<any[]>([]);
+    const [paginationOffset, setPaginationOffset] = useState(20);
+    const POSTS_PER_PAGE = 10;
     const [showStoriesViewer, setShowStoriesViewer] = useState(false);
     const [selectedStories, setSelectedStories] = useState<any[]>([]);
     const [storiesRefreshTrigger, setStoriesRefreshTrigger] = useState(0);
-    const [loadingMore, setLoadingMore] = useState(false);
-    const [allLoadedPosts, setAllLoadedPosts] = useState<any[]>([]);
-    const [loopCount, setLoopCount] = useState(0); 
     const flatListRef = React.useRef<FlatList>(null);
-    const [privacyFiltered, setPrivacyFiltered] = useState<any[]>([]);
 
     // Get current user ID from AsyncStorage (token-based auth)
     useEffect(() => {
@@ -157,19 +156,27 @@ export default function Home() {
         loadCategories();
     }, []);
 
-    // Privacy Filter logic fixed
-    async function filterPostsByPrivacyWithUserCheck(posts: any[], userId: string | undefined) {
+    // Privacy Filter logic - FIXED to properly check if user has access
+    async function filterPostsByPrivacy(posts: any[], userId: string | undefined) {
+        // If no user logged in, show only public posts
         if (!userId) return posts.filter(post => !post.isPrivate);
         
-        const userPrivacyMap = new Map<string, { isPrivate: boolean; followers: string[] }>();
-        // Yahan aap apna batch fetch logic add kar sakte hain
-        
+        // For logged-in users: show all non-private posts + private posts they have access to
         return posts.filter(post => {
             if (!post.userId) return false;
-            const userPrivacy = userPrivacyMap.get(post.userId);
-            if (post.isPrivate) return Array.isArray(post.allowedFollowers) && post.allowedFollowers.includes(userId);
-            if (userPrivacy?.isPrivate) return post.userId === userId || userPrivacy.followers.includes(userId);
-            return true;
+            
+            // Show own posts
+            if (post.userId === userId) return true;
+            
+            // Show public posts
+            if (!post.isPrivate) return true;
+            
+            // Show private posts only if current user is in allowedFollowers
+            if (post.isPrivate && Array.isArray(post.allowedFollowers)) {
+                return post.allowedFollowers.includes(userId);
+            }
+            
+            return false;
         });
     }
 
@@ -197,23 +204,33 @@ export default function Home() {
     useEffect(() => {
         let isMounted = true;
         const applyFilter = async () => {
-            const filtered = await filterPostsByPrivacyWithUserCheck(filteredRaw, currentUserId);
-            if (isMounted) setPrivacyFiltered(filtered);
+            // Remove duplicates using Set based on post ID
+            const uniquePosts = Array.from(new Map(filteredRaw.map(p => [p.id, p])).values());
+            const filtered = await filterPostsByPrivacy(uniquePosts, currentUserId);
+            if (isMounted) {
+                // Only show first paginationOffset posts
+                setPrivacyFiltered(filtered.slice(0, paginationOffset));
+                setAllLoadedPosts(filtered); // Keep all for pagination
+            }
         };
         applyFilter();
         return () => { isMounted = false; };
-    }, [filteredRaw, currentUserId]);
+    }, [filteredRaw, currentUserId, paginationOffset]);
 
     const onRefresh = async () => {
-        setRefreshing(true);
-        await loadInitialFeed();
-        setRefreshing(false);
-    };
-
-    const loadMorePosts = async () => {
-        if (loadingMore || allLoadedPosts.length === 0) return;
+        setRefreshing(t) return;
         setLoadingMore(true);
-        const reshuffled = shufflePosts(allLoadedPosts).map((post, idx) => ({
+        
+        // Simulate load delay
+        await new Promise(r => setTimeout(r, 300));
+        
+        // Increase pagination offset to show more posts
+        setPaginationOffset(prev => {
+            const newOffset = prev + POSTS_PER_PAGE;
+            console.log('[Home] Loading more posts - new offset:', newOffset, 'total available:', allLoadedPosts.length);
+            return newOffset;
+        });
+        (allLoadedPosts).map((post, idx) => ({
             ...post,
             id: post.id || `generated-${Date.now()}-${idx}`, // Ensure post has an ID
             _loopKey: `loop-${loopCount + 1}-${post.id || `gen-${idx}`}-${idx}`,
@@ -245,9 +262,8 @@ export default function Home() {
             <FlatList
                 ref={flatListRef}
                 data={privacyFiltered}
-                keyExtractor={(item, index) => item._loopKey || `${item.id}-${index}`}
+                keyExtractor={(item, index) => `post-${item.id}-${index}`}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#f39c12" />}
-                key={feedReloadKey}
                 initialNumToRender={5}
                 maxToRenderPerBatch={5}
                 windowSize={7}
@@ -295,8 +311,23 @@ export default function Home() {
                 renderItem={({ item }: { item: any }) => (
                     <PostCard post={{ ...item, imageUrl: item.thumbnailUrl || item.imageUrl }} currentUser={currentUserId} showMenu={false} />
                 )}
+                ListFooterComponent={
+                    loadingMore ? (
+                        <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                            <ActivityIndicator size="small" color="#f39c12" />
+                        </View>
+                    ) : privacyFiltered.length < allLoadedPosts.length ? (
+                        <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                            <Text style={{ color: '#999' }}>Scroll for more posts</Text>
+                        </View>
+                    ) : (
+                        <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                            <Text style={{ color: '#999' }}>No more posts</Text>
+                        </View>
+                    )
+                }
                 onEndReached={loadMorePosts}
-                onEndReachedThreshold={0.8}
+                onEndReachedThreshold={0.5}
             />
 
             {showStoriesViewer && (
