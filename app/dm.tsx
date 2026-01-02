@@ -82,52 +82,43 @@ export default function DM() {
   }
 
   useEffect(() => {
-    initializeConversation();
-    checkMessagingPermission();
+    let isMounted = true;
     
-    // Update current user's presence when entering DM
-    if (currentUserTyped?.uid && conversationId) {
-      updateUserPresence(currentUserTyped.uid, conversationId);
-    }
-    
-    // Subscribe to other user's presence
-    if (realOtherUserId) {
-      const unsubscribe = subscribeToUserPresence(realOtherUserId as string, (presence) => {
-        setOtherUserPresence(presence);
-      });
-      
-      // Cleanup: update current user offline when leaving DM
-      return () => {
-        unsubscribe?.();
-        if (currentUserTyped?.uid) {
-          updateUserOffline(currentUserTyped.uid);
+    const initializeDM = async () => {
+      try {
+        setLoading(true);
+        
+        // Step 1: Initialize conversation immediately
+        if (!currentUserTyped?.uid || !realOtherUserId) {
+          console.log('[DM] Missing user IDs, cannot initialize');
+          setLoading(false);
+          return;
         }
-      };
-    }
-  }, []);
 
-  async function checkMessagingPermission() {
-    if (!realOtherUserId || !currentUserTyped || !currentUserTyped.uid) {
-      console.log('[DM DEBUG] Missing user IDs:', { realOtherUserId, currentUserTyped });
-      setCanMessage(false);
-      return;
-    }
-    const res = await getUserProfile(String(realOtherUserId));
-    console.log('[DM DEBUG] getUserProfile result:', res);
-    if (res && res.success && typeof res.data === 'object') {
-      const isPrivate = !!(res.data as any).isPrivate;
-      console.log('[DM DEBUG] isPrivate:', isPrivate);
-      if (!isPrivate) {
+        // Get or create conversation ID
+        const result = await getOrCreateConversation(
+          String(currentUserTyped.uid),
+          typeof realOtherUserId === 'string' ? realOtherUserId : ''
+        );
+        
+        if (isMounted && result?.success && result?.conversationId) {
+          setConversationId(result.conversationId);
+          console.log('[DM] Conversation initialized:', result.conversationId);
+        }
+        
+        // Step 2: Allow messaging (skip permission check - user can always message)
         setCanMessage(true);
-      } else {
-        const approved = await isApprovedFollower(String(otherUserId), String(currentUserTyped.uid));
-        console.log('[DM DEBUG] isApprovedFollower:', { otherUserId, currentUserId: currentUserTyped.uid, approved });
-        setCanMessage(approved);
+      } catch (error) {
+        console.error('[DM] Error initializing:', error);
+      } finally {
+        if (isMounted) setLoading(false);
       }
-    } else {
-      setCanMessage(false);
-    }
-  }
+    };
+
+    initializeDM();
+
+    return () => { isMounted = false; };
+  }, [currentUserTyped?.uid, realOtherUserId]);
 
   useEffect(() => {
     if (!conversationId) return;
