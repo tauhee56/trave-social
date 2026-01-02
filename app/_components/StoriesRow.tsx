@@ -116,18 +116,6 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
         console.error('[StoriesRow] Error fetching user profile:', err);
       }
     }
-      try {
-        const res = await getUserProfile(authUser.uid);
-        if (res && res.success && 'data' in res && res.data) {
-          const avatar = res.data.avatar || res.data.photoURL || res.data.profilePicture;
-          if (avatar) {
-            setCurrentUserAvatar(avatar);
-          }
-        }
-      } catch (err) {
-        console.warn('[StoriesRow] Error loading avatar:', err);
-      }
-    }
   };
 
   const loadStories = async () => {
