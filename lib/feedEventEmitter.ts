@@ -59,6 +59,25 @@ class FeedEventEmitter extends EventEmitter {
     this.emitFeedUpdate({ type: 'POST_UPDATED', postId, data });
   }
 
+  // Listen to specific post updates
+  onPostUpdated(postId: string, callback: (postId: string, data: any) => void) {
+    // @ts-ignore - EventEmitter methods
+    const subscription = this.addListener('feedUpdate', (event: FeedEvent) => {
+      if (event.type === 'POST_UPDATED' && event.postId === postId) {
+        callback(postId, event.data);
+      }
+    });
+    return subscription;
+  }
+
+  // Unsubscribe from specific post updates
+  offPostUpdated(postId: string, callback: any) {
+    // fbemitter subscription objects have a remove() method
+    if (callback && typeof callback.remove === 'function') {
+      callback.remove();
+    }
+  }
+
   emitUserPrivacyChanged(userId: string, isPrivate: boolean) {
     this.emitFeedUpdate({ type: 'USER_PRIVACY_CHANGED', userId, data: { isPrivate } });
   }

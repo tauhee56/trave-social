@@ -514,6 +514,28 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
     setCommentCount(post?.commentCount || 0);
   }, [post?.commentCount]);
   
+  // Listen for comment updates via event emitter
+  useEffect(() => {
+    const handlePostUpdated = (postId: string, data: any) => {
+      if (postId === post.id) {
+        if (data?.newCommentCount) {
+          // Increment comment count when a new comment is added
+          setCommentCount(prev => {
+            const newCount = prev + 1;
+            console.log('[PostCard] Comment count updated to:', newCount);
+            return newCount;
+          });
+        }
+      }
+    };
+    
+    const subscription = feedEventEmitter.onPostUpdated(post.id, handlePostUpdated);
+    
+    return () => {
+      feedEventEmitter.offPostUpdated(post.id, subscription);
+    };
+  }, [post.id]);
+  
   const [currentAvatar, setCurrentAvatar] = useState<string>("https://via.placeholder.com/200x200.png?text=Profile");
     useEffect(() => {
       // Use pre-populated user data from backend if available
@@ -1111,7 +1133,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
             <Feather name="send" size={22} color={appColors.accent} />
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
-          <SaveButton post={{ ...post, savedBy }} />
+          <SaveButton post={{ ...post, savedBy }} currentUser={currentUser} />
         </View>
         {/* Likes Count */}
         <Text style={[styles.likes, { color: appColors.text }]}>{typeof likesCount === 'number' ? `${likesCount.toLocaleString()} likes` : ''}</Text>

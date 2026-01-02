@@ -24,22 +24,27 @@ async function unsavePost(postId: string, userId: string) {
   }
 }
 
-export default function SaveButton({ post }: any) {
+export default function SaveButton({ post, currentUser }: any) {
   const user = useUser();
-  const [saved, setSaved] = useState(post.savedBy?.includes(user?.uid));
+  // Use currentUser prop if provided, otherwise fall back to context
+  const userForSave = currentUser || user;
+  const userId = typeof userForSave === 'string' ? userForSave : (userForSave?.uid || userForSave?.id || userForSave?.userId);
+  const [saved, setSaved] = useState(post.savedBy?.includes(userId));
   React.useEffect(() => {
-    setSaved(post.savedBy?.includes(user?.uid));
-  }, [post.savedBy, user?.uid]);
+    setSaved(post.savedBy?.includes(userId));
+  }, [post.savedBy, userId]);
   async function handleSave() {
-    if (!user || !user.uid) {
+    if (!userId) {
+      console.log('[SaveButton] ERROR - userId not found. currentUser:', currentUser, 'user:', user);
       Alert.alert('Error', 'User not logged in');
       return;
     }
+    console.log('[SaveButton] Saving post. userId:', userId, 'postId:', post.id);
     if (saved) {
-      await unsavePost(post.id, user.uid);
+      await unsavePost(post.id, userId);
       setSaved(false);
     } else {
-      await savePost(post.id, user.uid);
+      await savePost(post.id, userId);
       setSaved(true);
     }
   }

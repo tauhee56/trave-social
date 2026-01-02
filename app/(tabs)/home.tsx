@@ -41,6 +41,7 @@ export default function Home() {
     const [posts, setPosts] = useState<any[]>([]);
     const [allLoadedPosts, setAllLoadedPosts] = useState<any[]>([]);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [currentUserData, setCurrentUserData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -58,6 +59,19 @@ export default function Home() {
         try {
           const userId = await AsyncStorage.getItem('userId');
           setCurrentUserId(userId);
+          
+          // Also fetch user's display name and other info
+          if (userId) {
+            try {
+              const response = await apiService.get(`/users/${userId}`);
+              if (response.success && response.data) {
+                setCurrentUserData(response.data);
+                console.log('[Home] Loaded current user data:', response.data?.displayName || response.data?.name);
+              }
+            } catch (error) {
+              console.log('[Home] Could not fetch user data:', error);
+            }
+          }
         } catch (error) {
           console.error('[Home] Failed to get userId from storage:', error);
         }
@@ -390,7 +404,7 @@ export default function Home() {
                     </View>
                 )}
                 renderItem={({ item }: { item: any }) => (
-                    <PostCard post={{ ...item, imageUrl: item.thumbnailUrl || item.imageUrl }} currentUser={currentUserId} showMenu={false} />
+                    <PostCard post={{ ...item, imageUrl: item.thumbnailUrl || item.imageUrl }} currentUser={currentUserData || currentUserId} showMenu={false} />
                 )}
                 ListFooterComponent={
                     loadingMore ? (

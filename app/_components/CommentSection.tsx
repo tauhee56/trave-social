@@ -2,6 +2,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { addComment, addCommentReaction, addCommentReply, deleteComment, deleteCommentReply, editComment, editCommentReply, getPostComments } from "../../lib/firebaseHelpers/comments";
+import { feedEventEmitter } from "../../lib/feedEventEmitter";
 import CommentAvatar from "./CommentAvatar";
 import { useUser } from "./UserContext";
 
@@ -142,6 +143,8 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       setNewComment(commentText); // Restore the text
       Alert.alert('Error', 'Failed to post comment: ' + result.error);
     } else {
+      // Emit event to update post's commentCount in PostCard
+      feedEventEmitter.emitPostUpdated(postId, { commentAdded: true, newCommentCount: true });
       // Reload to get the real comment with correct ID
       await loadComments();
     }
@@ -171,12 +174,25 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   const handleEditComment = async () => {
     if (!editingComment || !currentUser) return;
     
+    // Extract userId from currentUser (can be string or object)
+    let userId = '';
+    if (typeof currentUser === 'string') {
+      userId = currentUser;
+    } else {
+      userId = currentUser?.uid || currentUser?.id || currentUser?.userId;
+    }
+
+    if (!userId) {
+      Alert.alert('Error', 'Cannot edit comment - user not identified');
+      return;
+    }
+    
     if (editingComment.isReply && editingComment.parentId) {
       const result = await editCommentReply(
         postId,
         editingComment.parentId,
         editingComment.id,
-        currentUser.uid,
+        userId,
         editingComment.text
       );
       if (result.success) {
@@ -187,7 +203,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       const result = await editComment(
         postId,
         editingComment.id,
-        currentUser.uid,
+        userId,
         editingComment.text
       );
       if (result.success) {
@@ -200,6 +216,19 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   const handleDeleteComment = async (commentId: string, isReply: boolean, parentId?: string, replyId?: string) => {
     if (!currentUser) return;
 
+    // Extract userId from currentUser (can be string or object)
+    let userId = '';
+    if (typeof currentUser === 'string') {
+      userId = currentUser;
+    } else {
+      userId = currentUser?.uid || currentUser?.id || currentUser?.userId;
+    }
+
+    if (!userId) {
+      Alert.alert('Error', 'Cannot delete comment - user not identified');
+      return;
+    }
+
     Alert.alert(
       'Delete Comment',
       'Are you sure you want to delete this comment?',
@@ -210,10 +239,10 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
           style: 'destructive',
           onPress: async () => {
             if (isReply && parentId && replyId) {
-              const result = await deleteCommentReply(postId, parentId, replyId, currentUser.uid, postOwnerId);
+              const result = await deleteCommentReply(postId, parentId, replyId, userId, postOwnerId);
               if (result.success) await loadComments();
             } else {
-              const result = await deleteComment(postId, commentId, currentUser.uid, postOwnerId);
+              const result = await deleteComment(postId, commentId, userId, postOwnerId);
               if (result.success) await loadComments();
             }
             setShowMenu(null);
@@ -226,7 +255,20 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   const handleReaction = async (commentId: string, reaction: string) => {
     if (!currentUser) return;
 
-    await addCommentReaction(postId, commentId, currentUser.uid, reaction);
+    // Extract userId from currentUser (can be string or object)
+    let userId = '';
+    if (typeof currentUser === 'string') {
+      userId = currentUser;
+    } else {
+      userId = currentUser?.uid || currentUser?.id || currentUser?.userId;
+    }
+
+    if (!userId) {
+      Alert.alert('Error', 'Cannot add reaction - user not identified');
+      return;
+    }
+
+    await addCommentReaction(postId, commentId, userId, reaction);
     setShowReactions(null);
     await loadComments();
   };
@@ -244,8 +286,16 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   };
 
   const renderComment = (comment: Comment, isReply: boolean = false, parentId?: string) => {
-    const isOwner = currentUser?.uid === comment.userId;
-    const isPostOwner = currentUser?.uid === postOwnerId;
+    // Extract currentUserId properly
+    let currentUserId = '';
+    if (typeof currentUser === 'string') {
+      currentUserId = currentUser;
+    } else {
+      currentUserId = currentUser?.uid || currentUser?.id || currentUser?.userId || '';
+    }
+    
+    const isOwner = currentUserId === comment.userId;
+    const isPostOwner = currentUserId === postOwnerId;
     const canDelete = isOwner || isPostOwner;
 
     const reactionCounts: { [key: string]: number } = {};
@@ -334,7 +384,11 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
           {/* Replies */}
           {!isReply && comment.replies && comment.replies.length > 0 && (
             <View style={styles.repliesContainer}>
-              {comment.replies.map(reply => renderComment(reply, true, comment.id))}
+              {comment.replies.map((reply) => (
+                <View key={reply.id}>
+                  {renderComment(reply, true, comment.id)}
+                </View>
+              ))}
             </View>
           )}
         </View>
@@ -363,7 +417,13 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
             <Text style={styles.emptySubtext}>Be the first to comment!</Text>
           </View>
         ) : (
-          comments.map(comment => renderComment(comment))
+          <View>
+            {comments.map((comment) => (
+              <View key={comment.id}>
+                {renderComment(comment)}
+              </View>
+            ))}
+          </View>
         )}
       </ScrollView>
 
