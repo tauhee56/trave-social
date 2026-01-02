@@ -78,24 +78,32 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   };
 
   const handleAddComment = async () => {
-    console.log('[CommentSection] handleAddComment - currentUser:', currentUser?.uid, 'displayName:', currentUser?.displayName, 'newComment:', newComment.trim());
+    // Handle currentUser being either string (userId) or object
+    let userId: string | undefined;
+    let displayName: string = 'User';
+    
+    if (typeof currentUser === 'string') {
+      // currentUser is just a userId string
+      userId = currentUser;
+      displayName = 'User'; // Default when we only have userId
+      console.log('[CommentSection] handleAddComment - currentUser is string userId:', userId, 'newComment:', newComment.trim());
+    } else if (currentUser && typeof currentUser === 'object') {
+      // currentUser is an object with uid/id/userId fields
+      userId = currentUser?.uid || currentUser?.id || currentUser?.userId;
+      displayName = currentUser?.displayName || currentUser?.name || 'User';
+      console.log('[CommentSection] handleAddComment - currentUser is object userId:', userId, 'displayName:', displayName, 'newComment:', newComment.trim());
+    } else {
+      console.log('[CommentSection] handleAddComment - currentUser is null/undefined:', currentUser);
+    }
     
     if (!newComment.trim()) {
       console.log('[CommentSection] Skipping - no text');
       return;
     }
     
-    if (!currentUser) {
-      console.log('[CommentSection] ERROR - No currentUser available');
-      Alert.alert('Error', 'Please login to comment');
-      return;
-    }
-    
-    // Ensure we have a valid userId
-    const userId = currentUser.uid || currentUser.id || currentUser.userId;
     if (!userId) {
       console.log('[CommentSection] ERROR - Cannot extract userId from currentUser:', currentUser);
-      Alert.alert('Error', 'User ID not found');
+      Alert.alert('Error', 'Please login to comment');
       return;
     }
     
@@ -107,7 +115,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       id: `temp-${Date.now()}`,
       text: commentText,
       userAvatar: currentAvatar,
-      userName: currentUser.displayName || 'User',
+      userName: displayName,
       userId: userId,
       createdAt: Date.now(),
       replies: [],
@@ -116,12 +124,12 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     
     setComments(prev => [tempComment, ...prev]);
     
-    // Then save to Firebase in background
-    console.log('[CommentSection] Adding comment to post:', postId, 'userId:', userId);
+    // Then save to backend
+    console.log('[CommentSection] Adding comment to post:', postId, 'userId:', userId, 'userName:', displayName);
     const result = await addComment(
       postId,
       userId,
-      currentUser.displayName || 'User',
+      displayName,
       currentAvatar,
       commentText
     );

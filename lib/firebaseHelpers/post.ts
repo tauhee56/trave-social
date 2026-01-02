@@ -1,12 +1,11 @@
-
+import { apiService } from '../../app/_services/apiService';
 
 /**
  * Get a post by its ID
  */
 export async function getPostById(postId: string) {
   try {
-    const res = await fetch(`/api/posts/${postId}`);
-    const data = await res.json();
+    const data = await apiService.get(`/posts/${postId}`);
     return data;
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -18,14 +17,12 @@ export async function getPostById(postId: string) {
  */
 export async function likePost(postId: string, userId: string) {
   try {
-    const res = await fetch(`/api/posts/${postId}/like`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId })
-    });
-    const data = await res.json();
+    console.log('[Post API] likePost - postId:', postId, 'userId:', userId);
+    const data = await apiService.post(`/posts/${postId}/like`, { userId });
+    console.log('[Post API] likePost response:', data);
     return data;
   } catch (error: any) {
+    console.error('[Post API] likePost error:', error);
     return { success: false, error: error.message };
   }
 }
@@ -35,14 +32,12 @@ export async function likePost(postId: string, userId: string) {
  */
 export async function unlikePost(postId: string, userId: string) {
   try {
-    const res = await fetch(`/api/posts/${postId}/like`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId })
-    });
-    const data = await res.json();
+    console.log('[Post API] unlikePost - postId:', postId, 'userId:', userId);
+    const data = await apiService.delete(`/posts/${postId}/like`, { userId });
+    console.log('[Post API] unlikePost response:', data);
     return data;
   } catch (error: any) {
+    console.error('[Post API] unlikePost error:', error);
     return { success: false, error: error.message };
   }
 }

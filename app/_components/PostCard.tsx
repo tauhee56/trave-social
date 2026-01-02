@@ -498,6 +498,8 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
   const userIdForLike = user?.uid || user?.id || currentUser?.uid || currentUser?.firebaseUid || currentUser?.id || currentUser;
   const liked = likes.includes(userIdForLike || "");
   
+  console.log('[PostCard] userIdForLike:', userIdForLike, 'user:', user, 'currentUser:', currentUser, 'likes:', likes.length);
+  
   // OPTIMIZATION: Update local state when post prop changes (no real-time listener)
   useEffect(() => {
     setLikes(Array.isArray(post?.likes) ? post.likes : []);
@@ -1228,7 +1230,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                   postId={post.id}
                   postOwnerId={post.userId}
                   currentAvatar={user?.photoURL || "https://via.placeholder.com/200x200.png?text=Profile"}
-                  currentUser={user}
+                  currentUser={currentUser}
                   maxHeight={undefined}
                   showInput={true}
                   highlightedCommentId={highlightedCommentId}
