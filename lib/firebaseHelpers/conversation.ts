@@ -3,13 +3,11 @@
 // Get or create a conversation between two users
 export async function getOrCreateConversation(userId1: string, userId2: string) {
   try {
-    const res = await fetch(`/api/conversations/get-or-create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId1, userId2 })
-    });
-    const data = await res.json();
-    return { success: data.success, conversationId: data.id };
+    // Simple approach: generate consistent conversationId from sorted userIds
+    const ids = [userId1, userId2].sort();
+    const conversationId = `${ids[0]}_${ids[1]}`;
+    console.log('[Conversation] Created/Got conversationId:', conversationId);
+    return { success: true, conversationId };
   } catch (error: any) {
     console.error('Error in getOrCreateConversation:', error);
     return { success: false, conversationId: null, error: error.message };
@@ -71,7 +69,6 @@ export async function sendMessage(
 ) {
   try {
     const messageData: any = {
-      conversationId,
       senderId,
       text,
       imageUrl: imageUrl || null,
@@ -87,13 +84,10 @@ export async function sendMessage(
       };
     }
     
-    const res = await fetch(`/api/conversations/${conversationId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(messageData)
-    });
-    const data = await res.json();
-    return data;
+    const { apiService } = await import('../app/_services/apiService');
+    const res = await apiService.post(`/conversations/${conversationId}/messages`, messageData);
+    console.log('[SendMessage] Response:', res);
+    return res;
   } catch (error: any) {
     console.error('Error in sendMessage:', error);
     return { success: false, error: error.message };
@@ -105,17 +99,15 @@ export async function sendMessage(
  */
 export async function upsertConversation(recipientId: string, senderId: string, message: string) {
   try {
-    const res = await fetch(`/api/conversations/get-or-create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId1: recipientId, userId2: senderId })
-    });
-    const data = await res.json();
-    if (data.success) {
-      // Send the message
-      await sendMessage(data.id, senderId, message);
-    }
-    return data;
+    // Generate consistent conversationId
+    const ids = [recipientId, senderId].sort();
+    const conversationId = `${ids[0]}_${ids[1]}`;
+    
+    // Send the message
+    await sendMessage(conversationId, senderId, message);
+    
+    console.log('[UpsertConversation] Message sent to:', conversationId);
+    return { success: true, id: conversationId };
   } catch (error: any) {
     console.error('Error in upsertConversation:', error);
     return { success: false, error: error.message };
