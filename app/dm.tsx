@@ -127,10 +127,18 @@ export default function DM() {
     setLoading(true);
 
     // Fetch initial messages from backend
-    fetchMessages(conversationId).then(res => {
-      setMessages(res.messages || []);
-      setLoading(false);
-    });
+    fetchMessages(conversationId)
+      .then(res => {
+        console.log('[DM] Fetched messages:', res?.messages?.length || 0);
+        setMessages(res?.messages || []);
+      })
+      .catch(err => {
+        console.error('[DM] Failed to fetch messages:', err);
+        setMessages([]);
+      })
+      .finally(() => {
+        setLoading(false);  // CRITICAL: Always stop loading
+      });
 
     // Subscribe to real-time messages via socket
     const unsub = subscribeToMessages(conversationId, (messages: any[]) => {
