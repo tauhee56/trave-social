@@ -43,7 +43,8 @@ export default function PassportScreen() {
   const params = useLocalSearchParams();
   const currentUser = useUser();
   const userId = (params.user as string) || currentUser?.uid;
-  const isOwner = currentUser?.uid === userId;
+  // Treat as owner only when both IDs exist and match
+  const isOwner = !!(currentUser?.uid && userId && currentUser.uid === userId);
 
   const [stamps, setStamps] = useState<PassportStamp[]>([]);
   const [loading, setLoading] = useState(true);
