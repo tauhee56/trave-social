@@ -82,20 +82,34 @@ export default function Home() {
         const oneDayAgo = now - 24 * 60 * 60 * 1000;
         const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1000;
         
+        // Helper to convert createdAt to timestamp
+        const getPostTimestamp = (createdAt: any): number => {
+            if (!createdAt) return 0;
+            // If it's a Firestore timestamp with toMillis()
+            if (typeof createdAt.toMillis === 'function') return createdAt.toMillis();
+            // If it's an ISO string
+            if (typeof createdAt === 'string') return new Date(createdAt).getTime();
+            // If it's already a number
+            if (typeof createdAt === 'number') return createdAt;
+            return 0;
+        };
+        
         const recentPosts = postsArray.filter((p: any) => {
-            const postTime = p.createdAt?.toMillis ? p.createdAt.toMillis() : p.createdAt;
+            const postTime = getPostTimestamp(p.createdAt);
             return postTime > oneDayAgo;
         });
         
         const mediumPosts = postsArray.filter((p: any) => {
-            const postTime = p.createdAt?.toMillis ? p.createdAt.toMillis() : p.createdAt;
+            const postTime = getPostTimestamp(p.createdAt);
             return postTime <= oneDayAgo && postTime > threeDaysAgo;
         });
         
         const olderPosts = postsArray.filter((p: any) => {
-            const postTime = p.createdAt?.toMillis ? p.createdAt.toMillis() : p.createdAt;
+            const postTime = getPostTimestamp(p.createdAt);
             return postTime <= threeDaysAgo;
         });
+        
+        console.log('[Home] createMixedFeed - recent:', recentPosts.length, 'medium:', mediumPosts.length, 'older:', olderPosts.length);
         
         const shuffledRecent = shufflePosts(recentPosts);
         const shuffledMedium = shufflePosts(mediumPosts);
@@ -123,28 +137,43 @@ export default function Home() {
             let postsData: any[] = [];
             if (response?.data && Array.isArray(response.data)) {
                 postsData = response.data;
+                console.log('[Home] Using response.data format:', postsData.length);
             } else if (response?.posts && Array.isArray(response.posts)) {
                 postsData = response.posts;
+                console.log('[Home] Using response.posts format:', postsData.length);
             } else if (Array.isArray(response)) {
                 postsData = response;
+                console.log('[Home] Using response as array:', postsData.length);
+            } else {
+                console.log('[Home] Unhandled response format:', response);
             }
             
-            console.log('[Home] Loaded posts count:', postsData.length);
+            // Normalize posts: convert MongoDB _id to id, ensure required fields exist
+            const normalizedPosts = postsData.map(p => ({
+                ...p,
+                id: p.id || p._id, // Use id if exists, otherwise use _id
+                isPrivate: p.isPrivate ?? false, // Default to false if not set
+                allowedFollowers: p.allowedFollowers || [], // Default to empty array
+            }));
+            
+            console.log('[Home] Loaded posts count:', normalizedPosts.length);
             // Log post details
-            postsData.forEach(p => {
+            normalizedPosts.forEach(p => {
                 console.log(`  Loaded Post: id=${p.id}, userId=${p.userId}, isPrivate=${p.isPrivate}, category=${p.category}, location=${p.location?.name || p.location}`);
             });
             
             if (pageNum === 0) {
                 // First page: replace all
-                setAllLoadedPosts(postsData);
-                const mixedFeed = createMixedFeed(postsData);
+                console.log('[Home] Setting allLoadedPosts to:', normalizedPosts.length);
+                setAllLoadedPosts(normalizedPosts);
+                const mixedFeed = createMixedFeed(normalizedPosts);
+                console.log('[Home] Mixed feed count:', mixedFeed.length);
                 setPosts(mixedFeed);
                 setPaginationOffset(20); // Reset pagination
             } else {
                 // Subsequent pages: append
                 setAllLoadedPosts(prev => {
-                    const updated = [...prev, ...postsData];
+                    const updated = [...prev, ...normalizedPosts];
                     // Deduplicate by ID
                     const unique = Array.from(new Map(updated.map(p => [p.id, p])).values());
                     return unique;
@@ -172,6 +201,7 @@ export default function Home() {
     };
 
     useEffect(() => {
+        console.log('[Home] Initial load effect running...');
         loadInitialFeed();
         loadCategories();
     }, []);
@@ -201,6 +231,8 @@ export default function Home() {
     }
 
     const filteredRaw = React.useMemo(() => {
+        console.log('[Home] filteredRaw memo - posts count:', posts.length, 'filter:', filter, 'location:', params.location);
+        
         const locationFilter = params.location as string;
         const selectedPostId = params.postId as string;
 
@@ -209,6 +241,7 @@ export default function Home() {
                 const pLoc = typeof p.location === 'object' ? p.location?.name : p.location;
                 return pLoc?.toLowerCase() === locationFilter.toLowerCase();
             });
+            console.log('[Home] filteredRaw location filter - result:', locationPosts.length);
             if (selectedPostId) {
                 const selected = locationPosts.find(p => p.id === selectedPostId);
                 const others = locationPosts.filter(p => p.id !== selectedPostId);
@@ -216,8 +249,11 @@ export default function Home() {
             }
             return locationPosts;
         } else if (filter) {
-            return posts.filter((p: any) => p.category?.toLowerCase() === filter.toLowerCase());
+            const categoryPosts = posts.filter((p: any) => p.category?.toLowerCase() === filter.toLowerCase());
+            console.log('[Home] filteredRaw category filter - result:', categoryPosts.length);
+            return categoryPosts;
         }
+        console.log('[Home] filteredRaw no filter - returning all posts');
         return posts;
     }, [posts, params.location, filter, params.postId]);
 
