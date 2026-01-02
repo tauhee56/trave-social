@@ -525,7 +525,7 @@ export default function CreatePostScreen() {
                 onPress={async () => {
                   if (ImagePicker) {
                     const result = await ImagePicker.launchImageLibraryAsync({
-                      mediaTypes: ImagePicker.MediaTypeOptions.All,
+                      mediaTypes: ['images', 'videos'],
                       allowsMultipleSelection: true,
                       quality: 1,
                     });

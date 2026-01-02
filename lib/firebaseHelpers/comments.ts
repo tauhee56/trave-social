@@ -1,4 +1,4 @@
-
+import { apiService } from '../../app/_services/apiService';
 
 // ============= COMMENTS CRUD =============
 
@@ -7,12 +7,7 @@
  */
 export async function addComment(postId: string, userId: string, userName: string, userAvatar: string, text: string) {
   try {
-    const res = await fetch(`/api/posts/${postId}/comments`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, userName, userAvatar, text })
-    });
-    const data = await res.json();
+    const data = await apiService.post(`/posts/${postId}/comments`, { userId, userName, userAvatar, text });
     return data;
   } catch (error: any) {
     console.error('❌ addComment error:', error);
@@ -25,12 +20,7 @@ export async function addComment(postId: string, userId: string, userName: strin
  */
 export async function editComment(postId: string, commentId: string, userId: string, newText: string) {
   try {
-    const res = await fetch(`/api/posts/${postId}/comments/${commentId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, text: newText })
-    });
-    const data = await res.json();
+    const data = await apiService.patch(`/posts/${postId}/comments/${commentId}`, { userId, text: newText });
     return data;
   } catch (error: any) {
     console.error('❌ editComment error:', error);
@@ -43,12 +33,7 @@ export async function editComment(postId: string, commentId: string, userId: str
  */
 export async function deleteComment(postId: string, commentId: string, userId: string, postOwnerId: string) {
   try {
-    const res = await fetch(`/api/posts/${postId}/comments/${commentId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId })
-    });
-    const data = await res.json();
+    const data = await apiService.delete(`/posts/${postId}/comments/${commentId}`, { userId });
     return data;
   } catch (error: any) {
     console.error('❌ deleteComment error:', error);
@@ -61,12 +46,7 @@ export async function deleteComment(postId: string, commentId: string, userId: s
  */
 export async function addCommentReply(postId: string, parentCommentId: string, reply: any) {
   try {
-    const res = await fetch(`/api/posts/${postId}/comments/${parentCommentId}/replies`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(reply)
-    });
-    const data = await res.json();
+    const data = await apiService.post(`/posts/${postId}/comments/${parentCommentId}/replies`, reply);
     return data;
   } catch (error: any) {
     console.error('❌ addCommentReply error:', error);
@@ -79,12 +59,7 @@ export async function addCommentReply(postId: string, parentCommentId: string, r
  */
 export async function editCommentReply(postId: string, commentId: string, replyId: string, userId: string, newText: string) {
   try {
-    const res = await fetch(`/api/posts/${postId}/comments/${commentId}/replies/${replyId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, text: newText })
-    });
-    const data = await res.json();
+    const data = await apiService.patch(`/posts/${postId}/comments/${commentId}/replies/${replyId}`, { userId, text: newText });
     return data;
   } catch (error: any) {
     console.error('❌ editCommentReply error:', error);
@@ -97,12 +72,7 @@ export async function editCommentReply(postId: string, commentId: string, replyI
  */
 export async function deleteCommentReply(postId: string, commentId: string, replyId: string, userId: string, postOwnerId: string) {
   try {
-    const res = await fetch(`/api/posts/${postId}/comments/${commentId}/replies/${replyId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId })
-    });
-    const data = await res.json();
+    const data = await apiService.delete(`/posts/${postId}/comments/${commentId}/replies/${replyId}`, { userId });
     return data;
   } catch (error: any) {
     console.error('❌ deleteCommentReply error:', error);
@@ -115,12 +85,7 @@ export async function deleteCommentReply(postId: string, commentId: string, repl
  */
 export async function addCommentReaction(postId: string, commentId: string, userId: string, reactionType: string) {
   try {
-    const res = await fetch(`/api/posts/${postId}/comments/${commentId}/reactions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, reactionType })
-    });
-    const data = await res.json();
+    const data = await apiService.post(`/posts/${postId}/comments/${commentId}/reactions`, { userId, reactionType });
     return data;
   } catch (error: any) {
     console.error('❌ addCommentReaction error:', error);
@@ -131,13 +96,9 @@ export async function addCommentReaction(postId: string, commentId: string, user
 /**
  * Get all comments for a post
  */
-/**
- * Get all comments for a post
- */
 export async function getPostComments(postId: string) {
   try {
-    const res = await fetch(`/api/posts/${postId}/comments`);
-    const data = await res.json();
+    const data = await apiService.get(`/posts/${postId}/comments`);
     return data;
   } catch (error: any) {
     console.error('❌ getPostComments error:', error);

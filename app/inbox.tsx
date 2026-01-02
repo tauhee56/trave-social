@@ -156,8 +156,37 @@ export default function Inbox() {
   if (!conversations || conversations.length === 0) {
     console.log('Inbox: No conversations found for user', userId, conversations);
     return (
-      <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}> 
-        <Text style={{ color: '#999', fontSize: 18, marginTop: 40 }}>No messages yet</Text>
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            onPress={() => {
+              router.replace('/(tabs)/home');
+            }}
+            style={[styles.backBtn, { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }]}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Feather name="x" size={28} color="#000" />
+          </TouchableOpacity>
+          <Text style={[styles.title, { textAlign: 'center', flex: 1 }]}>Messages</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <View style={styles.emptyStateContainer}>
+          <View style={styles.emptyIconWrapper}>
+            <Feather name="send" size={64} color="#dbdbdb" strokeWidth={1} />
+          </View>
+          
+          <Text style={styles.emptyTitle}>Your inbox is empty</Text>
+          <Text style={styles.emptySubtitle}>Send a message to start a conversation</Text>
+          
+          <TouchableOpacity 
+            style={styles.exploreBtn}
+            onPress={() => router.push('/search-modal')}
+          >
+            <Text style={styles.exploreBtnText}>Find People</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     );
   }
@@ -383,6 +412,48 @@ const styles = StyleSheet.create({
   },
   archiveText: {
     color: '#fff',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  emptyStateContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 60,
+  },
+  emptyIconWrapper: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  emptyTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 15,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 20,
+  },
+  exploreBtn: {
+    backgroundColor: '#FFB800',
+    paddingHorizontal: 28,
+    paddingVertical: 10,
+    borderRadius: 6,
+    marginTop: 16,
+  },
+  exploreBtnText: {
+    color: '#000',
     fontWeight: '600',
     fontSize: 15,
   },

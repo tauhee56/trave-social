@@ -293,7 +293,7 @@ export default function Home() {
                     </View>
                 )}
                 renderItem={({ item }: { item: any }) => (
-                    <PostCard post={{ ...item, imageUrl: item.thumbnailUrl || item.imageUrl }} currentUser={currentUser} showMenu={false} />
+                    <PostCard post={{ ...item, imageUrl: item.thumbnailUrl || item.imageUrl }} currentUser={currentUserId} showMenu={false} />
                 )}
                 onEndReached={loadMorePosts}
                 onEndReachedThreshold={0.8}

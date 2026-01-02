@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { uploadImage } from '../lib/firebaseHelpers';
 import { updateUserProfile } from '../lib/firebaseHelpers/index';
 import { getUserProfile } from '../src/_services/firebaseService';
+import { useAuthLoading } from '../src/_components/UserContext';
 
 // Runtime import with fallback
 let ImagePicker: any = null;
@@ -22,6 +23,7 @@ export default function EditProfile() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [userId, setUserId] = useState<string | null>(null);
+  const authLoading = useAuthLoading();
   
   // Get current user ID from AsyncStorage (token-based auth)
   useEffect(() => {
@@ -116,44 +118,14 @@ export default function EditProfile() {
     }
   }
 
+  // Legacy helper kept for compatibility; prefer loadProfileWithId
   async function loadProfile() {
-    if (!user?.uid) {
-      console.warn('⚠️ No user UID - showing empty form');
+    if (!userId) {
+      console.warn('⚠️ No userId - showing empty form');
       setLoading(false);
       return;
     }
-    
-    console.log('🔄 Loading profile for user:', user.uid);
-    setUserId(user.uid); // Store userId for later use in save
-    try {
-      const result = await getUserProfile(user.uid);
-      
-      if (result?.success && result?.data) {
-        console.log('✅ Profile loaded:', {
-          name: result.data.name,
-          username: result.data.username,
-        });
-        
-        setName(result.data.name || '');
-        setUsername((result.data as any).username || '');
-        setBio(result.data.bio || '');
-        setWebsite(result.data.website || '');
-        setLocation((result.data as any).location || '');
-        setPhone((result.data as any).phone || '');
-        setInterests((result.data as any).interests || '');
-        setAvatar(result.data.avatar || '');
-        setIsPrivate(!!(result.data as any).isPrivate);
-        setError(null);
-      } else {
-        console.warn('⚠️ Profile fetch returned no data - using empty form');
-        setError(null);
-      }
-    } catch (err) {
-      console.warn('⚠️ Error loading profile - still showing form:', err);
-      setError(null);
-    } finally {
-      setLoading(false);
-    }
+    await loadProfileWithId(userId);
   }
 
   function validate() {
@@ -280,7 +252,7 @@ export default function EditProfile() {
       }
       
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -296,8 +268,8 @@ export default function EditProfile() {
     }
   }
 
-  if (loading && authLoading) {
-    // Only show full loading screen while auth is still loading AND loading profile
+  if (loading || authLoading) {
+    // Show loading while either auth context or profile data is still loading
     return (
       <SafeAreaView style={[styles.safe, { alignItems: 'center', justifyContent: 'center' }]} edges={["top", "bottom"]}>
         <ActivityIndicator size="large" color="#f39c12" />

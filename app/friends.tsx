@@ -130,10 +130,9 @@ export default function FriendsScreen() {
           text: 'Unblock',
           onPress: async () => {
             try {
-              const { deleteDoc } = await import('firebase/firestore');
-              await deleteDoc(doc(db, 'users', authUser.uid, 'blocked', targetUserId) as any);
+              // TODO: implement unblock on backend API
               setBlockedUsers(prev => prev.filter(u => u.uid !== targetUserId));
-              Alert.alert('Success', 'User unblocked');
+              Alert.alert('Success', 'User unblocked (local only)');
             } catch (e) {
               Alert.alert('Error', 'Failed to unblock user');
             }

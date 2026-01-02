@@ -24,7 +24,7 @@ import HighlightViewer from '../../src/_components/HighlightViewer';
 import PostViewerModal from '../../src/_components/PostViewerModal';
 import StoriesViewer from '../../src/_components/StoriesViewer';
 // Removed Firebase import - using AsyncStorage for auth instead
-import { getUserHighlights as getUserHighlightsAPI, getUserPosts as getUserPostsAPI, getUserProfile as getUserProfileAPI, getUserSections as getUserSectionsAPI, getUserStories as getUserStoriesAPI } from '../../src/_services/firebaseService';
+import { getTaggedPosts, getUserHighlights as getUserHighlightsAPI, getUserPosts as getUserPostsAPI, getUserProfile as getUserProfileAPI, getUserSections as getUserSectionsAPI, getUserStories as getUserStoriesAPI } from '../../src/_services/firebaseService';
 import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
 
 // Default avatar URL
@@ -277,24 +277,10 @@ export default function Profile({ userIdProp }: any) {
     const isSaved = savedPosts[post.id];
 
     try {
-      const { db } = await import('../../config/firebase');
-      const { doc, updateDoc, arrayUnion, arrayRemove, setDoc, deleteDoc } = await import('firebase/firestore');
-
-      if (isSaved) {
-        // Unsave
-        const postRef = doc(db, 'posts', post.id);
-        await updateDoc(postRef, { savedBy: arrayRemove(currentUserId) });
-        const userSavedRef = doc(db, 'users', currentUserId, 'saved', post.id);
-        await deleteDoc(userSavedRef);
-        setSavedPosts(prev => ({ ...prev, [post.id]: false }));
-      } else {
-        // Save
-        const postRef = doc(db, 'posts', post.id);
-        await updateDoc(postRef, { savedBy: arrayUnion(currentUserId) });
-        const userSavedRef = doc(db, 'users', currentUserId, 'saved', post.id);
-        await setDoc(userSavedRef, { savedAt: Date.now() });
-        setSavedPosts(prev => ({ ...prev, [post.id]: true }));
-      }
+      // TODO: implement save/unsave on backend API
+      // For now, just update UI state
+      setSavedPosts(prev => ({ ...prev, [post.id]: !isSaved }));
+      console.log('Post', isSaved ? 'unsaved' : 'saved', '(local only)');
     } catch (error) {
       console.error('Error saving/unsaving post:', error);
     }
@@ -527,6 +513,12 @@ export default function Profile({ userIdProp }: any) {
         return;
       }
       setLoading(true);
+      let blocked: Set<string> = new Set<string>();
+      try {
+        blocked = currentUserId ? await fetchBlockedUserIds(currentUserId) : new Set<string>();
+      } catch (err) {
+        console.error('[Profile] Failed to fetch blocked user ids:', err);
+      }
       const profileRes = await getUserProfileAPI(viewedUserId);
       let profileData: ProfileData | null = null;
       if (profileRes.success) {
@@ -544,7 +536,6 @@ export default function Profile({ userIdProp }: any) {
       if (postsRes.success) {
         if ('data' in postsRes && Array.isArray(postsRes.data)) postsData = postsRes.data;
         else if ('posts' in postsRes && Array.isArray(postsRes.posts)) postsData = postsRes.posts;
-        const blocked = currentUserId ? await fetchBlockedUserIds(currentUserId) : new Set<string>();
         // Show all posts (no pagination limit for now)
         const filteredPosts = filterOutBlocked(postsData, blocked);
         setPosts(filteredPosts);
@@ -563,21 +554,12 @@ export default function Profile({ userIdProp }: any) {
       } else {
         setPosts([]);
       }
-        // ...existing code...
-      // Fetch tagged posts
-      try {
-        if (viewedUserId) {
-          const { collection, query, where, getDocs } = await import('firebase/firestore');
-          const taggedQ = query(collection(db, 'posts'), where('taggedUsers', 'array-contains', viewedUserId));
-          const taggedSnap = await getDocs(taggedQ);
-          const tagged = taggedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          const blocked = currentUserId ? await fetchBlockedUserIds(currentUserId) : new Set<string>();
-          setTaggedPosts(filterOutBlocked(tagged, blocked));
-        } else {
-          setTaggedPosts([]);
-        }
-      } catch (err) {
-        console.error('Error fetching tagged posts:', err);
+      // Fetch tagged posts from backend API
+      const taggedRes = viewedUserId ? await getTaggedPosts(viewedUserId, currentUserId) : { success: false, data: [] as any[] };
+      if (taggedRes.success) {
+        const taggedData = Array.isArray((taggedRes as any).data) ? (taggedRes as any).data : [];
+        setTaggedPosts(filterOutBlocked(taggedData, blocked));
+      } else {
         setTaggedPosts([]);
       }
       const sectionsRes = await getUserSectionsSorted(viewedUserId, currentUserId);

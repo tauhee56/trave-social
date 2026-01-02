@@ -271,19 +271,6 @@ export default function GoLiveScreen() {
                     console.log('Agora error:', err);
                   }
                   
-                  // Delete stream
-                  try {
-                    if (channel) {
-                      const streamRef = doc(db, 'liveStreams', channel);
-                      await setDoc(streamRef, {
-                        isLive: false,
-                        endedAt: serverTimestamp()
-                      }, { merge: true });
-                    }
-                  } catch (err) {
-                    console.log('Firebase error:', err);
-                  }
-                  
                   setIsStreaming(false);
                   setTimeout(() => {
                     router.replace('/(tabs)/profile' as any);
@@ -394,14 +381,6 @@ export default function GoLiveScreen() {
                   text: 'OK',
                   onPress: async () => {
                     isExplicitlyEndingRef.current = true;
-                    const channel = channelNameRef.current;
-                    if (channel) {
-                      const streamRef = doc(db, 'liveStreams', channel);
-                      await setDoc(streamRef, {
-                        isLive: false,
-                        endedAt: serverTimestamp()
-                      }, { merge: true });
-                    }
                     if (agoraEngineRef.current) {
                       await agoraEngineRef.current.leaveChannel();
                       agoraEngineRef.current.release();
@@ -503,25 +482,8 @@ export default function GoLiveScreen() {
       const broadcasterUid = Math.floor(Math.random() * 100000);
       console.log('🎯 Broadcaster UID:', broadcasterUid);
 
-      // Create stream document in Firebase (include listing-friendly fields)
-      const streamRef = doc(db, 'liveStreams', channel);
-      await setDoc(streamRef, {
-        hostId: auth.currentUser?.uid,
-        hostName: currentUser?.displayName || currentUser?.username || 'Anonymous',
-        hostAvatar: currentUser?.avatar || currentUser?.profileImage || '',
-        userId: auth.currentUser?.uid,
-        userName: currentUser?.displayName || currentUser?.username || 'Anonymous',
-        userAvatar: currentUser?.avatar || currentUser?.profileImage || '',
-        title: streamTitle,
-        channelName: channel,
-        broadcasterUid: broadcasterUid, // Store broadcaster UID for viewers
-        viewerCount: 0,
-        isLive: true,
-        location: location,
-        startedAt: serverTimestamp(),
-        createdAt: serverTimestamp(),
-      });
-      console.log('🔎 [KR LOG] Firestore stream doc created:', channel);
+      // TODO: send stream metadata to backend for listing; Firestore removed
+      console.log('🔎 [KR LOG] Skipping Firestore stream doc (backend-only mode).');
 
       // Set as broadcaster
       await engine.setClientRole(ClientRoleType?.ClientRoleBroadcaster);

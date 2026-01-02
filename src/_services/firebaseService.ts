@@ -115,3 +115,28 @@ export async function getUserStories(userId: string, requesterUserId?: string) {
     return { success: false, error: error.message, data: [] };
   }
 }
+
+// Fetch posts where the user is tagged
+export async function getTaggedPosts(taggedUserId: string, requesterUserId?: string) {
+  try {
+    const params: any = { taggedUserId };
+    if (requesterUserId) {
+      params.requesterUserId = requesterUserId;
+    }
+
+    const response = await apiService.get('/posts', params);
+    console.log('[API] getTaggedPosts response:', response);
+
+    if (response?.success) {
+      const posts = response.data || response.posts || [];
+      return { success: true, data: Array.isArray(posts) ? posts : [] };
+    }
+    if (Array.isArray(response)) {
+      return { success: true, data: response };
+    }
+    return { success: false, error: response?.error || 'Failed to fetch tagged posts', data: [] };
+  } catch (error: any) {
+    console.error('[API] getTaggedPosts error:', error.message);
+    return { success: false, error: error.message, data: [] };
+  }
+}

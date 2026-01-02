@@ -1,16 +1,7 @@
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../config/firebase';
-
+// Backend does not expose blocked users yet; return empty set to avoid Firestore dependency
 export async function fetchBlockedUserIds(uid: string): Promise<Set<string>> {
-  const blocked = new Set<string>();
-  try {
-    const ref = collection(db, 'users', uid, 'blocked');
-    const snap = await getDocs(ref);
-    snap.forEach(doc => blocked.add(doc.id));
-  } catch (e) {
-    console.warn('Failed to load blocked users:', e);
-  }
-  return blocked;
+  console.warn('fetchBlockedUserIds: blocked users not implemented on backend; returning empty set');
+  return new Set<string>();
 }
 
 export function filterOutBlocked<T extends Record<string, any>>(items: T[], blocked: Set<string>): T[] {

@@ -391,20 +391,109 @@ export async function toggleUserPrivacy(uid: string, isPrivate: boolean) {
 // ============= MEDIA =============
 export async function uploadImage(uri: string, path?: string): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
-    const res = await apiService.post('/media/upload', { image: uri, path });
+    console.log('[uploadImage] 📤 Starting upload from URI:', uri);
+    
+    let base64Data: string = '';
+    
+    // Handle file:// URIs (Android/device) - Read as base64
+    if (uri.startsWith('file://')) {
+      console.log('[uploadImage] 📱 Detected file:// URI, reading as base64...');
+      try {
+        // Use legacy API which works better
+        const FileSystemLegacy = require('expo-file-system/legacy');
+        base64Data = await FileSystemLegacy.readAsStringAsync(uri, { encoding: 'base64' });
+        console.log('[uploadImage] ✅ Read file as base64, length:', base64Data.length);
+      } catch (legacyError: any) {
+        console.error('[uploadImage] ⚠️  Legacy FileSystem error:', legacyError.message);
+        // Try new FileSystem API
+        try {
+          console.log('[uploadImage] 🔄 Trying new FileSystem API...');
+          const FileSystem = require('expo-file-system');
+          base64Data = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+          console.log('[uploadImage] ✅ Read file as base64 (new API), length:', base64Data.length);
+        } catch (newError: any) {
+          console.error('[uploadImage] ❌ New FileSystem error:', newError.message);
+          throw new Error(`Cannot read file: ${newError.message}`);
+        }
+      }
+    } else if (uri.startsWith('http://') || uri.startsWith('https://')) {
+      // Handle http(s):// URIs - fetch and convert to base64
+      console.log('[uploadImage] 🌐 Detected http(s) URI, fetching and converting to base64...');
+      try {
+        const response = await fetch(uri);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const blob = await response.blob();
+        const reader = new FileReader();
+        
+        return new Promise((resolve) => {
+          reader.onload = () => {
+            const result = reader.result as string;
+            const base64 = result.split(',')[1];
+            console.log('[uploadImage] ✅ Converted remote image to base64, length:', base64.length);
+            // Continue with upload
+            uploadWithBase64(base64, path).then(resolve);
+          };
+          reader.onerror = (err) => {
+            resolve({ success: false, error: 'Failed to read remote image' });
+          };
+          reader.readAsDataURL(blob);
+        });
+      } catch (err: any) {
+        console.error('[uploadImage] ❌ Remote image error:', err.message);
+        throw err;
+      }
+    } else {
+      throw new Error(`Unsupported URI format: ${uri}`);
+    }
+    
+    // Upload with base64
+    return uploadWithBase64(base64Data, path);
+    
+  } catch (err: any) {
+    console.error('[uploadImage] ❌ Error:', err.message);
+    console.error('[uploadImage] ❌ Full error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// Helper function to upload using base64
+async function uploadWithBase64(base64Data: string, path?: string): Promise<{ success: boolean; url?: string; error?: string }> {
+  try {
+    if (!base64Data) {
+      throw new Error('No base64 data provided');
+    }
+    
+    console.log('[uploadImage] 📡 Sending base64 to /media/upload endpoint (length:', base64Data.length, ')...');
+    
+    // Send as base64 string directly (backend supports this)
+    const result = await apiService.post('/media/upload', {
+      file: base64Data,
+      fileName: `image-${Date.now()}.jpg`,
+      path: path
+    });
+    
+    console.log('[uploadImage] 📥 Full response received:', JSON.stringify(result).substring(0, 500));
+    
+    // Check if response has success flag
+    if (!result?.success) {
+      console.error('[uploadImage] ❌ Backend returned error:', result?.error || 'Unknown error');
+      return { success: false, error: result?.error || 'Upload failed' };
+    }
     
     // Handle nested response structure
-    const url = res?.data?.url || res?.url || res?.secureUrl || res?.location;
+    const url = result?.data?.url || result?.url || result?.secureUrl || result?.location;
     
     if (!url) {
-      console.error('[uploadImage] No URL in response:', res);
+      console.error('[uploadImage] ❌ No URL in response:', result);
       return { success: false, error: 'No URL returned from upload' };
     }
     
     console.log('[uploadImage] ✅ Upload successful:', url);
     return { success: true, url };
   } catch (err: any) {
-    console.error('[uploadImage] ❌ Error:', err.message);
+    console.error('[uploadImage] ❌ Upload error:', err.message);
     return { success: false, error: err.message };
   }
 }
@@ -771,12 +860,23 @@ export async function getRegions() {
   }
 }
 
-export async function searchUsers(query: string) {
+export async function searchUsers(query: string, limit: number = 20) {
   try {
-    const users = await apiService.get('/users/search', { q: query });
-    return users || [];
+    const response = await apiService.get('/users/search', { params: { q: query, limit } });
+    console.log('[searchUsers] Response:', response);
+    
+    // Handle nested response structure
+    if (response && response.success !== false && Array.isArray(response.data)) {
+      return { success: true, data: response.data };
+    }
+    if (response && Array.isArray(response)) {
+      return { success: true, data: response };
+    }
+    
+    console.warn('[searchUsers] Unexpected response format:', response);
+    return { success: false, data: [] };
   } catch (error) {
-    console.error('Error searching users:', error);
-    return [];
+    console.error('[searchUsers] Error:', error);
+    return { success: false, data: [] };
   }
 }

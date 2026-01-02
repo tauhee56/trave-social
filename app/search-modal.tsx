@@ -114,19 +114,23 @@ export default function SearchModal() {
     if (tab === 'people' && recommendations.length === 0) {
       setLoadingUsers(true);
       searchUsers('', 10).then(result => {
-        const users = result.success ? result.data.map((u: any) => ({
-          uid: u.uid || u.id,
-          displayName: u.displayName,
-          photoURL: u.photoURL,
-          bio: u.bio
-        })) : [];
-        setRecommendations(users);
+        if (result.success && Array.isArray(result.data)) {
+          const users = result.data.map((u: any) => ({
+            uid: u._id || u.uid || u.id,
+            displayName: u.displayName || 'Unknown',
+            photoURL: u.avatar || u.photoURL || DEFAULT_AVATAR_URL,
+            bio: u.bio || ''
+          }));
+          setRecommendations(users);
+        } else {
+          setRecommendations([]);
+        }
         setLoadingUsers(false);
       });
     }
   }, [tab, recommendations.length]);
 
-  // People search (Firebase)
+  // People search
   useEffect(() => {
     if (tab !== 'people' || q.length < 2) {
       setUsers([]);
@@ -135,13 +139,17 @@ export default function SearchModal() {
     setLoadingUsers(true);
     const timer = setTimeout(async () => {
       const result = await searchUsers(q, 20);
-      const users = result.success ? result.data.map((u: any) => ({
-        uid: u.uid || u.id,
-        displayName: u.displayName,
-        photoURL: u.photoURL,
-        bio: u.bio
-      })) : [];
-      setUsers(users);
+      if (result.success && Array.isArray(result.data)) {
+        const users = result.data.map((u: any) => ({
+          uid: u._id || u.uid || u.id,
+          displayName: u.displayName || 'Unknown',
+          photoURL: u.avatar || u.photoURL || DEFAULT_AVATAR_URL,
+          bio: u.bio || ''
+        }));
+        setUsers(users);
+      } else {
+        setUsers([]);
+      }
       setLoadingUsers(false);
     }, 300);
     return () => clearTimeout(timer);

@@ -494,7 +494,8 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
   const [likesCount, setLikesCount] = useState<number>(typeof post?.likesCount === 'number' ? post.likesCount : (Array.isArray(post?.likes) ? post.likes.length : 0));
   const [savedBy, setSavedBy] = useState<string[]>(post?.savedBy || []);
   const user = useUser();
-  const userIdForLike = user?.uid || currentUser?.uid || currentUser?.firebaseUid;
+  // FIX: Use currentUser prop if user context is not available
+  const userIdForLike = user?.uid || user?.id || currentUser?.uid || currentUser?.firebaseUid || currentUser?.id || currentUser;
   const liked = likes.includes(userIdForLike || "");
   
   // OPTIMIZATION: Update local state when post prop changes (no real-time listener)
