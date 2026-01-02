@@ -90,7 +90,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       console.log('[CommentSection] handleAddComment - currentUser is string userId:', userId, 'newComment:', newComment.trim());
     } else if (currentUser && typeof currentUser === 'object') {
       // currentUser is an object with uid/id/userId fields
-      userId = currentUser?.uid || currentUser?.id || currentUser?.userId;
+      userId = currentUser?.uid || currentUser?.id || currentUser?.userId || currentUser?.firebaseUid || currentUser?._id;
       displayName = currentUser?.displayName || currentUser?.name || 'User';
       console.log('[CommentSection] handleAddComment - currentUser is object userId:', userId, 'displayName:', displayName, 'newComment:', newComment.trim());
     } else {
@@ -179,7 +179,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     if (typeof currentUser === 'string') {
       userId = currentUser;
     } else {
-      userId = currentUser?.uid || currentUser?.id || currentUser?.userId;
+      userId = currentUser?.uid || currentUser?.id || currentUser?.userId || currentUser?.firebaseUid || currentUser?._id;
     }
 
     if (!userId) {
@@ -221,7 +221,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     if (typeof currentUser === 'string') {
       userId = currentUser;
     } else {
-      userId = currentUser?.uid || currentUser?.id || currentUser?.userId;
+      userId = currentUser?.uid || currentUser?.id || currentUser?.userId || currentUser?.firebaseUid || currentUser?._id;
     }
 
     if (!userId) {
@@ -260,7 +260,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     if (typeof currentUser === 'string') {
       userId = currentUser;
     } else {
-      userId = currentUser?.uid || currentUser?.id || currentUser?.userId;
+      userId = currentUser?.uid || currentUser?.id || currentUser?.userId || currentUser?.firebaseUid || currentUser?._id;
     }
 
     if (!userId) {
@@ -291,7 +291,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     if (typeof currentUser === 'string') {
       currentUserId = currentUser;
     } else {
-      currentUserId = currentUser?.uid || currentUser?.id || currentUser?.userId || '';
+      currentUserId = currentUser?.uid || currentUser?.id || currentUser?.userId || currentUser?.firebaseUid || currentUser?._id || '';
     }
     
     const isOwner = currentUserId === comment.userId;
