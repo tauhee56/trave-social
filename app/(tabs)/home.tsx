@@ -130,6 +130,10 @@ export default function Home() {
             }
             
             console.log('[Home] Loaded posts count:', postsData.length);
+            // Log post details
+            postsData.forEach(p => {
+                console.log(`  Loaded Post: id=${p.id}, userId=${p.userId}, isPrivate=${p.isPrivate}, category=${p.category}, location=${p.location?.name || p.location}`);
+            });
             
             if (pageNum === 0) {
                 // First page: replace all
@@ -220,12 +224,25 @@ export default function Home() {
     useEffect(() => {
         let isMounted = true;
         const applyFilter = async () => {
+            console.log('[Home] Apply filter - filteredRaw count:', filteredRaw.length, 'currentUserId:', currentUserId, 'paginationOffset:', paginationOffset);
+            
             // Remove duplicates using Set based on post ID
             const uniquePosts = Array.from(new Map(filteredRaw.map(p => [p.id, p])).values());
+            console.log('[Home] After dedup - uniquePosts count:', uniquePosts.length);
+            
             const filtered = await filterPostsByPrivacy(uniquePosts, currentUserId);
+            console.log('[Home] After privacy filter - filtered count:', filtered.length);
+            
+            // Log details of posts being filtered
+            filtered.forEach(p => {
+                console.log(`  Post: ${p.id}, userId: ${p.userId}, isPrivate: ${p.isPrivate}, hasImage: ${!!p.imageUrl}`);
+            });
+            
             if (isMounted) {
                 // Only show first paginationOffset posts
-                setPrivacyFiltered(filtered.slice(0, paginationOffset));
+                const sliced = filtered.slice(0, paginationOffset);
+                console.log('[Home] Sliced to paginationOffset:', sliced.length);
+                setPrivacyFiltered(sliced);
                 setAllLoadedPosts(filtered); // Keep all for pagination
             }
         };
