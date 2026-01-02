@@ -217,27 +217,25 @@ export default function Home() {
         return () => { isMounted = false; };
     }, [filteredRaw, currentUserId, paginationOffset]);
 
-    const onRefresh = async () => {
-        setRefreshing(t) return;
+    const loadMorePosts = () => {
+        if (loadingMore || privacyFiltered.length >= allLoadedPosts.length) return;
+        
         setLoadingMore(true);
-        
-        // Simulate load delay
+        setTimeout(() => {
+            setPaginationOffset(prev => {
+                const newOffset = prev + POSTS_PER_PAGE;
+                console.log('[Home] Loading more posts - new offset:', newOffset, 'total available:', allLoadedPosts.length);
+                return newOffset;
+            });
+            setLoadingMore(false);
+        }, 300);
+    };
+
+    const onRefresh = async () => {
+        setRefreshing(true);
         await new Promise(r => setTimeout(r, 300));
-        
-        // Increase pagination offset to show more posts
-        setPaginationOffset(prev => {
-            const newOffset = prev + POSTS_PER_PAGE;
-            console.log('[Home] Loading more posts - new offset:', newOffset, 'total available:', allLoadedPosts.length);
-            return newOffset;
-        });
-        (allLoadedPosts).map((post, idx) => ({
-            ...post,
-            id: post.id || `generated-${Date.now()}-${idx}`, // Ensure post has an ID
-            _loopKey: `loop-${loopCount + 1}-${post.id || `gen-${idx}`}-${idx}`,
-        }));
-        setPosts(prev => [...prev, ...reshuffled]);
-        setLoopCount(prev => prev + 1);
-        setLoadingMore(false);
+        setPaginationOffset(20); // Reset to initial count
+        setRefreshing(false);
     };
 
     if (loading) {
