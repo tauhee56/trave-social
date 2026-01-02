@@ -1,38 +1,29 @@
-import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
-import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
-import { auth } from '../../config/firebase';
+// This context is deprecated - app now uses token-based auth with AsyncStorage
+// Keeping UserProvider for backward compatibility with components that might still use it
+// But it no longer tries to initialize Firebase auth
+import React, { createContext, ReactNode, useContext } from 'react';
 
-export type AuthUser = FirebaseUser | null;
-const UserContext = createContext<{ user: AuthUser; loading: boolean }>({ user: null, loading: true });
+export type AuthUser = any;
+const UserContext = createContext<{ user: AuthUser; loading: boolean }>({ user: null, loading: false });
 
 interface UserProviderProps {
   children: ReactNode;
 }
 
 export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<AuthUser>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-      setLoading(false);
-      console.log('[UserContext] Auth state changed:', firebaseUser?.uid || 'no user');
-    });
-    return () => unsubscribe();
-  }, []);
-
+  // No longer initializing Firebase auth - app uses AsyncStorage token-based auth
+  // This provider is kept for compatibility only
   return (
-    <UserContext.Provider value={{ user, loading }}>
+    <UserContext.Provider value={{ user: null, loading: false }}>
       {children}
     </UserContext.Provider>
   );
 };
 
-export function useAuthUser(): FirebaseUser | null {
+export function useAuthUser(): AuthUser {
   const context = useContext(UserContext);
   if (!context) {
-    console.warn('[useAuthUser] UserContext not found');
+    console.warn('[useAuthUser] UserContext not found - returning null');
     return null;
   }
   return context.user;
@@ -40,5 +31,5 @@ export function useAuthUser(): FirebaseUser | null {
 
 export function useAuthLoading(): boolean {
   const context = useContext(UserContext);
-  return context?.loading ?? true;
+  return context?.loading ?? false;
 }
