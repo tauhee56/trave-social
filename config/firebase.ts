@@ -1,11 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApps, initializeApp } from 'firebase/app';
 import { Auth, getAuth, initializeAuth } from 'firebase/auth';
-import { Firestore, getFirestore } from 'firebase/firestore';
-import { FirebaseStorage, getStorage } from 'firebase/storage';
 import { Platform } from 'react-native';
 
-// Firebase configuration
+// ⚠️ FIREBASE CONFIGURATION - AUTHENTICATION ONLY
+// Firebase is ONLY used for social login authentication (Google, Apple, Snapchat, TikTok)
+// All data operations (posts, stories, comments, etc.) should use Backend API
+// Backend URL: https://trave-social-backend.onrender.com/api
+
 const firebaseConfig = {
   apiKey: 'AIzaSyC_0pHFGAK5YySB--8hL3Ctz-u1cx4vaCk',
   authDomain: 'travel-app-3da72.firebaseapp.com',
@@ -19,33 +21,34 @@ const firebaseConfig = {
 // Initialize Firebase (prevent duplicate)
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
-// Initialize Firestore with settings for better performance
-const db: Firestore = getFirestore(app);
-
-// Initialize Firebase Auth with React Native persistence
+// ✅ AUTHENTICATION ONLY - Initialize Firebase Auth with React Native persistence
 let auth: Auth;
 try {
-  // Dynamically require to avoid bundler path issues
   const { getReactNativePersistence } = require('firebase/auth');
-
   auth = initializeAuth(app, {
     persistence: Platform.OS === 'web'
-      ? undefined // web handled by Firebase internally
+      ? undefined
       : getReactNativePersistence(AsyncStorage),
   });
-  console.log('✅ Firebase Auth initialized with persistence');
+  console.log('✅ Firebase Auth initialized (AUTHENTICATION ONLY)');
 } catch (error: any) {
-  // If already initialized or missing helper, reuse existing instance
-  console.warn('Using existing Firebase Auth instance or fallback persistence:', error?.message || error);
+  console.warn('Using existing Firebase Auth instance:', error?.message || error);
   auth = getAuth(app);
 }
 
-// Export Firestore helpers
-export { arrayRemove, arrayUnion, FieldValue, serverTimestamp } from 'firebase/firestore';
+// ❌ FIRESTORE & STORAGE DISABLED - Use Backend API instead
+// DO NOT use db or storage - all data operations go through Backend API
+// For migration compatibility, these are exported as null
+export const db = null as any;
+export const storage = null as any;
 
-export { auth, db };
-export const storage: FirebaseStorage = getStorage(app);
+// ❌ FIRESTORE HELPERS DISABLED - Use Backend API for all data operations
+export const serverTimestamp = null as any;
+export const arrayUnion = null as any;
+export const arrayRemove = null as any;
+export const FieldValue = null as any;
 
-
+// ✅ ONLY AUTH IS AVAILABLE
+export { auth };
 
 export default app;
