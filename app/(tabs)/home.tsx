@@ -110,10 +110,13 @@ export default function Home() {
         return mixed;
     }, [shufflePosts]);
 
-    const loadInitialFeed = async () => {
-        setLoading(true);
+    const loadInitialFeed = async (pageNum = 0) => {
+        if (pageNum === 0) setLoading(true);
         try {
-            const response = await apiService.get('/posts');
+            // Request posts with pagination from backend
+            const limit = 50; // Request 50 posts at a time from backend
+            const skip = pageNum * limit;
+            const response = await apiService.get(`/posts?skip=${skip}&limit=${limit}`);
             console.log('[Home] Posts response:', response);
             
             // Handle various response formats from backend
@@ -127,13 +130,26 @@ export default function Home() {
             }
             
             console.log('[Home] Loaded posts count:', postsData.length);
-            setAllLoadedPosts(postsData);
-            const mixedFeed = createMixedFeed(postsData);
-            setPosts(mixedFeed);
+            
+            if (pageNum === 0) {
+                // First page: replace all
+                setAllLoadedPosts(postsData);
+                const mixedFeed = createMixedFeed(postsData);
+                setPosts(mixedFeed);
+                setPaginationOffset(20); // Reset pagination
+            } else {
+                // Subsequent pages: append
+                setAllLoadedPosts(prev => {
+                    const updated = [...prev, ...postsData];
+                    // Deduplicate by ID
+                    const unique = Array.from(new Map(updated.map(p => [p.id, p])).values());
+                    return unique;
+                });
+            }
         } catch (error) {
             console.error('[Home] Error loading posts:', error);
         } finally {
-            setLoading(false);
+            if (pageNum === 0) setLoading(false);
         }
     };
 
@@ -218,17 +234,31 @@ export default function Home() {
     }, [filteredRaw, currentUserId, paginationOffset]);
 
     const loadMorePosts = () => {
-        if (loadingMore || privacyFiltered.length >= allLoadedPosts.length) return;
+        if (loadingMore || privacyFiltered.length >= allLoadedPosts.length) {
+            console.log('[Home] Load more skipped - loadingMore:', loadingMore, 'displayed:', privacyFiltered.length, 'available:', allLoadedPosts.length);
+            return;
+        }
         
-        setLoadingMore(true);
-        setTimeout(() => {
-            setPaginationOffset(prev => {
-                const newOffset = prev + POSTS_PER_PAGE;
-                console.log('[Home] Loading more posts - new offset:', newOffset, 'total available:', allLoadedPosts.length);
-                return newOffset;
+        // Check if we need to fetch more from backend
+        if (privacyFiltered.length > allLoadedPosts.length * 0.8) {
+            // Fetch next batch from backend
+            const pageNum = Math.floor(allLoadedPosts.length / 50);
+            setLoadingMore(true);
+            loadInitialFeed(pageNum + 1).then(() => {
+                setTimeout(() => setLoadingMore(false), 300);
             });
-            setLoadingMore(false);
-        }, 300);
+        } else {
+            // Still have posts to show, just increment pagination offset
+            setLoadingMore(true);
+            setTimeout(() => {
+                setPaginationOffset(prev => {
+                    const newOffset = prev + POSTS_PER_PAGE;
+                    console.log('[Home] Loading more posts - new offset:', newOffset, 'total available:', allLoadedPosts.length);
+                    return newOffset;
+                });
+                setLoadingMore(false);
+            }, 300);
+        }
     };
 
     const onRefresh = async () => {
