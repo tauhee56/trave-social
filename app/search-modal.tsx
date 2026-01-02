@@ -1,9 +1,11 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getRegions, searchUsers } from "../lib/firebaseHelpers/index";
+import { followUser, sendFollowRequest, unfollowUser } from "../lib/firebaseHelpers/follow";
 
 // Type definitions
 type Region = {
@@ -52,6 +54,18 @@ export default function SearchModal() {
   const [hasError, setHasError] = useState<boolean>(false);
   const [regions, setRegions] = useState<Region[]>(defaultRegions);
   const [loadingRegions, setLoadingRegions] = useState<boolean>(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [followingMap, setFollowingMap] = useState<{ [key: string]: boolean }>({});
+
+  // Get current user ID on mount
+  useEffect(() => {
+    AsyncStorage.getItem('userId').then(uid => {
+      if (uid) {
+        setCurrentUserId(uid);
+        console.log('[SearchModal] Current user ID:', uid);
+      }
+    }).catch(err => console.error('[SearchModal] Failed to get userId:', err));
+  }, []);
 
   // Fetch regions from Firebase on mount
   useEffect(() => {
@@ -318,17 +332,71 @@ export default function SearchModal() {
                 data={users}
                 keyExtractor={(item: User) => item.uid}
                 renderItem={({ item }: { item: User }) => (
-                  <TouchableOpacity
-                    style={styles.suggestionRow}
-                    onPress={() => router.push(`/user-profile?uid=${item.uid}`)}
-                    accessibilityLabel={`Open profile for ${item.displayName || 'Traveler'}`}
-                  >
-                    <Image source={{ uri: item.photoURL || DEFAULT_AVATAR_URL }} style={styles.avatarImage} />
-                    <View style={{ marginLeft: 10, flex: 1 }}>
-                      <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
-                      <Text style={{ color: '#666', fontSize: 12 }}>{item.bio || 'No bio available'}</Text>
+                  <View style={styles.userResultRow}>
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', flex: 1, alignItems: 'center' }}
+                      onPress={() => router.push(`/user-profile?uid=${item.uid}`)}
+                      accessibilityLabel={`Open profile for ${item.displayName || 'Traveler'}`}
+                    >
+                      <Image source={{ uri: item.photoURL || DEFAULT_AVATAR_URL }} style={styles.avatarImage} />
+                      <View style={{ marginLeft: 12, flex: 1 }}>
+                        <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
+                        <Text style={{ color: '#666', fontSize: 12 }}>{item.bio || 'No bio available'}</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', gap: 8, paddingLeft: 8 }}>
+                      <TouchableOpacity
+                        style={styles.userActionBtn}
+                        onPress={() => {
+                          if (!currentUserId || !item.uid) {
+                            console.log('[SearchModal] Missing IDs for message:', { currentUserId, itemUid: item.uid });
+                            return;
+                          }
+                          console.log('[SearchModal] Navigating to DM with:', item.uid);
+                          router.push({
+                            pathname: '/dm',
+                            params: {
+                              otherUserId: item.uid,
+                              user: item.displayName || 'Traveler',
+                              avatar: item.photoURL || DEFAULT_AVATAR_URL
+                            }
+                          });
+                        }}
+                        accessibilityLabel="Send message"
+                      >
+                        <Feather name="message-circle" size={18} color="#007AFF" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.userActionBtn}
+                        onPress={() => {
+                          if (!currentUserId || !item.uid) {
+                            console.log('[SearchModal] Missing IDs for follow:', { currentUserId, itemUid: item.uid });
+                            return;
+                          }
+                          const isFollowing = followingMap[item.uid];
+                          console.log('[SearchModal] Toggle follow for', item.uid, 'currently following:', isFollowing);
+                          if (isFollowing) {
+                            unfollowUser(currentUserId, item.uid).then(res => {
+                              console.log('[SearchModal] Unfollow response:', res);
+                              if (res.success) {
+                                setFollowingMap(prev => ({ ...prev, [item.uid]: false }));
+                              }
+                            });
+                          } else {
+                            followUser(currentUserId, item.uid).then(res => {
+                              console.log('[SearchModal] Follow response:', res);
+                              if (res.success) {
+                                setFollowingMap(prev => ({ ...prev, [item.uid]: true }));
+                              }
+                            });
+                          }
+                        }}
+                        accessibilityLabel={followingMap[item.uid] ? "Unfollow" : "Follow"}
+                      >
+                        <Feather name={followingMap[item.uid] ? "check" : "user-plus"} size={18} color={followingMap[item.uid] ? "#34C759" : "#666"} />
+                      </TouchableOpacity>
                     </View>
-                  </TouchableOpacity>
+                  </View>
                 )}
                 ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No travelers found</Text>}
                 style={{ marginTop: 16, maxHeight: 120 }}
@@ -337,8 +405,7 @@ export default function SearchModal() {
                 windowSize={7}
                 removeClippedSubviews={true}
               />
-            )}
-          </View>
+            )}          </View>
         </KeyboardAvoidingView>
         {/* Bottom Action Bar: always visible above keyboard */}
         <View style={styles.actionBtnBar}>
@@ -634,5 +701,24 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '500',
     color: '#222',
+  },
+  userResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderColor: '#f0f0f0',
+    backgroundColor: '#fff',
+  },
+  userActionBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
   },
 });
