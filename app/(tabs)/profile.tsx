@@ -403,13 +403,19 @@ export default function Profile({ userIdProp }: any) {
   // Effects
   useFocusEffect(
     React.useCallback(() => {
-      setLoading(true);
       const fetchData = async () => {
+        // Don't fetch data if viewedUserId is not set yet
+        if (!viewedUserId) {
+          setLoading(false);
+          return;
+        }
+        
+        setLoading(true);
         try {
           console.log('[Profile] Fetching data for user:', viewedUserId);
           
           // Fetch profile
-          const profileRes = await getUserProfileAPI(viewedUserId || '');
+          const profileRes = await getUserProfileAPI(viewedUserId);
           console.log('[Profile] Profile response:', profileRes);
           console.log('[Profile] Full response structure:', {
             hasSuccess: 'success' in profileRes,
@@ -453,7 +459,7 @@ export default function Profile({ userIdProp }: any) {
           }
           
           // Fetch posts
-          const postsRes = await getUserPostsAPI(viewedUserId || '', currentUserId);
+          const postsRes = await getUserPostsAPI(viewedUserId, currentUserId);
           console.log('[Profile] Posts response success:', postsRes.success);
           
           let postsData: any[] = [];
@@ -482,7 +488,7 @@ export default function Profile({ userIdProp }: any) {
           }
           
           // Fetch highlights
-          const highlightsRes = await getUserHighlightsAPI(viewedUserId || '', currentUserId);
+          const highlightsRes = await getUserHighlightsAPI(viewedUserId, currentUserId);
           let highlightsData: any[] = [];
           if (highlightsRes.success) {
             if ('data' in highlightsRes && Array.isArray(highlightsRes.data)) highlightsData = highlightsRes.data;
@@ -493,7 +499,7 @@ export default function Profile({ userIdProp }: any) {
           }
 
           // Fetch stories
-          const storiesRes = await getUserStoriesAPI(viewedUserId || '', currentUserId);
+          const storiesRes = await getUserStoriesAPI(viewedUserId, currentUserId);
           let storiesData: any[] = [];
           if (storiesRes.success) {
             if ('data' in storiesRes && Array.isArray(storiesRes.data)) storiesData = storiesRes.data;
@@ -516,6 +522,11 @@ export default function Profile({ userIdProp }: any) {
 
   useEffect(() => {
     async function loadData() {
+      // Don't load data if viewedUserId is not set yet
+      if (!viewedUserId) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       const profileRes = await getUserProfileAPI(viewedUserId);
       let profileData: ProfileData | null = null;
