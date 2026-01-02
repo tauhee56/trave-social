@@ -84,19 +84,8 @@ export default function RootLayout() {
     console.log('🔐 RootLayout AUTH EFFECT RUNNING');
     checkAuth();
     
-    // Only check for token changes every 5 seconds (less aggressive)
-    const checkAuthInterval = setInterval(checkAuth, 5000);
-    
-    // EMERGENCY: Force loading off after 3 seconds max
-    const emergencyTimeout = setTimeout(() => {
-      console.warn('🔴 RootLayout EMERGENCY TIMEOUT: Forcing loading=false');
-      setLoading(false);
-    }, 3000);
-    
-    return () => {
-      clearInterval(checkAuthInterval);
-      clearTimeout(emergencyTimeout);
-    };
+    // No interval needed - token only changes on login/logout which updates AsyncStorage
+    // Individual screens handle their own focus-based checks if needed
   }, []);
 
   useEffect(() => {
