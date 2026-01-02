@@ -61,18 +61,19 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     setLoading(true);
     const res = await getPostComments(postId);
     if (res.success && Array.isArray(res.data)) {
-      // Map Firestore data to Comment type
+      // Map backend MongoDB data to Comment type
       const mappedComments = res.data.map((c: any) => ({
-        id: c.id,
+        id: c._id || c.id,  // MongoDB returns _id, not id
         text: c.text || '',
         userAvatar: c.userAvatar || '',
-        userName: c.userName || '',
+        userName: c.userName || 'User',  // Default to 'User' if no userName
         userId: c.userId || '',
         createdAt: c.createdAt,
         editedAt: c.editedAt,
         replies: c.replies || [],
         reactions: c.reactions || {}
       }));
+      console.log('[CommentSection] Loaded', mappedComments.length, 'comments:', mappedComments.map((c: any) => ({ id: c.id, userName: c.userName })));
       setComments(mappedComments);
     }
     setLoading(false);
