@@ -483,6 +483,19 @@ export default function Profile({ userIdProp }: any) {
             setHighlights([]);
           }
 
+          // Fetch sections
+          const sectionsRes2 = await getUserSectionsAPI(viewedUserId, currentUserId);
+          let sectionsData2: any[] = [];
+          if (sectionsRes2.success) {
+            if ('data' in sectionsRes2 && Array.isArray(sectionsRes2.data)) sectionsData2 = sectionsRes2.data;
+            else if ('sections' in sectionsRes2 && Array.isArray(sectionsRes2.sections)) sectionsData2 = sectionsRes2.sections;
+            console.log('[Profile] useFocusEffect - Setting sections:', sectionsData2.length, 'sections');
+            setSections(sectionsData2);
+          } else {
+            console.log('[Profile] useFocusEffect - No sections found');
+            setSections([]);
+          }
+
           // Fetch stories
           const storiesRes = await getUserStoriesAPI(viewedUserId, currentUserId);
           let storiesData: any[] = [];
@@ -504,86 +517,6 @@ export default function Profile({ userIdProp }: any) {
       fetchData();
     }, [viewedUserId, currentUserId])
   );
-
-  useEffect(() => {
-    async function loadData() {
-      // Don't load data if viewedUserId is not set yet
-      if (!viewedUserId) {
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      let blocked: Set<string> = new Set<string>();
-      try {
-        blocked = currentUserId ? await fetchBlockedUserIds(currentUserId) : new Set<string>();
-      } catch (err) {
-        console.error('[Profile] Failed to fetch blocked user ids:', err);
-      }
-      const profileRes = await getUserProfileAPI(viewedUserId);
-      let profileData: ProfileData | null = null;
-      if (profileRes.success) {
-        if ('data' in profileRes && profileRes.data && typeof profileRes.data === 'object') profileData = profileRes.data as ProfileData;
-        else if ('profile' in profileRes && profileRes.profile && typeof profileRes.profile === 'object') profileData = profileRes.profile as ProfileData;
-        setProfile(profileData);
-        setIsPrivate(profileData?.isPrivate || false);
-        setApprovedFollower(profileData?.approvedFollowers?.includes(currentUserId || '') || false);
-        setFollowRequestPending(profileData?.followRequestPending || false);
-      } else {
-        setProfile(null);
-      }
-      const postsRes = await getUserPostsAPI(viewedUserId, currentUserId);
-      let postsData: any[] = [];
-      if (postsRes.success) {
-        if ('data' in postsRes && Array.isArray(postsRes.data)) postsData = postsRes.data;
-        else if ('posts' in postsRes && Array.isArray(postsRes.posts)) postsData = postsRes.posts;
-        // Show all posts (no pagination limit for now)
-        const filteredPosts = filterOutBlocked(postsData, blocked);
-        setPosts(filteredPosts);
-
-        // Initialize liked and saved states for posts
-        if (currentUserId) {
-          const likedState: { [key: string]: boolean } = {};
-          const savedState: { [key: string]: boolean } = {};
-          filteredPosts.forEach((post: any) => {
-            likedState[post.id] = post.likes?.includes(currentUserId) || false;
-            savedState[post.id] = post.savedBy?.includes(currentUserId) || false;
-          });
-          setLikedPosts(likedState);
-          setSavedPosts(savedState);
-        }
-      } else {
-        setPosts([]);
-      }
-      // Fetch tagged posts from backend API
-      const taggedRes = viewedUserId ? await getTaggedPosts(viewedUserId, currentUserId) : { success: false, data: [] as any[] };
-      if (taggedRes.success) {
-        const taggedData = Array.isArray((taggedRes as any).data) ? (taggedRes as any).data : [];
-        setTaggedPosts(filterOutBlocked(taggedData, blocked));
-      } else {
-        setTaggedPosts([]);
-      }
-      const sectionsRes = await getUserSectionsSorted(viewedUserId, currentUserId);
-      let sectionsData: any[] = [];
-      if (sectionsRes.success) {
-        if ('data' in sectionsRes && Array.isArray(sectionsRes.data)) sectionsData = sectionsRes.data;
-        else if ('sections' in sectionsRes && Array.isArray(sectionsRes.sections)) sectionsData = sectionsRes.sections;
-        setSections(sectionsData);
-      } else {
-        setSections([]);
-      }
-      const highlightsRes = await getUserHighlights(viewedUserId, currentUserId);
-      let highlightsData: any[] = [];
-      if (highlightsRes.success) {
-        if ('data' in highlightsRes && Array.isArray(highlightsRes.data)) highlightsData = highlightsRes.data;
-        else if ('highlights' in highlightsRes && Array.isArray(highlightsRes.highlights)) highlightsData = highlightsRes.highlights;
-        setHighlights(highlightsData);
-      } else {
-        setHighlights([]);
-      }
-      setLoading(false);
-    }
-    loadData();
-  }, [viewedUserId]);
 
   // Render helpers
   const renderSkeletonPosts = () => (
