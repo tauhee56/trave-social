@@ -7,7 +7,9 @@ import { apiService } from '../../app/_services/apiService';
  */
 export async function addComment(postId: string, userId: string, userName: string, userAvatar: string, text: string) {
   try {
+    console.log('[Comments API] addComment - postId:', postId, 'userId:', userId, 'text:', text);
     const data = await apiService.post(`/posts/${postId}/comments`, { userId, userName, userAvatar, text });
+    console.log('[Comments API] addComment response:', data);
     return data;
   } catch (error: any) {
     console.error('❌ addComment error:', error);

@@ -21,6 +21,7 @@ export interface CommentSectionProps {
   postId: string;
   postOwnerId: string;
   currentAvatar: string;
+  currentUser?: any; // Optional - will use UserContext if not provided
   maxHeight?: number;
   showInput?: boolean;
   highlightedCommentId?: string;
@@ -31,7 +32,8 @@ const REACTIONS = ['❤️', '😂', '😮', '😢', '👏', '🔥'];
 export const CommentSection: React.FC<CommentSectionProps> = ({ 
   postId, 
   postOwnerId,
-  currentAvatar, 
+  currentAvatar,
+  currentUser: userProp,
   maxHeight = 400, 
   showInput = true,
   highlightedCommentId 
@@ -46,7 +48,9 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   const [showReactions, setShowReactions] = useState<string | null>(null);
   
   const scrollRef = useRef<ScrollView>(null);
-  const currentUser = useUser();
+  const userFromContext = useUser();
+  // Use prop if provided, otherwise fall back to context
+  const currentUser = userProp || userFromContext;
 
   useEffect(() => {
     loadComments();
@@ -74,7 +78,26 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   };
 
   const handleAddComment = async () => {
-    if (!newComment.trim() || !currentUser) return;
+    console.log('[CommentSection] handleAddComment - currentUser:', currentUser?.uid, 'displayName:', currentUser?.displayName, 'newComment:', newComment.trim());
+    
+    if (!newComment.trim()) {
+      console.log('[CommentSection] Skipping - no text');
+      return;
+    }
+    
+    if (!currentUser) {
+      console.log('[CommentSection] ERROR - No currentUser available');
+      Alert.alert('Error', 'Please login to comment');
+      return;
+    }
+    
+    // Ensure we have a valid userId
+    const userId = currentUser.uid || currentUser.id || currentUser.userId;
+    if (!userId) {
+      console.log('[CommentSection] ERROR - Cannot extract userId from currentUser:', currentUser);
+      Alert.alert('Error', 'User ID not found');
+      return;
+    }
     
     const commentText = newComment.trim();
     setNewComment(''); // Clear input immediately for better UX
@@ -85,7 +108,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       text: commentText,
       userAvatar: currentAvatar,
       userName: currentUser.displayName || 'User',
-      userId: currentUser.uid,
+      userId: userId,
       createdAt: Date.now(),
       replies: [],
       reactions: {}
@@ -94,19 +117,22 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     setComments(prev => [tempComment, ...prev]);
     
     // Then save to Firebase in background
+    console.log('[CommentSection] Adding comment to post:', postId, 'userId:', userId);
     const result = await addComment(
       postId,
-      currentUser.uid,
+      userId,
       currentUser.displayName || 'User',
       currentAvatar,
       commentText
     );
     
+    console.log('[CommentSection] addComment result:', result);
+    
     if (!result.success) {
       // If failed, remove the temp comment and show error
       setComments(prev => prev.filter(c => c.id !== tempComment.id));
       setNewComment(commentText); // Restore the text
-      Alert.alert('Error', 'Failed to post comment');
+      Alert.alert('Error', 'Failed to post comment: ' + result.error);
     } else {
       // Reload to get the real comment with correct ID
       await loadComments();

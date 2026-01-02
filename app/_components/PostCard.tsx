@@ -1228,6 +1228,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                   postId={post.id}
                   postOwnerId={post.userId}
                   currentAvatar={user?.photoURL || "https://via.placeholder.com/200x200.png?text=Profile"}
+                  currentUser={user}
                   maxHeight={undefined}
                   showInput={true}
                   highlightedCommentId={highlightedCommentId}
