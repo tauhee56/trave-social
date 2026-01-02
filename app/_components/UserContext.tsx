@@ -1,72 +1,35 @@
-import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
-import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
-import { auth } from '../../config/firebase';
+// This context is deprecated - app now uses token-based auth with AsyncStorage
+// Keeping UserProvider for backward compatibility with components that might still use it
+// But it no longer tries to initialize Firebase auth
+import React, { createContext, ReactNode, useContext } from 'react';
 
-export type AuthUser = FirebaseUser | null;
-const UserContext = createContext<{ user: AuthUser; loading: boolean }>({ user: null, loading: true });
+export type AuthUser = any;
+const UserContext = createContext<{ user: AuthUser; loading: boolean }>({ user: null, loading: false });
 
 interface UserProviderProps {
   children: ReactNode;
 }
 
 export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<AuthUser>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    console.log('🔵 UserProvider INIT: Setting up auth listener');
-    
-    let isMounted = true;
-    let authFired = false;
-    
-    // Listen to Firebase auth state changes
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      console.log('🟢 onAuthStateChanged FIRED:', firebaseUser?.uid || 'no user (logged out)');
-      if (isMounted) {
-        authFired = true;
-        setUser(firebaseUser);
-        setLoading(false);
-      }
-    });
-    
-    console.log('🟡 onAuthStateChanged listener registered');
-    
-    // EMERGENCY: If Firebase doesn't respond in 2 seconds, force close loading
-    const emergencyTimeout = setTimeout(() => {
-      if (isMounted && !authFired) {
-        console.warn('🔴 UserProvider EMERGENCY: Firebase timeout - forcing loading=false');
-        setLoading(false);
-      }
-    }, 2000);
-    
-    return () => {
-      isMounted = false;
-      clearTimeout(emergencyTimeout);
-      console.log('🧹 Unsubscribing from auth listener');
-      unsubscribe();
-    };
-  }, []);
-
+  // No longer initializing Firebase auth - app uses AsyncStorage token-based auth
+  // This provider is kept for compatibility only
   return (
-    <UserContext.Provider value={{ user, loading }}>
+    <UserContext.Provider value={{ user: null, loading: false }}>
       {children}
     </UserContext.Provider>
   );
 };
 
-export const useUser = (): FirebaseUser | null => {
+export const useUser = (): AuthUser => {
   const context = useContext(UserContext);
   if (!context) {
-    console.warn('[useUser] UserContext not found');
+    console.warn('[useUser] UserContext not found - returning null');
     return null;
-  }
-  if (!context.user && !context.loading) {
-    console.warn('[useUser] User is not logged in');
   }
   return context.user;
 };
 
 export const useAuthLoading = (): boolean => {
   const context = useContext(UserContext);
-  return context?.loading ?? true;
+  return context?.loading ?? false;
 };

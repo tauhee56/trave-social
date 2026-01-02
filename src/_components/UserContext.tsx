@@ -33,3 +33,8 @@ export function useAuthLoading(): boolean {
   const context = useContext(UserContext);
   return context?.loading ?? false;
 }
+
+// Alias for backward compatibility
+export function useUser(): AuthUser {
+  return useAuthUser();
+}
