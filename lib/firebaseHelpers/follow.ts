@@ -1,3 +1,5 @@
+import { apiService } from '../../app/_services/apiService';
+
 // Stub for isApprovedFollower
 export async function isApprovedFollower(followerId: string, followingId: string) {
   // Implement actual logic as needed
@@ -6,28 +8,24 @@ export async function isApprovedFollower(followerId: string, followingId: string
 
 export async function followUser(followerId: string, followingId: string) {
   try {
-    const res = await fetch(`/api/follow`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ followerId, followingId })
-    });
-    const data = await res.json();
-    return data;
+    console.log('[followUser] Sending follow request:', { followerId, followingId });
+    const res = await apiService.post('/follow', { followerId, followingId });
+    console.log('[followUser] Response:', res);
+    return res;
   } catch (error: any) {
+    console.error('[followUser] Error:', error.message);
     return { success: false, error: error.message };
   }
 }
 
 export async function unfollowUser(followerId: string, followingId: string) {
   try {
-    const res = await fetch(`/api/follow`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ followerId, followingId })
-    });
-    const data = await res.json();
-    return data;
+    console.log('[unfollowUser] Sending unfollow request:', { followerId, followingId });
+    const res = await apiService.delete('/follow', { followerId, followingId });
+    console.log('[unfollowUser] Response:', res);
+    return res;
   } catch (error: any) {
+    console.error('[unfollowUser] Error:', error.message);
     return { success: false, error: error.message };
   }
 }
@@ -37,14 +35,12 @@ export async function unfollowUser(followerId: string, followingId: string) {
  */
 export async function sendFollowRequest(fromUserId: string, toUserId: string) {
   try {
-    const res = await fetch(`/api/follow/request`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fromUserId, toUserId })
-    });
-    const data = await res.json();
-    return data;
+    console.log('[sendFollowRequest] Sending follow request:', { fromUserId, toUserId });
+    const res = await apiService.post('/follow/request', { fromUserId, toUserId });
+    console.log('[sendFollowRequest] Response:', res);
+    return res;
   } catch (error: any) {
+    console.error('[sendFollowRequest] Error:', error.message);
     return { success: false, error: error.message };
   }
 }
@@ -54,14 +50,12 @@ export async function sendFollowRequest(fromUserId: string, toUserId: string) {
  */
 export async function rejectFollowRequest(privateUserId: string, requesterId: string) {
   try {
-    const res = await fetch(`/api/follow/request/${requesterId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: privateUserId })
-    });
-    const data = await res.json();
-    return data;
+    console.log('[rejectFollowRequest] Rejecting follow request:', { privateUserId, requesterId });
+    const res = await apiService.delete(`/follow/request/${requesterId}`, { userId: privateUserId });
+    console.log('[rejectFollowRequest] Response:', res);
+    return res;
   } catch (error: any) {
+    console.error('[rejectFollowRequest] Error:', error.message);
     return { success: false, error: error.message };
   }
 }
