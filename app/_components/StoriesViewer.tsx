@@ -1,6 +1,6 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { AVPlaybackStatus, ResizeMode, Video } from 'expo-av';
-// Firestore imports removed
+// Firebase removed - using Backend API
 import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -20,7 +20,8 @@ import {
     View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../../config/firebase';
+import { API_BASE_URL } from '../../lib/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { deleteStory } from '../../lib/firebaseHelpers/deleteStory';
 import { addCommentReply, addStoryToHighlight, getUserHighlights } from '../../lib/firebaseHelpers/index';
 import { getKeyboardOffset } from '../../utils/responsive';

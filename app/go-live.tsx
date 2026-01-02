@@ -26,7 +26,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AGORA_CONFIG, getAgoraToken } from '../config/agora';
 // @ts-ignore
 import { auth } from '../config/firebase';
-import { db, doc, serverTimestamp, setDoc } from '../lib/firebaseCompatibility';
+import { API_BASE_URL } from '../lib/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logger } from '../utils/logger';
 
 

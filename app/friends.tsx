@@ -4,7 +4,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db, doc } from '../lib/firebaseCompatibility';
+import { API_BASE_URL } from '../lib/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { followUser, unfollowUser } from '../lib/firebaseHelpers/follow';
 import { useUser } from './_components/UserContext';
 

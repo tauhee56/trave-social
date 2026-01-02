@@ -1,8 +1,8 @@
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
-import { doc, updateDoc } from 'firebase/firestore';
 import { Platform } from 'react-native';
-import { db } from '../config/firebase';
+import { API_BASE_URL } from '../lib/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -76,10 +76,24 @@ export async function getPushNotificationToken() {
  */
 export async function savePushToken(userId: string, token: string) {
   try {
-    await updateDoc(doc(db, 'users', userId), {
-      pushToken: token,
-      pushTokenUpdatedAt: new Date(),
+    const authToken = await AsyncStorage.getItem('token');
+    
+    const response = await fetch(`${API_BASE_URL}/users/${userId}/push-token`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ pushToken: token }),
     });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to save push token');
+    }
+    
+    console.log('✅ Push token saved to backend');
     return { success: true };
   } catch (error) {
     console.error('Error saving push token:', error);

@@ -3,14 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-// Firestore imports removed
+// Firebase removed - using Backend API
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../../config/firebase';
+import { API_BASE_URL } from '../../lib/api';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
-import { serverTimestamp } from '../../lib/firebaseCompatibility';
 import { getUserHighlights, getUserSectionsSorted, getUserStories } from '../../lib/firebaseHelpers';
 import { followUser, sendFollowRequest, unfollowUser } from '../../lib/firebaseHelpers/follow';
 import { likePost, unlikePost } from '../../lib/firebaseHelpers/post';
