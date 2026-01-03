@@ -342,7 +342,9 @@ export default function SearchModal() {
                       >
                         <Image source={{ uri: item.photoURL || DEFAULT_AVATAR_URL }} style={styles.avatarImage} />
                         <View style={{ marginLeft: 12, flex: 1 }}>
-                          <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'} {isOwnProfile ? '(You)' : ''}</Text>
+                          <Text style={{ fontWeight: '600' }}>
+                            {item.displayName || 'Traveler'}{isOwnProfile ? ' (You)' : ''}
+                          </Text>
                           <Text style={{ color: '#666', fontSize: 12 }}>{item.bio || 'No bio available'}</Text>
                         </View>
                       </TouchableOpacity>
@@ -406,7 +408,7 @@ export default function SearchModal() {
                       )}
                     </View>
                   );
-                }
+                }}
                 ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No travelers found</Text>}
                 style={{ marginTop: 16, maxHeight: 120 }}
                 initialNumToRender={15}

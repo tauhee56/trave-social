@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
     addNotification,
     deleteMessage,
@@ -20,7 +21,6 @@ import {
 import { getFormattedActiveStatus, subscribeToUserPresence, updateUserOffline, updateUserPresence, UserPresence } from '../lib/userPresence';
 import MessageBubble from '../src/_components/MessageBubble';
 import useUserProfile from '../src/_hooks/useUserProfile';
-import { useUser } from './_components/UserContext';
 
 const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
@@ -38,9 +38,23 @@ export default function DM() {
   
   const router = useRouter();
   const navigation = useNavigation();
-  const currentUserTyped = useUser();
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
   console.log('[DM] Received params:', { otherUserId, paramUser, paramConversationId });
+  
+  // Load current user ID from AsyncStorage
+  useEffect(() => {
+    let isMounted = true;
+    AsyncStorage.getItem('userId').then(id => {
+      if (isMounted && id) {
+        setCurrentUserId(id);
+        console.log('[DM] Current user ID loaded:', id);
+      }
+    }).catch(err => {
+      console.error('[DM] Error loading user ID:', err);
+    });
+    return () => { isMounted = false; };
+  }, []);
   
   // Use the hook to fetch and subscribe to the other user's profile
   const { profile: otherUserProfile, loading: profileLoading } = useUserProfile(
@@ -81,12 +95,12 @@ export default function DM() {
   const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 
   // Check if selected message is sent by current user
-  const isOwnMessage = selectedMessage && currentUserTyped?.uid && selectedMessage.senderId === currentUserTyped.uid;
+  const isOwnMessage = selectedMessage && currentUserId && selectedMessage.senderId === currentUserId;
 
   async function handleReaction(emoji: string) {
-    if (!selectedMessage || !conversationId || !currentUserTyped?.uid) return;
+    if (!selectedMessage || !conversationId || !currentUserId) return;
     
-    await reactToMessage(conversationId, selectedMessage.id, currentUserTyped.uid, emoji);
+    await reactToMessage(conversationId, selectedMessage.id, currentUserId, emoji);
     setShowReactionPicker(false);
     setShowMessageMenu(false);
     setSelectedMessage(null);
@@ -98,14 +112,14 @@ export default function DM() {
     const initializeDM = async () => {
       try {
         // Step 1: Initialize conversation immediately
-        if (!currentUserTyped?.uid || !otherUserId) {
-          console.log('[DM] Missing user IDs, cannot initialize:', { currentUid: currentUserTyped?.uid, otherUserId });
+        if (!currentUserId || !otherUserId) {
+          console.log('[DM] Missing user IDs, cannot initialize:', { currentUid: currentUserId, otherUserId });
           return;
         }
 
         // Get or create conversation ID
         const result = await getOrCreateConversation(
-          String(currentUserTyped.uid),
+          String(currentUserId),
           typeof otherUserId === 'string' ? otherUserId : ''
         );
         
@@ -127,7 +141,7 @@ export default function DM() {
     initializeDM();
 
     return () => { isMounted = false; };
-  }, [currentUserTyped?.uid, otherUserId]);
+  }, [currentUserId, otherUserId]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -176,8 +190,8 @@ export default function DM() {
     });
 
     // Mark as read when opening conversation
-    if (currentUserTyped && currentUserTyped.uid) {
-      markConversationAsRead(conversationId, currentUserTyped.uid);
+    if (currentUserId) {
+      markConversationAsRead(conversationId, currentUserId);
     }
 
     return () => {
@@ -194,7 +208,7 @@ export default function DM() {
   };
 
   async function initializeConversation() {
-    if (!currentUserTyped || !currentUserTyped.uid || !realOtherUserId) {
+    if (!currentUserId || !realOtherUserId) {
       setLoading(false);
       return;
     }
@@ -206,7 +220,7 @@ export default function DM() {
 
     // Create or get conversation
     const result = await getOrCreateConversation(
-      String(currentUserTyped.uid),
+      String(currentUserId),
       typeof realOtherUserId === 'string' ? realOtherUserId : ''
     );
     if (result && result.success && result.conversationId) {
@@ -216,7 +230,7 @@ export default function DM() {
   }
 
   async function handleSend() {
-    if (!input.trim() || !conversationId || !currentUserTyped || !currentUserTyped.uid || sending || !canMessage) return;
+    if (!input.trim() || !conversationId || !currentUserId || sending || !canMessage) return;
 
     const messageText = input.trim();
     const replyData = replyingTo;
@@ -226,11 +240,11 @@ export default function DM() {
 
     try {
       // Update user as active when sending message
-      await updateUserPresence(currentUserTyped.uid, conversationId);
+      await updateUserPresence(currentUserId, conversationId);
       
-      await sendMessage(conversationId, currentUserTyped.uid, messageText, undefined, replyData);
+      await sendMessage(conversationId, currentUserId, messageText, undefined, replyData);
       // Send notification to recipient
-      if (otherUserId && otherUserId !== currentUserTyped.uid) {
+      if (otherUserId && otherUserId !== currentUserId) {
         // Fetch sender profile for name and avatar from backend
         let senderName = '';
         let senderAvatar = '';
@@ -242,7 +256,7 @@ export default function DM() {
         // senderAvatar = senderData.avatar || senderData.photoURL || DEFAULT_AVATAR_URL;
         await addNotification({
           recipientId: String(otherUserId),
-          senderId: currentUserTyped.uid,
+          senderId: currentUserId,
           senderName,
           senderAvatar,
           type: 'dm',
@@ -261,12 +275,12 @@ export default function DM() {
   }
 
   async function handleEditMessage() {
-    if (!editingMessage || !conversationId || !currentUserTyped?.uid) return;
+    if (!editingMessage || !conversationId || !currentUserId) return;
 
     const result = await editMessage(
       conversationId,
       editingMessage.id,
-      currentUserTyped.uid,
+      currentUserId,
       editText.trim()
     );
 
@@ -280,7 +294,7 @@ export default function DM() {
   }
 
   async function handleDeleteMessage() {
-    if (!selectedMessage || !conversationId || !currentUserTyped?.uid) return;
+    if (!selectedMessage || !conversationId || !currentUserId) return;
 
     Alert.alert(
       'Delete Message',
@@ -291,11 +305,11 @@ export default function DM() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            if (!conversationId || !currentUserTyped?.uid) return;
+            if (!conversationId || !currentUserId) return;
             const result = await deleteMessage(
               conversationId,
               selectedMessage.id,
-              currentUserTyped.uid
+              currentUserId
             );
 
             if (result.success) {
@@ -318,11 +332,11 @@ export default function DM() {
   }
 
   function renderMessage({ item }: { item: any }) {
-    const isSelf = item.senderId === currentUserTyped?.uid;
+    const isSelf = item.senderId === currentUserId;
     const reactions = item.reactions || {};
     const reactionsList = Object.entries(reactions);
     const hasReply = item.replyTo && item.replyTo.text;
-    const isReplyFromSelf = item.replyTo?.senderId === currentUserTyped?.uid;
+    const isReplyFromSelf = item.replyTo?.senderId === currentUserId;
 
     return (
       <TouchableOpacity
@@ -348,7 +362,7 @@ export default function DM() {
           formatTime={formatTime}
           replyTo={item.replyTo}
           username={username}
-          currentUserId={currentUserTyped?.uid}
+          currentUserId={currentUserId}
         />
         {/* Reactions display */}
         {reactionsList.length > 0 && (
@@ -439,7 +453,7 @@ export default function DM() {
               <View style={styles.replyBarLine} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.replyBarName}>
-                  Replying to {replyingTo.senderId === currentUserTyped?.uid ? 'yourself' : username}
+                  Replying to {replyingTo.senderId === currentUserId ? 'yourself' : username}
                 </Text>
                 <Text style={styles.replyBarText} numberOfLines={1}>
                   {replyingTo.text}
