@@ -243,15 +243,15 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                   </View>
                 </LinearGradient>
               </TouchableOpacity>
-              {/* Add story button overlay - disabled while modal is open */}
-              <TouchableOpacity
+              {/* Add story button overlay - TEMPORARILY HIDDEN */}
+              {/* <TouchableOpacity
                 pointerEvents={showUploadModal ? 'none' : 'auto'}
                 hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
                 style={[styles.addButton, { position: 'absolute', bottom: -16, right: -16, zIndex: 10 }]}
                 onPress={handleAddStory}
               >
                 <Feather name="plus" size={18} color="#fff" />
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </View>
           ) : (
             <TouchableOpacity
