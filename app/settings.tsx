@@ -107,6 +107,16 @@ export default function SettingsScreen() {
             <Text style={styles.feedbackText}>Send Feedback / Report Issue</Text>
           </TouchableOpacity>
 
+          {/* Story Settings Section */}
+          <TouchableOpacity style={styles.settingsItem} onPress={() => router.push('/story-settings' as any)}>
+            <Feather name="camera" size={20} color="#FFB800" style={{ marginRight: 12 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingsTitle}>Story Settings</Text>
+              <Text style={styles.settingsSubtitle}>Privacy, replies & more</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color="#ccc" />
+          </TouchableOpacity>
+
           {/* App Version & About Section */}
           <View style={styles.aboutBox}>
             <Text style={styles.aboutTitle}>About trave-social</Text>
@@ -304,6 +314,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 4,
     elevation: 1,
+  },
+  settingsItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fffbf5',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: '#ffe0a3',
+  },
+  settingsTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#222',
+  },
+  settingsSubtitle: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
   },
   aboutTitle: {
     fontSize: 17,
