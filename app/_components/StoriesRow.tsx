@@ -319,6 +319,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
               {/* Header with User Profile */}
               <View style={styles.modalHeader}>
                 <TouchableOpacity
+                  activeOpacity={0.6}
                   onPress={() => { 
                     console.log('[StoriesRow] Close button pressed');
                     setShowUploadModal(false); 
@@ -329,43 +330,45 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                 >
                   <Feather name="x" size={24} color="#222" />
                 </TouchableOpacity>
-                <View style={{ flex: 1, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
-                  <TouchableOpacity 
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      console.log('[StoriesRow] Profile pic clicked, viewing stories...');
-                      // Set flag FIRST to prevent picker from opening
-                      setIsViewingStories(true);
-                      // Close modal and view own stories
-                      setShowUploadModal(false);
-                      setSelectedMedia(null);
-                      setLocationQuery('');
-                      setLocationSuggestions([]);
-                      
-                      // Find and open own stories
-                      const myUser = storyUsers.find(u => u.userId === authUser?.uid);
-                      console.log('[StoriesRow] My user:', myUser?.userId, 'Stories count:', myUser?.stories.length);
-                      if (myUser && myUser.stories.length > 0 && onStoryPress) {
-                        console.log('[StoriesRow] Opening stories viewer...');
-                        setTimeout(() => {
-                          onStoryPress(myUser.stories, 0);
-                          // Reset flag after opening viewer
-                          setIsViewingStories(false);
-                        }, 100);
-                      } else {
-                        console.log('[StoriesRow] No stories to view');
+                
+                {/* Title in center */}
+                <Text style={styles.modalTitle}>Create Story</Text>
+                
+                {/* Profile pic on right - can be tapped to view stories */}
+                <TouchableOpacity 
+                  activeOpacity={0.5}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  onPress={() => {
+                    console.log('[StoriesRow] ✅ Profile pic clicked - viewing stories...');
+                    // Set flag FIRST to prevent picker from opening
+                    setIsViewingStories(true);
+                    // Close modal and view own stories
+                    setShowUploadModal(false);
+                    setSelectedMedia(null);
+                    setLocationQuery('');
+                    setLocationSuggestions([]);
+                    
+                    // Find and open own stories
+                    const myUser = storyUsers.find(u => u.userId === authUser?.uid);
+                    console.log('[StoriesRow] My user:', myUser?.userId, 'Stories count:', myUser?.stories?.length);
+                    if (myUser && myUser.stories && myUser.stories.length > 0 && onStoryPress) {
+                      console.log('[StoriesRow] ✅ Opening stories viewer for', myUser.stories.length, 'stories');
+                      setTimeout(() => {
+                        onStoryPress(myUser.stories, 0);
+                        // Reset flag after opening viewer
                         setIsViewingStories(false);
-                      }
-                    }}
-                  >
-                    <Image
-                      source={{ uri: currentUserAvatar || DEFAULT_AVATAR_URL }}
-                      style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }}
-                    />
-                  </TouchableOpacity>
-                  <Text style={styles.modalTitle}>Create Story</Text>
-                </View>
-                <View style={{ width: 24 }} />
+                      }, 150);
+                    } else {
+                      console.log('[StoriesRow] ❌ No stories to view:', { hasUser: !!myUser, storiesCount: myUser?.stories?.length });
+                      setIsViewingStories(false);
+                    }
+                  }}
+                >
+                  <Image
+                    source={{ uri: currentUserAvatar || DEFAULT_AVATAR_URL }}
+                    style={{ width: 40, height: 40, borderRadius: 20 }}
+                  />
+                </TouchableOpacity>
               </View>
 
               <ScrollView
