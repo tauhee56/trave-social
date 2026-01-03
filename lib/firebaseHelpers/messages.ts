@@ -22,11 +22,16 @@ export function subscribeToMessages(conversationId: string, callback: (messages:
   const pollInterval = setInterval(async () => {
     try {
       const res = await apiService.get(`/conversations/${conversationId}/messages`);
-      if (res.success) {
-        callback(res.data || []);
+      console.log('[subscribeToMessages] Got response:', { success: res?.success, hasMessages: !!res?.messages, messageCount: res?.messages?.length });
+      if (res.success && res.messages) {
+        callback(res.messages);
+      } else {
+        console.warn('[subscribeToMessages] Invalid response:', res);
+        callback([]);
       }
     } catch (error) {
       console.error('Error polling messages:', error);
+      callback([]); // Return empty array on error
     }
   }, 5000);
 

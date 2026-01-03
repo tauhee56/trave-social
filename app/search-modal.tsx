@@ -57,12 +57,29 @@ export default function SearchModal() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [followingMap, setFollowingMap] = useState<{ [key: string]: boolean }>({});
 
-  // Get current user ID on mount
+  // Get current user ID and load following list on mount
   useEffect(() => {
-    AsyncStorage.getItem('userId').then(uid => {
+    AsyncStorage.getItem('userId').then(async uid => {
       if (uid) {
         setCurrentUserId(uid);
         console.log('[SearchModal] Current user ID:', uid);
+
+        // Load following list
+        try {
+          const { apiService } = await import('../app/_services/apiService');
+          const response = await apiService.get(`/follow/users/${uid}/following`);
+          if (response.success && Array.isArray(response.data)) {
+            const followingIds = response.data.map((f: any) => f.followingId);
+            const map: { [key: string]: boolean } = {};
+            followingIds.forEach((id: string) => {
+              map[id] = true;
+            });
+            setFollowingMap(map);
+            console.log('[SearchModal] Loaded following list:', followingIds.length, 'users');
+          }
+        } catch (error) {
+          console.error('[SearchModal] Failed to load following list:', error);
+        }
       }
     }).catch(err => console.error('[SearchModal] Failed to get userId:', err));
   }, []);
@@ -337,7 +354,14 @@ export default function SearchModal() {
                     <View style={styles.userResultRow}>
                       <TouchableOpacity
                         style={{ flexDirection: 'row', flex: 1, alignItems: 'center' }}
-                        onPress={() => router.push(`/user-profile?uid=${item.uid}`)}
+                        onPress={() => {
+                          // If own profile, navigate to Profile tab instead of user-profile
+                          if (isOwnProfile) {
+                            router.push('/(tabs)/profile');
+                          } else {
+                            router.push(`/user-profile?uid=${item.uid}`);
+                          }
+                        }}
                         accessibilityLabel={`Open profile for ${item.displayName || 'Traveler'}`}
                       >
                         <Image source={{ uri: item.photoURL || DEFAULT_AVATAR_URL }} style={styles.avatarImage} />
@@ -373,11 +397,12 @@ export default function SearchModal() {
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={styles.userActionBtn}
-                            onPress={() => {
+                            onPress={async () => {
                               if (!currentUserId || !item.uid) {
                                 console.log('[SearchModal] Missing IDs for follow:', { currentUserId, itemUid: item.uid });
                                 return;
                               }
+                              console.log('[SearchModal] Follow/Unfollow clicked for:', item.uid, 'Currently following:', followingMap[item.uid]);
                               const isFollowing = followingMap[item.uid];
                               console.log('[SearchModal] Toggle follow for', item.uid, 'currently following:', isFollowing);
                               if (isFollowing) {
