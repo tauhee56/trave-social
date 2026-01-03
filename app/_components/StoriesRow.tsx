@@ -320,10 +320,34 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                   <Feather name="x" size={24} color="#222" />
                 </TouchableOpacity>
                 <View style={{ flex: 1, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
-                  <Image
-                    source={{ uri: currentUserAvatar || DEFAULT_AVATAR_URL }}
-                    style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }}
-                  />
+                  <TouchableOpacity 
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      console.log('[StoriesRow] Profile pic clicked, viewing stories...');
+                      // Close modal and view own stories
+                      setShowUploadModal(false);
+                      setSelectedMedia(null);
+                      setLocationQuery('');
+                      setLocationSuggestions([]);
+                      
+                      // Find and open own stories
+                      const myUser = storyUsers.find(u => u.userId === authUser?.uid);
+                      console.log('[StoriesRow] My user:', myUser?.userId, 'Stories count:', myUser?.stories.length);
+                      if (myUser && myUser.stories.length > 0 && onStoryPress) {
+                        console.log('[StoriesRow] Opening stories viewer...');
+                        setTimeout(() => {
+                          onStoryPress(myUser.stories, 0);
+                        }, 100);
+                      } else {
+                        console.log('[StoriesRow] No stories to view');
+                      }
+                    }}
+                  >
+                    <Image
+                      source={{ uri: currentUserAvatar || DEFAULT_AVATAR_URL }}
+                      style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }}
+                    />
+                  </TouchableOpacity>
                   <Text style={styles.modalTitle}>Create Story</Text>
                 </View>
                 <View style={{ width: 24 }} />
@@ -533,30 +557,6 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
               >
                 <Text style={styles.shareButtonText}>
                   {uploading ? 'Sharing...' : 'Share Story'}
-                </Text>
-              </TouchableOpacity>
-
-              {/* View Your Stories Button */}
-              <TouchableOpacity
-                style={[styles.shareButton, { backgroundColor: '#f0f0f0', marginTop: 8 }]}
-                onPress={() => {
-                  // Close modal and view own stories
-                  setShowUploadModal(false);
-                  setSelectedMedia(null);
-                  setLocationQuery('');
-                  setLocationSuggestions([]);
-                  
-                  // Find and open own stories
-                  const myUser = storyUsers.find(u => u.userId === authUser?.uid);
-                  if (myUser && myUser.stories.length > 0 && onStoryPress) {
-                    setTimeout(() => {
-                      onStoryPress(myUser.stories, 0);
-                    }, 300);
-                  }
-                }}
-              >
-                <Text style={[styles.shareButtonText, { color: '#222' }]}>
-                  👁️ View Your Stories
                 </Text>
               </TouchableOpacity>
               </ScrollView>
