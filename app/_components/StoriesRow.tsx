@@ -247,7 +247,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
               <TouchableOpacity
                 pointerEvents={showUploadModal ? 'none' : 'auto'}
                 hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
-                style={[styles.addButton, { position: 'absolute', bottom: -12, right: -12, zIndex: 2 }]}
+                style={[styles.addButton, { position: 'absolute', bottom: -16, right: -16, zIndex: 10 }]}
                 onPress={handleAddStory}
               >
                 <Feather name="plus" size={18} color="#fff" />
@@ -642,8 +642,8 @@ const styles = StyleSheet.create({
   },
   addButton: {
     position: 'absolute',
-    bottom: -12,
-    right: -12,
+    bottom: -16,
+    right: -16,
     backgroundColor: '#007aff',
     borderRadius: 12,
     width: 26,
