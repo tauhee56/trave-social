@@ -147,11 +147,12 @@ export default function SearchModal() {
       searchUsers('', 10).then(result => {
         if (result.success && Array.isArray(result.data)) {
           const users = result.data.map((u: any) => ({
-            uid: u._id || u.uid || u.id,
+            uid: u.firebaseUid || u.uid || u._id || u.id,  // ✅ firebaseUid first!
             displayName: u.displayName || 'Unknown',
             photoURL: u.avatar || u.photoURL || DEFAULT_AVATAR_URL,
             bio: u.bio || ''
           }));
+          console.log('[SearchModal] Recommendations mapped:', users.map(u => ({ uid: u.uid, name: u.displayName })));
           setRecommendations(users);
         } else {
           setRecommendations([]);
@@ -172,11 +173,12 @@ export default function SearchModal() {
       const result = await searchUsers(q, 20);
       if (result.success && Array.isArray(result.data)) {
         const users = result.data.map((u: any) => ({
-          uid: u._id || u.uid || u.id,
+          uid: u.firebaseUid || u.uid || u._id || u.id,  // ✅ firebaseUid first!
           displayName: u.displayName || 'Unknown',
           photoURL: u.avatar || u.photoURL || DEFAULT_AVATAR_URL,
           bio: u.bio || ''
         }));
+        console.log('[SearchModal] Mapped users:', users.map(u => ({ uid: u.uid, name: u.displayName })));
         setUsers(users);
       } else {
         setUsers([]);
@@ -350,6 +352,7 @@ export default function SearchModal() {
                 keyExtractor={(item: User) => item.uid}
                 renderItem={({ item }: { item: User }) => {
                   const isOwnProfile = currentUserId === item.uid;
+                  console.log('[SearchModal] Rendering user:', item.displayName, 'uid:', item.uid, 'currentUserId:', currentUserId, 'isOwnProfile:', isOwnProfile);
                   return (
                     <View style={styles.userResultRow}>
                       <TouchableOpacity
