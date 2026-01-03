@@ -50,6 +50,7 @@ export default function Home() {
     const POSTS_PER_PAGE = 10;
     const [showStoriesViewer, setShowStoriesViewer] = useState(false);
     const [selectedStories, setSelectedStories] = useState<any[]>([]);
+    const [storyInitialIndex, setStoryInitialIndex] = useState(0);
     const [storiesRefreshTrigger, setStoriesRefreshTrigger] = useState(0);
     const flatListRef = React.useRef<FlatList>(null);
 
@@ -367,8 +368,10 @@ export default function Home() {
                 ListHeaderComponent={() => (
                     <View>
                         <StoriesRow
-                            onStoryPress={(stories) => {
+                            onStoryPress={(stories, initialIndex) => {
+                                console.log('[Home] onStoryPress called with', stories.length, 'stories, initialIndex:', initialIndex);
                                 setSelectedStories(stories);
+                                setStoryInitialIndex(initialIndex || 0);
                                 setShowStoriesViewer(true);
                             }}
                             refreshTrigger={storiesRefreshTrigger}
@@ -424,10 +427,9 @@ export default function Home() {
                 onEndReached={loadMorePosts}
                 onEndReachedThreshold={0.5}
             />
-
             {showStoriesViewer && (
                 <Modal visible={showStoriesViewer} animationType="fade" onRequestClose={() => setShowStoriesViewer(false)}>
-                    <StoriesViewer stories={selectedStories} onClose={() => setShowStoriesViewer(false)} />
+                    <StoriesViewer stories={selectedStories} initialIndex={storyInitialIndex} onClose={() => setShowStoriesViewer(false)} />
                 </Modal>
             )}
         </View>
