@@ -285,15 +285,15 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
                   </View>
                 </LinearGradient>
               </TouchableOpacity>
-              {/* Add story button overlay - TEMPORARILY HIDDEN */}
-              {/* <TouchableOpacity
+              {/* Add story button overlay - positioned at bottom-right corner */}
+              <TouchableOpacity
                 pointerEvents={showUploadModal ? 'none' : 'auto'}
                 hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
-                style={[styles.addButton, { position: 'absolute', bottom: -16, right: -16, zIndex: 10 }]}
+                style={[styles.addButton, { position: 'absolute', bottom: -8, right: -8, zIndex: 10 }]}
                 onPress={handleAddStory}
               >
                 <Feather name="plus" size={18} color="#fff" />
-              </TouchableOpacity> */}
+              </TouchableOpacity>
             </View>
           ) : (
             <TouchableOpacity
