@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, Text, ActivityIndicator, Platform } from 'react-native';
-import { Camera } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 
 interface ZeegocloudLiveHostProps {
   roomID: string;
@@ -30,10 +30,10 @@ export default function ZeegocloudLiveHost({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [useFallbackCamera, setUseFallbackCamera] = useState(false);
-  const cameraRef = useRef<Camera>(null);
+  const cameraRef = useRef<CameraView>(null);
 
-  // Update camera type based on prop (using string values for expo-camera)
-  const cameraType = isUsingFrontCamera ? 'front' : 'back';
+  // Update camera facing based on prop
+  const facing = isUsingFrontCamera ? 'front' : 'back';
 
   useEffect(() => {
     // Lazy load Zegocloud only when component is mounted
@@ -148,10 +148,10 @@ export default function ZeegocloudLiveHost({
     return (
       <View style={styles.container}>
         {isCameraOn ? (
-          <Camera
+          <CameraView
             ref={cameraRef}
             style={styles.camera}
-            type={cameraType}
+            facing={facing}
           >
             <View style={styles.fallbackOverlay}>
               <View style={styles.statusBadge}>
@@ -167,7 +167,7 @@ export default function ZeegocloudLiveHost({
                 </View>
               )}
             </View>
-          </Camera>
+          </CameraView>
         ) : (
           <View style={[styles.container, styles.centered]}>
             <Text style={styles.cameraOffText}>📷 Camera Off</Text>
