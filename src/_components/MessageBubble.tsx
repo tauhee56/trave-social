@@ -60,7 +60,6 @@ export default function MessageBubble({
     </View>
   );
 }
-}
 
 const styles = StyleSheet.create({
   msgBubble: {
