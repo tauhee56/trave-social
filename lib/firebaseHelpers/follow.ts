@@ -1,5 +1,18 @@
 import { apiService } from '../../app/_services/apiService';
 
+// Check if user is following another user
+export async function checkFollowStatus(followerId: string, followingId: string) {
+  try {
+    console.log('[checkFollowStatus] Checking follow status:', { followerId, followingId });
+    const res = await apiService.get('/follow/status', { followerId, followingId });
+    console.log('[checkFollowStatus] Response:', res);
+    return res;
+  } catch (error: any) {
+    console.error('[checkFollowStatus] Error:', error.message);
+    return { success: false, isFollowing: false, error: error.message };
+  }
+}
+
 // Stub for isApprovedFollower
 export async function isApprovedFollower(followerId: string, followingId: string) {
   // Implement actual logic as needed

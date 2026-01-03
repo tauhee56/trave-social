@@ -210,7 +210,7 @@ export default function Profile({ userIdProp }: any) {
   const [commentModalAvatar, setCommentModalAvatar] = useState<string>('');
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [createHighlightModalVisible, setCreateHighlightModalVisible] = useState(false);
-  const isFollowing = !!(profile?.followers || []).includes(currentUserId || '');
+  const [isFollowing, setIsFollowing] = useState(false);
   const visiblePosts = selectedSection
     ? posts.filter((p: any) => (sections.find((s: any) => s.name === selectedSection)?.postIds || []).includes(p.id))
     : posts;
@@ -227,19 +227,37 @@ export default function Profile({ userIdProp }: any) {
         }
       } else {
         if (isFollowing) {
+          console.log('[handleFollowToggle] Unfollowing user:', viewedUserId);
           const res = await unfollowUser(currentUserId, viewedUserId);
+          console.log('[handleFollowToggle] Unfollow response:', res);
           setApprovedFollower(false);
           if (res.success) {
-            setProfile((prev) => prev ? { ...prev, followers: (prev.followers || []).filter((id: string) => id !== currentUserId), followersCount: Math.max(0, (prev.followersCount || 1) - 1) } : prev);
+            // Update local state immediately
+            setIsFollowing(false);
+            // Refresh profile data from backend to get updated counts
+            const profileRes = await getUserProfileAPI(viewedUserId, currentUserId || undefined);
+            if (profileRes.success && profileRes.data) {
+              setProfile(profileRes.data);
+            }
           }
         } else {
+          console.log('[handleFollowToggle] Following user:', viewedUserId);
           const res = await followUser(currentUserId, viewedUserId);
+          console.log('[handleFollowToggle] Follow response:', res);
           if (res.success) {
-            setProfile((prev) => prev ? { ...prev, followers: [...(prev.followers || []), currentUserId], followersCount: (prev.followersCount || 0) + 1 } : prev);
+            // Update local state immediately
+            setIsFollowing(true);
+            // Refresh profile data from backend to get updated counts
+            const profileRes = await getUserProfileAPI(viewedUserId, currentUserId || undefined);
+            if (profileRes.success && profileRes.data) {
+              setProfile(profileRes.data);
+            }
           }
         }
       }
-    } catch (err) {}
+    } catch (err) {
+      console.error('[handleFollowToggle] Error:', err);
+    }
     setFollowLoading(false);
   };
 
@@ -440,6 +458,16 @@ export default function Profile({ userIdProp }: any) {
             setIsPrivate(profileData?.isPrivate || false);
             setApprovedFollower(profileData?.approvedFollowers?.includes(currentUserId || '') || false);
             setFollowRequestPending(profileData?.followRequestPending || false);
+
+            // Check follow status if not own profile
+            if (!isOwnProfile && currentUserId && viewedUserId) {
+              const { checkFollowStatus } = await import('../../lib/firebaseHelpers/follow');
+              const followStatusRes = await checkFollowStatus(currentUserId, viewedUserId);
+              console.log('[Profile] Follow status:', followStatusRes);
+              if (followStatusRes.success) {
+                setIsFollowing(followStatusRes.isFollowing || false);
+              }
+            }
           } else {
             console.warn('[Profile] Profile fetch failed:', profileRes.error);
             setProfile(null);

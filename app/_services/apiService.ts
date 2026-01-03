@@ -95,14 +95,20 @@ async function apiRequestWithRetry(method: string, url: string, data?: any, conf
       const requestConfig: any = {
         method,
         url,
-        data,
       };
-      
+
+      // For DELETE requests, data goes in the 'data' field (axios supports this)
+      if (method === 'delete' && data) {
+        requestConfig.data = data;
+      } else if (data) {
+        requestConfig.data = data;
+      }
+
       // Handle params from config object
       if (config?.params) {
         requestConfig.params = config.params;
       }
-      
+
       // Handle old-style params as second argument for get
       if (method === 'get' && config && !config.params && typeof config === 'object') {
         requestConfig.params = config;
