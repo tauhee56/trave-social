@@ -455,6 +455,9 @@ export default function GoLiveScreen() {
           userID={currentUser?.uid || 'anonymous'}
           userName={currentUser?.displayName || 'Anonymous'}
           onLeave={handleEndStream}
+          isCameraOn={isCameraOn}
+          isMuted={isMuted}
+          isUsingFrontCamera={isUsingFrontCamera}
         />
       </View>
 
