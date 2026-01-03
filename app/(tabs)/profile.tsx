@@ -238,6 +238,7 @@ export default function Profile({ userIdProp }: any) {
             const profileRes = await getUserProfileAPI(viewedUserId, currentUserId || undefined);
             if (profileRes.success && profileRes.data) {
               setProfile(profileRes.data);
+              console.log('[handleFollowToggle] Profile refreshed after unfollow');
             }
           }
         } else {
@@ -251,14 +252,17 @@ export default function Profile({ userIdProp }: any) {
             const profileRes = await getUserProfileAPI(viewedUserId, currentUserId || undefined);
             if (profileRes.success && profileRes.data) {
               setProfile(profileRes.data);
+              console.log('[handleFollowToggle] Profile refreshed after follow');
             }
           }
         }
       }
     } catch (err) {
       console.error('[handleFollowToggle] Error:', err);
+      Alert.alert('Error', 'Failed to update follow status. Please try again.');
+    } finally {
+      setFollowLoading(false);
     }
-    setFollowLoading(false);
   };
 
   const handleMessage = () => {

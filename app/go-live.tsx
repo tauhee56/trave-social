@@ -30,6 +30,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logger } from '../utils/logger';
+import { Camera } from 'expo-camera';
+import { Audio } from 'expo-av';
 // ZeegoCloud imports
 import { ZEEGOCLOUD_CONFIG, generateRoomId } from '../config/zeegocloud';
 import ZeegocloudStreamingService from '../services/implementations/ZeegocloudStreamingService';
@@ -197,9 +199,6 @@ export default function GoLiveScreen() {
   // Request camera and microphone permissions
   const requestPermissions = async () => {
     try {
-      const { Camera } = await import('expo-camera');
-      const { Audio } = await import('expo-av');
-
       console.log('📷 Requesting camera permission...');
       const cameraPermission = await Camera.requestCameraPermissionsAsync();
       console.log('📷 Camera permission:', cameraPermission.status);
@@ -221,6 +220,7 @@ export default function GoLiveScreen() {
       return true;
     } catch (error) {
       console.error('Permission request error:', error);
+      Alert.alert('Error', 'Failed to request permissions. Please check app settings.');
       return false;
     }
   };
