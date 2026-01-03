@@ -135,23 +135,44 @@ export default function DM() {
     setHasMoreMessages(true);
     setLoading(true);
 
+    let loadingTimeout: NodeJS.Timeout | null = null;
+    let isMounted = true;
+
+    // Safety timeout - force stop loading after 10 seconds
+    loadingTimeout = setTimeout(() => {
+      if (isMounted) {
+        console.warn('[DM] Loading timeout - forcing stop loading after 10s');
+        setLoading(false);
+      }
+    }, 10000);
+
     // Fetch initial messages from backend
     fetchMessages(conversationId)
       .then(res => {
-        console.log('[DM] Fetched messages:', res?.messages?.length || 0);
-        setMessages(res?.messages || []);
+        if (isMounted) {
+          console.log('[DM] Fetched messages:', res?.messages?.length || 0);
+          setMessages(res?.messages || []);
+        }
       })
       .catch(err => {
-        console.error('[DM] Failed to fetch messages:', err);
-        setMessages([]);
+        if (isMounted) {
+          console.error('[DM] Failed to fetch messages:', err);
+          setMessages([]);
+        }
       })
       .finally(() => {
-        setLoading(false);  // CRITICAL: Always stop loading
+        if (isMounted) {
+          console.log('[DM] Finished loading - setting loading=false');
+          setLoading(false);
+          if (loadingTimeout) clearTimeout(loadingTimeout);
+        }
       });
 
     // Subscribe to real-time messages via socket
     const unsub = subscribeToMessages(conversationId, (messages: any[]) => {
-      setMessages(messages);
+      if (isMounted) {
+        setMessages(messages);
+      }
     });
 
     // Mark as read when opening conversation
@@ -160,6 +181,8 @@ export default function DM() {
     }
 
     return () => {
+      isMounted = false;
+      if (loadingTimeout) clearTimeout(loadingTimeout);
       if (typeof unsub === 'function') unsub();
     };
     // eslint-disable-next-line
