@@ -153,20 +153,12 @@ export default function ZeegocloudLiveHost({
             style={styles.camera}
             facing={facing}
           >
-            <View style={styles.fallbackOverlay}>
-              <View style={styles.statusBadge}>
-                <View style={styles.liveDot} />
-                <Text style={styles.fallbackText}>LIVE</Text>
+            {/* Only show muted badge if muted */}
+            {isMuted && (
+              <View style={styles.mutedBadgeCenter}>
+                <Text style={styles.mutedText}>🔇 Muted</Text>
               </View>
-              <Text style={styles.fallbackSubtext}>
-                📹 Camera Active
-              </Text>
-              {isMuted && (
-                <View style={styles.mutedBadge}>
-                  <Text style={styles.mutedText}>🔇 Muted</Text>
-                </View>
-              )}
-            </View>
+            )}
           </CameraView>
         ) : (
           <View style={[styles.container, styles.centered]}>
@@ -257,6 +249,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
+  },
+  mutedBadgeCenter: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -50 }, { translateY: -20 }],
+    backgroundColor: 'rgba(255, 68, 68, 0.9)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 25,
   },
   mutedText: {
     color: '#fff',
