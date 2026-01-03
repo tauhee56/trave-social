@@ -376,7 +376,7 @@ export default function DM() {
     );
   }
 
-  if (loading || profileLoading) {
+  if (loading) {
     return (
       <SafeAreaView style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]} edges={["top", "bottom"]}>
         <ActivityIndicator size="large" color="#007aff" />
