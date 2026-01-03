@@ -304,8 +304,39 @@ export default function PassportScreen() {
     }).toUpperCase();
   };
 
+  // Skeleton Loader Component
+  const SkeletonStamp = () => (
+    <View style={[styles.stampCard, { backgroundColor: '#f0f0f0' }]}>
+      <View style={{ height: 100, backgroundColor: '#e0e0e0', borderRadius: 8 }} />
+      <View style={{ marginTop: 8, height: 12, width: '60%', backgroundColor: '#e0e0e0', borderRadius: 4 }} />
+      <View style={{ marginTop: 4, height: 10, width: '40%', backgroundColor: '#e0e0e0', borderRadius: 4 }} />
+    </View>
+  );
+
+  // Loading state with skeleton
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#000" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Passport</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.stampsGrid}>
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <SkeletonStamp key={i} />
+            ))}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   // Empty state - no stamps yet
-  if (!loading && stamps.length === 0) {
+  if (stamps.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         {/* Header */}

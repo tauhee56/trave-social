@@ -363,8 +363,8 @@ export async function getCurrentLocation(): Promise<LocationData | null> {
     console.log('📍 Getting current position...');
     const location = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.Balanced,
-      timeoutMs: 15000, // 15 second timeout
-      maximumAge: 10000, // Accept cached location up to 10 seconds old
+      timeoutMs: 8000, // Reduced to 8 seconds for faster response
+      maximumAge: 30000, // Accept cached location up to 30 seconds old (faster)
     });
 
     console.log('📍 Got coordinates:', location.coords.latitude, location.coords.longitude);
