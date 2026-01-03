@@ -1,8 +1,9 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { debounce } from 'lodash';
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAllPosts, searchUsers } from '../lib/firebaseHelpers/index';
 import { getPostsByHashtag, getTrendingHashtags } from '../lib/mentions';
 
@@ -23,6 +24,20 @@ export default function SearchScreen() {
     searchType === 'hashtag' ? 'hashtags' : 'posts'
   );
   const [allPosts, setAllPosts] = useState<any[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Get current user ID on mount
+  useEffect(() => {
+    const getCurrentUserId = async () => {
+      try {
+        const userId = await AsyncStorage.getItem('userId');
+        setCurrentUserId(userId);
+      } catch (error) {
+        console.error('Failed to get userId:', error);
+      }
+    };
+    getCurrentUserId();
+  }, []);
 
   // Load trending hashtags on mount
   React.useEffect(() => {
@@ -76,7 +91,11 @@ export default function SearchScreen() {
       const cacheKey = `${tab}_${text.toLowerCase()}`;
       const cached = searchCache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-        if (tab === 'users') setUserResults(cached.users);
+        if (tab === 'users') {
+          // Filter out current user
+          const filteredUsers = cached.users.filter(u => u.id !== currentUserId && u._id !== currentUserId);
+          setUserResults(filteredUsers);
+        }
         else if (tab === 'hashtags') setPostResults(cached.posts);
         else setPostResults(cached.posts);
         setLoading(false);
@@ -88,8 +107,11 @@ export default function SearchScreen() {
         if (tab === 'users') {
           const result = await searchUsers(text, 15);
           const users = result.success ? result.data : [];
-          setUserResults(users);
-          searchCache.set(cacheKey, { users, posts: [], timestamp: Date.now() });
+          // Filter out current user from results
+          const filteredUsers = users.filter((u: any) => u.id !== currentUserId && u._id !== currentUserId);
+          console.log('[Search] Found', users.length, 'users, showing', filteredUsers.length, 'after filtering current user');
+          setUserResults(filteredUsers);
+          searchCache.set(cacheKey, { users: filteredUsers, posts: [], timestamp: Date.now() });
         } else if (tab === 'hashtags') {
           // Search for posts with this hashtag
           const cleanHashtag = text.replace(/^#+/, ''); // Remove leading # if present
@@ -179,7 +201,19 @@ export default function SearchScreen() {
           data={userResults}
           keyExtractor={item => item.uid || item.id}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.row} onPress={() => router.push({ pathname: '/user-profile', params: { uid: item.uid || item.id } })}>
+            <TouchableOpacity 
+              style={styles.row} 
+              onPress={() => {
+                const itemUserId = item.uid || item.id;
+                // If it's current user, go to profile tab instead of wrapper
+                if (itemUserId === currentUserId) {
+                  router.push('/(tabs)/profile');
+                } else {
+                  // Other users go to wrapper with uid param
+                  router.push({ pathname: '/user-profile', params: { uid: itemUserId } });
+                }
+              }}
+            >
               <Image source={{ uri: item.photoURL || item.avatar || 'https://via.placeholder.com/200x200.png?text=Profile' }} style={styles.avatar} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{item.displayName || item.userName || 'User'}</Text>

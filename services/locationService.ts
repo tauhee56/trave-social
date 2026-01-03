@@ -334,25 +334,76 @@ export async function stopLocationTracking(): Promise<void> {
  */
 export async function getCurrentLocation(): Promise<LocationData | null> {
   try {
+    console.log('📍 Starting location detection...');
+
+    // Check if we have permission first
+    const { status } = await Location.getForegroundPermissionsAsync();
+    console.log('📍 Current permission status:', status);
+
+    if (status !== 'granted') {
+      console.log('⚠️ Location permission not granted, requesting...');
+      const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
+      console.log('📍 New permission status:', newStatus);
+
+      if (newStatus !== 'granted') {
+        console.log('❌ Location permission denied by user');
+        throw new Error('Location permission denied. Please go to Settings > Apps > Trave-Social > Permissions and enable Location.');
+      }
+    }
+
+    // Check if location services are enabled
+    const isEnabled = await Location.hasServicesEnabledAsync();
+    console.log('📍 Location services enabled:', isEnabled);
+
+    if (!isEnabled) {
+      console.log('❌ Location services are disabled');
+      throw new Error('Location services are disabled. Please enable GPS in your device settings.');
+    }
+
+    console.log('📍 Getting current position...');
     const location = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.Balanced,
+      timeoutMs: 15000, // 15 second timeout
+      maximumAge: 10000, // Accept cached location up to 10 seconds old
     });
 
+    console.log('📍 Got coordinates:', location.coords.latitude, location.coords.longitude);
+
+    console.log('📍 Reverse geocoding...');
     const locationInfo = await reverseGeocode(
       location.coords.latitude,
       location.coords.longitude
     );
 
+    if (!locationInfo || !locationInfo.city) {
+      console.log('⚠️ Could not determine city from coordinates');
+      throw new Error('Could not determine your city. Please make sure you have a good GPS signal.');
+    }
+
+    console.log('✅ Location detected:', locationInfo.city, locationInfo.country);
+
     return {
       latitude: location.coords.latitude,
       longitude: location.coords.longitude,
-      city: locationInfo?.city,
-      country: locationInfo?.country,
+      city: locationInfo.city,
+      country: locationInfo.country,
       timestamp: Date.now(),
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Error getting current location:', error);
-    return null;
+
+    // Provide user-friendly error messages
+    if (error.message?.includes('permission') || error.code === 'E_LOCATION_UNAUTHORIZED') {
+      throw new Error('Location permission denied. Please go to Settings > Apps > Trave-Social > Permissions and enable Location.');
+    } else if (error.message?.includes('disabled') || error.code === 'E_LOCATION_SERVICES_DISABLED') {
+      throw new Error('Location services are disabled. Please enable GPS in your device settings.');
+    } else if (error.message?.includes('timeout') || error.code === 'E_LOCATION_TIMEOUT') {
+      throw new Error('Location request timed out. Please make sure you are outdoors or near a window for better GPS signal.');
+    } else if (error.message?.includes('unavailable')) {
+      throw new Error('Location is temporarily unavailable. Please try again in a moment.');
+    } else {
+      throw new Error(error.message || 'Could not get your location. Please check your GPS settings and try again.');
+    }
   }
 }
 

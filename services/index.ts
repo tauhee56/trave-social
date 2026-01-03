@@ -5,7 +5,7 @@
  */
 
 // Import implementations
-import { AgoraStreamingService } from './implementations/AgoraStreamingService';
+import ZeegocloudStreamingService from './implementations/ZeegocloudStreamingService';
 import { FirebaseStorageService } from './implementations/FirebaseStorageService';
 import { GoogleMapsService } from './implementations/GoogleMapsService';
 
@@ -70,12 +70,12 @@ export const mapService: IMapService = {
 
 /**
  * Streaming Service
- * Current: Agora
+ * Current: Zeegocloud
  * To swap: Replace with new TwilioService(), AWSIVSService(), etc.
  */
 export const getStreamingService = (): IStreamingService => {
   if (!_streamingService) {
-    _streamingService = new AgoraStreamingService();
+    _streamingService = ZeegocloudStreamingService.getInstance();
   }
   return _streamingService;
 };

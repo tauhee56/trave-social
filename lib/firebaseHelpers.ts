@@ -544,8 +544,8 @@ export async function addUserSection(userId: string, section: { name: string; po
   }
 }
 
-export async function updateUserSection(userId: string, section: { name: string; postIds: string[]; coverImage?: string }) {
-  await apiService.put(`/users/${userId}/sections/${encodeURIComponent(section.name)}`, section);
+export async function updateUserSection(userId: string, sectionIdOrName: string, section: { name: string; postIds: string[]; coverImage?: string }) {
+  await apiService.put(`/users/${userId}/sections/${encodeURIComponent(sectionIdOrName)}`, section);
   return { success: true };
 }
 
@@ -610,7 +610,8 @@ export async function createPost(
     
     const payload = { 
       userId, 
-      caption, 
+      content: caption,  // Backend expects 'content' field
+      caption,  // Also send caption for compatibility
       location, 
       locationData, 
       mediaType, 
@@ -623,16 +624,25 @@ export async function createPost(
     
     console.log('[createPost] Posting to /posts with payload:', payload);
     const res = await apiService.post('/posts', payload);
-    
-    // Handle nested response
-    const postId = res?.data?._id || res?.data?.postId || res?.postId || res?._id || res?.id;
-    
+
+    console.log('[createPost] Full response:', JSON.stringify(res, null, 2));
+
+    // Handle nested response - check all possible locations
+    const postId = res?.data?._id || res?.data?.postId || res?.data?.id ||
+                   res?.postId || res?._id || res?.id ||
+                   res?.data?.data?._id || res?.data?.data?.id;
+
     if (!postId) {
-      console.error('[createPost] No postId in response:', res);
+      console.error('[createPost] ❌ No postId in response. Full response:', JSON.stringify(res, null, 2));
+      // Still return success if we got a 200/201 response
+      if (res?.status === 200 || res?.status === 201 || res?.success) {
+        console.warn('[createPost] ⚠️ Post likely created but no ID returned');
+        return { success: true, postId: 'unknown' };
+      }
       throw new Error('No postId returned from server');
     }
-    
-    console.log('[createPost] ✅ Post created:', postId);
+
+    console.log('[createPost] ✅ Post created with ID:', postId);
     return { success: true, postId };
   } catch (err: any) {
     console.error('[createPost] ❌ Error:', err.message);
@@ -735,18 +745,17 @@ export async function createStory(
   let userName = 'Anonymous';
   try {
     console.log('[createStory] Fetching profile for userId:', userId);
-    const userProfile = await getUserProfile(userId);
-    console.log('[createStory] User profile result:', userProfile);
-    
-    if (userProfile?.success && userProfile?.data) {
-      if (userProfile.data.displayName) {
-        userName = userProfile.data.displayName;
+    const userProfileRes: any = await apiService.get(`/users/${userId}`);
+    console.log('[createStory] User profile result:', userProfileRes);
+    if (userProfileRes?.success && userProfileRes?.data) {
+      if (userProfileRes.data.displayName) {
+        userName = userProfileRes.data.displayName;
         console.log('[createStory] Using displayName:', userName);
-      } else if (userProfile.data.name) {
-        userName = userProfile.data.name;
+      } else if (userProfileRes.data.name) {
+        userName = userProfileRes.data.name;
         console.log('[createStory] Using name:', userName);
-      } else if (userProfile.data.userName) {
-        userName = userProfile.data.userName;
+      } else if (userProfileRes.data.userName) {
+        userName = userProfileRes.data.userName;
         console.log('[createStory] Using userName:', userName);
       }
     }

@@ -247,7 +247,6 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
       onClose();
     }
   }, [progress, currentIndex, localStories.length, onClose]);
-  }, [currentIndex, localStories.length, isPaused, showComments, imageLoading, videoDuration]);
 
   const currentStory = localStories[currentIndex];
   const isLiked = currentStory.likes?.includes(currentUser?.uid || '') || false;

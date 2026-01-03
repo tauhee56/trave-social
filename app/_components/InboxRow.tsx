@@ -15,10 +15,15 @@ export default function InboxRow({ item, router, unread, formatTime, DEFAULT_AVA
   } else if (Array.isArray(item.participants) && item.currentUserId) {
     otherUserId = item.participants.find((uid: string) => uid !== item.currentUserId) || '';
   }
+  
+  console.log('📱 InboxRow rendering:', { otherUserId, participantsCount: item.participants?.length, currentUserId: item.currentUserId });
+  
   const { profile, loading } = useUserProfile(otherUserId);
   
-  const username = profile?.username;
+  const username = profile?.username || 'User';
   const avatar = profile?.avatar;
+  
+  console.log('👤 InboxRow profile loaded:', { username, avatarExists: !!avatar, profileLoading: loading });
   
   // Track user's active status
   const [presence, setPresence] = useState<UserPresence | null>(null);
@@ -43,7 +48,11 @@ export default function InboxRow({ item, router, unread, formatTime, DEFAULT_AVA
     <TouchableOpacity
       style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 }}
       onPress={() => {
-        if (!otherUserId) return;
+        if (!otherUserId) {
+          console.warn('❌ No otherUserId, cannot navigate to DM');
+          return;
+        }
+        console.log('🔵 Navigating to DM:', { conversationId: item.id, otherUserId });
         router.push({ 
           pathname: '/dm', 
           params: { 
@@ -66,12 +75,15 @@ export default function InboxRow({ item, router, unread, formatTime, DEFAULT_AVA
             borderWidth: 2, 
             borderColor: '#ccc' 
           }} 
+          onError={() => console.log('❌ Avatar image failed to load:', safeAvatar)}
         />
       </View>
       <View style={{ flex: 1, borderBottomWidth: 0, paddingRight: 8 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-            <Text style={[{ fontWeight: '700', fontSize: 15, color: '#111', flex: 1 }, unread > 0 && { color: '#111' }]} numberOfLines={1}>{username}</Text>
+            <Text style={[{ fontWeight: '700', fontSize: 15, color: '#111', flex: 1 }, unread > 0 && { color: '#111' }]} numberOfLines={1}>
+              {username || otherUserId?.substring(0, 8) || 'User'}
+            </Text>
             {presence?.isOnline && (
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#31a24c', marginLeft: 6 }} />
             )}

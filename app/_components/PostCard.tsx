@@ -751,7 +751,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
               )}
               <View style={styles.locationTextWrap}>
                 <Text style={styles.locationName} numberOfLines={1} ellipsizeMode="tail">
-                  {post?.locationName || 'Unknown Location'}
+                  {post?.locationData?.name || post?.locationName || post?.location || 'Unknown Location'}
                 </Text>
                 <Text style={styles.visits}>{visitCount.toLocaleString()} Visits</Text>
               </View>

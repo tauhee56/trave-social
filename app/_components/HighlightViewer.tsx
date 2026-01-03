@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Dimensions, Image, Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Image, Modal, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { getHighlightStories } from '../../lib/firebaseHelpers/index';
+import { removeStoryFromHighlight } from '../../lib/firebaseHelpers/highlights';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -8,19 +10,31 @@ interface HighlightViewerProps {
   visible: boolean;
   highlightId: string | null;
   onClose: () => void;
+  userId?: string;
 }
 
-const HighlightViewer: React.FC<HighlightViewerProps> = ({ visible, highlightId, onClose }) => {
-  const [stories, setStories] = useState<any[]>([]);
+interface Story {
+  id?: string;
+  _id?: string;
+  imageUrl?: string;
+  videoUrl?: string;
+}
+
+const HighlightViewer: React.FC<HighlightViewerProps> = ({ visible, highlightId, onClose, userId }) => {
+  const [stories, setStories] = useState<Story[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (highlightId && visible) {
       setLoading(true);
       getHighlightStories(highlightId).then(res => {
-        if (res.success) {
-          setStories(res.stories || []);
+        if (res?.success) {
+          const storyArray = Array.isArray(res.stories) ? res.stories : (res.data || []);
+          setStories(storyArray);
+        } else if (res?.stories) {
+          setStories(Array.isArray(res.stories) ? res.stories : []);
         } else {
           setStories([]);
         }
@@ -44,16 +58,60 @@ const HighlightViewer: React.FC<HighlightViewerProps> = ({ visible, highlightId,
     }
   };
 
+  const handleDeleteStory = async () => {
+    if (!highlightId || !stories[currentIndex]) return;
+
+    Alert.alert(
+      'Delete Story',
+      'Remove this story from highlight?',
+      [
+        { text: 'Cancel' },
+        {
+          text: 'Delete',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              const storyId = stories[currentIndex].id || stories[currentIndex]._id;
+              const result = await removeStoryFromHighlight(highlightId, storyId);
+              
+              if (result.success || result.data) {
+                // Remove from local state
+                const newStories = stories.filter((_, idx) => idx !== currentIndex);
+                setStories(newStories);
+                
+                if (newStories.length === 0) {
+                  onClose();
+                } else if (currentIndex >= newStories.length) {
+                  setCurrentIndex(newStories.length - 1);
+                }
+              } else {
+                Alert.alert('Error', 'Failed to delete story');
+              }
+            } catch (error: any) {
+              Alert.alert('Error', 'Failed to delete story: ' + error.message);
+            } finally {
+              setDeleting(false);
+            }
+          },
+          style: 'destructive'
+        }
+      ]
+    );
+  };
+
   return (
     <Modal visible={visible} animationType="fade" transparent={true} onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-          <Text style={{ color: '#fff', fontSize: 22 }}>×</Text>
+        <TouchableOpacity style={styles.closeBtn} onPress={onClose} disabled={deleting}>
+          <Ionicons name="close-circle" size={32} color="#fff" />
         </TouchableOpacity>
         {loading ? (
-          <Text style={styles.loadingText}>Loading...</Text>
+          <ActivityIndicator size="large" color="#fff" />
         ) : stories.length === 0 ? (
-          <Text style={styles.loadingText}>No stories</Text>
+          <View style={styles.emptyContainer}>
+            <Ionicons name="image-outline" size={48} color="#999" />
+            <Text style={styles.loadingText}>No stories in this highlight</Text>
+          </View>
         ) : (
           <View style={styles.storyContainer}>
             <Image
@@ -61,19 +119,55 @@ const HighlightViewer: React.FC<HighlightViewerProps> = ({ visible, highlightId,
               style={styles.storyImage}
               resizeMode="cover"
             />
+            
             {/* Progress bar */}
             <View style={styles.progressBarContainer}>
               {stories.map((_, idx) => (
                 <View
                   key={idx}
-                  style={[styles.progressBar, idx <= currentIndex ? styles.progressBarActive : null]}
+                  style={[
+                    styles.progressBar,
+                    idx < currentIndex ? styles.progressBarActive : idx === currentIndex ? styles.progressBarCurrent : null
+                  ]}
                 />
               ))}
             </View>
+            
+            {/* Top Info */}
+            <View style={styles.topInfo}>
+              <Text style={styles.storyCounter}>
+                {currentIndex + 1} / {stories.length}
+              </Text>
+              {userId && (
+                <TouchableOpacity
+                  style={styles.deleteBtn}
+                  onPress={handleDeleteStory}
+                  disabled={deleting}
+                >
+                  {deleting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="trash-outline" size={20} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+            
             {/* Navigation */}
             <View style={styles.navContainer}>
-              <TouchableOpacity style={styles.navBtn} onPress={handlePrev} disabled={currentIndex === 0} />
-              <TouchableOpacity style={styles.navBtn} onPress={handleNext} />
+              <TouchableOpacity
+                style={[styles.navBtn, styles.navBtnLeft]}
+                onPress={handlePrev}
+                disabled={currentIndex === 0}
+              >
+                <Ionicons name="chevron-back" size={28} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.navBtn, styles.navBtnRight]}
+                onPress={handleNext}
+              >
+                <Ionicons name="chevron-forward" size={28} color="#fff" />
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -89,6 +183,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   closeBtn: {
     position: 'absolute',
     top: 40,
@@ -98,8 +196,8 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: '#fff',
-    fontSize: 18,
-    marginTop: 80,
+    fontSize: 16,
+    marginTop: 12,
     textAlign: 'center',
   },
   storyContainer: {
@@ -110,30 +208,56 @@ const styles = StyleSheet.create({
   },
   storyImage: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.8,
-    borderRadius: 12,
-    backgroundColor: '#222',
+    height: SCREEN_HEIGHT,
+    backgroundColor: '#000',
   },
   progressBarContainer: {
     flexDirection: 'row',
     position: 'absolute',
-    top: 24,
+    top: 50,
     left: 0,
     right: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    gap: 4,
+    paddingHorizontal: 16,
+    gap: 3,
+    zIndex: 5,
   },
   progressBar: {
     flex: 1,
-    height: 3,
-    backgroundColor: '#555',
-    marginHorizontal: 2,
-    borderRadius: 2,
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 1,
   },
   progressBarActive: {
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(255,255,255,1)',
+  },
+  progressBarCurrent: {
+    backgroundColor: 'rgba(255,255,255,0.7)',
+  },
+  topInfo: {
+    position: 'absolute',
+    top: 90,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  storyCounter: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  deleteBtn: {
+    backgroundColor: 'rgba(255,59,48,0.7)',
+    padding: 8,
+    borderRadius: 20,
   },
   navContainer: {
     position: 'absolute',
@@ -144,10 +268,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 12,
+    zIndex: 3,
   },
   navBtn: {
-    width: SCREEN_WIDTH * 0.3,
-    height: '100%',
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navBtnLeft: {
+    alignItems: 'flex-start',
+  },
+  navBtnRight: {
+    alignItems: 'flex-end',
   },
 });
 

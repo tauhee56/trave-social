@@ -6,12 +6,74 @@ import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View }
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image } from 'react-native';
 // import { useAuthLoading, useUser } from './_components/UserContext';
 // import {} from '../lib/firebaseHelpers';
 // @ts-ignore
 import { useInboxPolling } from '../hooks/useInboxPolling';
 import { archiveConversation } from '../lib/firebaseHelpers/archive';
 import InboxRow from '../src/_components/InboxRow';
+import { useUserProfile } from '../app/_hooks/useUserProfile';
+
+// Helper component to show conversation with user profile
+function ConversationItem({ item, userId, router, formatTime, conversations, setConversations }: any) {
+  const otherUserId = item.participants?.find((uid: string) => uid !== userId);
+  const { profile, loading } = useUserProfile(otherUserId);
+  const username = profile?.username || profile?.displayName || profile?.name || otherUserId?.substring(0, 12) || 'User';
+  const avatar = profile?.avatar || profile?.photoURL;
+  const lastMsgPreview = item.lastMessage?.substring(0, 40) || 'No messages yet';
+  
+  const DEFAULT_AVATAR = 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1/default/default-pic.jpg';
+  const displayAvatar = avatar && avatar.trim() ? avatar : DEFAULT_AVATAR;
+  
+  return (
+    <TouchableOpacity
+      style={{
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f5f5f5',
+        flexDirection: 'row',
+        alignItems: 'center'
+      }}
+      onPress={() => {
+        if (!otherUserId) return;
+        router.push({
+          pathname: '/dm',
+          params: {
+            conversationId: item.id || item._id,
+            otherUserId: otherUserId,
+            user: username
+          }
+        });
+      }}
+    >
+      <Image
+        source={{ uri: displayAvatar }}
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          marginRight: 12,
+          backgroundColor: '#eee'
+        }}
+      />
+      
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontWeight: '700', fontSize: 15, color: '#000', marginBottom: 4 }}>
+          {username}
+        </Text>
+        <Text style={{ color: '#666', fontSize: 13 }} numberOfLines={1}>
+          {lastMsgPreview}
+        </Text>
+      </View>
+      
+      <Text style={{ color: '#999', fontSize: 12 }}>
+        {formatTime(item.lastMessageAt)}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function Inbox() {
     // Default avatar from Firebase Storage
@@ -78,36 +140,23 @@ export default function Inbox() {
       return;
     }
     
-    // Filter out private accounts that user is not approved follower of
-    const filterPrivateAccounts = async (convos: any) => {
-      const filteredConvos = Array.isArray(convos) ? await Promise.all(
-        convos.map(async (convo: any) => {
-          const otherUser = convo.otherUser;
-          if (!otherUser) return convo;
-          
-          // If other user has private account
-          if (otherUser.isPrivate) {
-            // Check if current user is in their followers list (approved)
-            const followers = otherUser.followers || [];
-            const isApproved = followers.includes(userId);
-            
-            console.log(`🔒 Private account check: ${otherUser.name}, isApproved: ${isApproved}`);
-            
-            // Only show if approved follower
-            return isApproved ? convo : null;
-          }
-          
-          return convo;
-        })
-      ).then(results => results.filter(c => c !== null)) : [];
-      
-      return filteredConvos;
-    };
+    console.log('🔵 EFFECT TRIGGERED: polledConversations=', polledConversations?.length, 'userId=', userId);
+    
+    if (!Array.isArray(polledConversations) || polledConversations.length === 0) {
+      console.log('🟠 No conversations to process');
+      setConversations([]);
+      return;
+    }
 
-    // Apply filtering to polled conversations
-    filterPrivateAccounts(polledConversations).then(filtered => {
-      setConversations(filtered);
-    });
+    // Normalize IDs and pass through - private account filtering happens in InboxRow
+    const normalizedConvos = polledConversations.map((convo: any) => ({
+      ...convo,
+      id: convo.id || convo._id  // Ensure id field exists for FlatList key
+    }));
+    
+    console.log('🟢 SETTING CONVERSATIONS:', normalizedConvos?.length, 'convos');
+    console.log('📋 First convo sample:', normalizedConvos?.[0]);
+    setConversations(normalizedConvos);
   }, [polledConversations, userId]);
 
   function formatTime(timestamp: any) {
@@ -154,7 +203,7 @@ export default function Inbox() {
   }
 
   if (!conversations || conversations.length === 0) {
-    console.log('Inbox: No conversations found for user', userId, conversations);
+    console.log('🔴 NO CONVERSATIONS - Inbox: No conversations found for user', userId, 'conversations=', conversations);
     return (
       <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
         <View style={styles.headerRow}>
@@ -215,9 +264,11 @@ export default function Inbox() {
         </TouchableOpacity>
       </View>
 
-      {(!loading && conversations.length === 0) ? (
-        (() => {
-          console.log('Inbox: No conversations found', conversations);
+      {(() => {
+        console.log('🟢 RENDERING: conversations.length=', conversations?.length, '| filtered data=', conversations?.filter(c => !c[`archived_${userId}`])?.length);
+        
+        if (!loading && conversations.length === 0) {
+          console.log('🔴 NO CONVERSATIONS - Inbox: No conversations found', conversations);
           return (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
               <Feather name="message-circle" size={64} color="#ccc" />
@@ -225,50 +276,40 @@ export default function Inbox() {
               <Text style={{ color: '#ccc', marginTop: 8, textAlign: 'center' }}>Start a conversation by visiting someone&apos;s profile</Text>
             </View>
           );
-        })()
-      ) : (
-        <FlatList
-          data={conversations.filter(c => !c[`archived_${userId}`])}
-          keyExtractor={t => t.id}
-          style={{ width: '100%' }}
-          renderItem={({ item }) => (
-            <Swipeable
-              renderRightActions={() => (
-                <TouchableOpacity
-                  style={styles.archiveBtn}
-                  onPress={async () => {
-                    if (!userId) return;
-                    await archiveConversation(item.id, userId);
-                    setConversations(conversations.filter(c => c.id !== item.id));
-                  }}
-                >
-                  <Text style={styles.archiveText}>Archive</Text>
-                </TouchableOpacity>
+        }
+        
+        const filteredConvos = conversations.filter(c => !c[`archived_${userId}`]);
+        console.log('📋 FLATLIST DATA:', filteredConvos.length, 'items to render');
+        
+        if (filteredConvos.length > 0) {
+          return (
+            <FlatList
+              data={filteredConvos}
+              keyExtractor={(item, index) => item.id || item._id || `convo-${index}`}
+              style={{ width: '100%', flex: 1 }}
+              renderItem={({ item, index }) => (
+                <ConversationItem 
+                  item={item} 
+                  userId={userId}
+                  router={router}
+                  formatTime={formatTime}
+                  conversations={conversations}
+                  setConversations={setConversations}
+                />
               )}
-            >
-              <InboxRow
-                item={{
-                  ...item,
-                  currentUserId: userId || '',
-                  lastMessage: typeof item.lastMessage === 'string' ? item.lastMessage : '',
-                  otherUser: item.otherUser || null
-                }}
-                router={router}
-                unread={item.unread}
-                formatTime={formatTime}
-                DEFAULT_AVATAR_URL={DEFAULT_AVATAR_URL}
-              />
-            </Swipeable>
-          )}
-          ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#f5f5f5' }} />}
-          contentContainerStyle={{ paddingBottom: 16 }}
-          extraData={conversations}
-          initialNumToRender={10}
-          windowSize={7}
-          maxToRenderPerBatch={10}
-          removeClippedSubviews={true}
-        />
-      )}
+              contentContainerStyle={{ paddingBottom: 16 }}
+              scrollEnabled={true}
+            />
+          );
+        }
+        
+        // No conversations after filter
+        return (
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <Text style={{ color: '#999' }}>All conversations archived</Text>
+          </View>
+        );
+      })()}
     </SafeAreaView>
   );
 }

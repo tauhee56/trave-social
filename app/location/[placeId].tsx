@@ -6,6 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import PostCard from '../../src/_components/PostCard';
 import StoriesViewer from '../../src/_components/StoriesViewer';
 import VerifiedBadge from '../../src/_components/VerifiedBadge';
+import { apiService } from '../_services/apiService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
@@ -80,6 +82,22 @@ export default function LocationDetailsScreen() {
     setShowStoriesViewer(true);
   };
 
+  // Load current user when component mounts
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const userId = await AsyncStorage.getItem('userId');
+        if (userId) {
+          setCurrentUser({ uid: userId, id: userId });
+          console.log('[Location] Current user loaded:', userId);
+        }
+      } catch (error) {
+        console.log('[Location] Failed to load current user:', error);
+      }
+    };
+    loadCurrentUser();
+  }, []);
+
   useEffect(() => {
     async function fetchDetails() {
       setLoading(true);
@@ -127,35 +145,111 @@ export default function LocationDetailsScreen() {
 
   const fetchLocationPosts = async (searchLocationName: string) => {
     try {
-      // TODO: Implement backend API to fetch posts by location
-      // const response = await fetch(`/api/locations/${encodeURIComponent(searchLocationName)}/posts`);
-      // const data = await response.json();
-      // setAllPosts(data.posts);
-      // setFilteredPosts(data.posts);
-      // setSubLocations(data.subLocations);
-      // setTotalVisits(data.posts.length);
-      // setVerifiedVisits(data.verifiedVisits);
+      // Fetch all posts from backend
+      const response = await apiService.get('/posts?skip=0&limit=1000');
       
-      setAllPosts([]);
-      setFilteredPosts([]);
-      setSubLocations([]);
-      setTotalVisits(0);
-      setVerifiedVisits(0);
+      if (!response.success || !response.data) {
+        console.log('No posts found from API');
+        setAllPosts([]);
+        setFilteredPosts([]);
+        return;
+      }
+
+      // Normalize posts to ensure they have an 'id' field
+      const normalizedPosts = response.data.map((post: any) => ({
+        ...post,
+        id: post.id || post._id,
+      }));
+
+      // Filter posts by location name (check multiple location fields)
+      const locationPosts = normalizedPosts.filter((post: any) => {
+        const postLocation = 
+          post?.locationData?.name || 
+          post?.locationName || 
+          post?.location || 
+          '';
+        
+        return postLocation.toLowerCase().includes(searchLocationName.toLowerCase());
+      });
+
+      console.log(`[Location] Found ${locationPosts.length} posts for "${searchLocationName}"`);
+      
+      setAllPosts(locationPosts);
+      setFilteredPosts(locationPosts);
+      setTotalVisits(locationPosts.length);
+      
+      // Extract sub-locations from posts
+      const subLocationMap = new Map<string, any[]>();
+      locationPosts.forEach((post: Post) => {
+        const subLocName = extractSubLocationName(
+          post?.locationData?.name || post?.locationName || post?.location || '',
+          post?.locationData?.address || ''
+        );
+        if (!subLocationMap.has(subLocName)) {
+          subLocationMap.set(subLocName, []);
+        }
+        subLocationMap.get(subLocName)?.push(post);
+      });
+      
+      const subLocations = Array.from(subLocationMap.entries()).map(([name, posts]) => ({
+        name,
+        count: posts.length,
+        thumbnail: posts[0]?.imageUrl || 'https://via.placeholder.com/60',
+        posts
+      }));
+      
+      setSubLocations(subLocations);
+      
+      // Count verified visits (if posts have verified badges)
+      const verifiedCount = locationPosts.filter((p: any) => p?.locationData?.verified).length;
+      setVerifiedVisits(verifiedCount);
+      
+      // Set most liked post image for header
+      if (locationPosts.length > 0) {
+        const mostLiked = locationPosts.reduce((prev: any, curr: any) => 
+          (curr.likesCount || 0) > (prev.likesCount || 0) ? curr : prev
+        );
+        if (mostLiked?.imageUrl) {
+          setMostLikedPostImage(mostLiked.imageUrl);
+        }
+      }
     } catch (error) {
       console.error('Error fetching location posts:', error);
+      setAllPosts([]);
+      setFilteredPosts([]);
     }
   };
 
   const fetchLocationStories = async (searchLocationName: string) => {
     try {
-      // TODO: Implement backend API to fetch stories by location
-      // const response = await fetch(`/api/locations/${encodeURIComponent(searchLocationName)}/stories`);
-      // const data = await response.json();
-      // setStories(data.stories);
+      // Fetch stories from AsyncStorage or backend if available
+      // For now, we'll attempt to fetch from a stories endpoint if it exists
+      const response = await apiService.get('/stories?skip=0&limit=100');
       
-      setStories([]);
+      if (response.success && response.data) {
+        // Normalize stories to ensure they have an 'id' field
+        const normalizedStories = response.data.map((story: any) => ({
+          ...story,
+          id: story.id || story._id,
+        }));
+
+        const locationStories = normalizedStories.filter((story: any) => {
+          const storyLocation = 
+            story?.locationData?.name || 
+            story?.location || 
+            '';
+          
+          return storyLocation.toLowerCase().includes(searchLocationName.toLowerCase());
+        });
+        
+        console.log(`[Location] Found ${locationStories.length} stories for "${searchLocationName}"`);
+        setStories(locationStories);
+      } else {
+        setStories([]);
+      }
     } catch (error) {
-      console.error('Error fetching location stories:', error);
+      console.log('Stories endpoint not available or no stories:', error);
+      setStories([]);
     }
   };
 
@@ -201,7 +295,7 @@ export default function LocationDetailsScreen() {
 
       <FlatList
         data={filteredPosts}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.id || item._id || `post-${Math.random()}`}
         ListHeaderComponent={
           <>
             {/* Location Header Card */}
@@ -238,7 +332,7 @@ export default function LocationDetailsScreen() {
                 >
                   {stories.map((story, index) => (
                     <TouchableOpacity
-                      key={story.id}
+                      key={story.id || story._id || `story-${index}`}
                       style={styles.storyCard}
                       onPress={() => onStoryPress && onStoryPress(stories, index)}
                     >

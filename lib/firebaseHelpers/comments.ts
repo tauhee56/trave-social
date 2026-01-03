@@ -83,14 +83,33 @@ export async function deleteCommentReply(postId: string, commentId: string, repl
 }
 
 /**
- * Add reaction to comment (like, love, laugh, etc.)
+ * Add or replace reaction to comment (Instagram style - one reaction per user)
  */
 export async function addCommentReaction(postId: string, commentId: string, userId: string, reactionType: string) {
   try {
-    const data = await apiService.post(`/posts/${postId}/comments/${commentId}/reactions`, { userId, reaction: reactionType });
+    // Send removeExisting flag to backend to handle one-reaction-per-user logic
+    // Backend will remove any existing reaction from this user first, then add the new one
+    const data = await apiService.post(`/posts/${postId}/comments/${commentId}/reactions`, { 
+      userId, 
+      reaction: reactionType, 
+      removeExisting: true  // Backend should remove user's previous reaction
+    });
     return data;
   } catch (error: any) {
     console.error('❌ addCommentReaction error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Remove reaction from comment
+ */
+export async function removeCommentReaction(postId: string, commentId: string, userId: string) {
+  try {
+    const data = await apiService.delete(`/posts/${postId}/comments/${commentId}/reactions/${userId}`);
+    return data;
+  } catch (error: any) {
+    console.error('❌ removeCommentReaction error:', error);
     return { success: false, error: error.message };
   }
 }

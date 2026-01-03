@@ -1,7 +1,7 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { addComment, addCommentReaction, addCommentReply, deleteComment, deleteCommentReply, editComment, editCommentReply, getPostComments } from "../../lib/firebaseHelpers/comments";
+import { addComment, addCommentReaction, removeCommentReaction, addCommentReply, deleteComment, deleteCommentReply, editComment, editCommentReply, getPostComments } from "../../lib/firebaseHelpers/comments";
 import { feedEventEmitter } from "../../lib/feedEventEmitter";
 import CommentAvatar from "./CommentAvatar";
 import { useUser } from "./UserContext";
@@ -269,9 +269,55 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       return;
     }
 
-    await addCommentReaction(postId, commentId, userId, reaction);
-    setShowReactions(null);
-    await loadComments();
+    try {
+      // Get current comment's reactions
+      const commentsData = await getPostComments(postId);
+      const comments = commentsData?.data || commentsData || [];
+      
+      // Find the comment recursively
+      const findComment = (commentList: any[]): any => {
+        for (const comment of commentList) {
+          if (comment.id === commentId) return comment;
+          if (comment.replies) {
+            const found = findComment(comment.replies);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+
+      const comment = findComment(comments);
+      let userReaction = '';
+
+      // Find user's existing reaction
+      if (comment?.reactions) {
+        if (typeof comment.reactions === 'object' && !Array.isArray(comment.reactions)) {
+          userReaction = comment.reactions[userId] || '';
+          if (!userReaction) {
+            Object.entries(comment.reactions).forEach(([emoji, value]: [string, any]) => {
+              if (Array.isArray(value) && value.includes(userId)) {
+                userReaction = emoji;
+              }
+            });
+          }
+        }
+      }
+
+      // If clicking same reaction, toggle it off (remove)
+      if (userReaction === reaction) {
+        await removeCommentReaction(postId, commentId, userId);
+      } else {
+        // Different or new reaction - backend will handle removing old reaction
+        // Backend sees removeExisting flag and will replace automatically
+        await addCommentReaction(postId, commentId, userId, reaction);
+      }
+
+      setShowReactions(null);
+      await loadComments();
+    } catch (error) {
+      console.error('Error handling reaction:', error);
+      Alert.alert('Error', 'Failed to update reaction');
+    }
   };
 
   const getTimeAgo = (timestamp: any) => {
@@ -299,14 +345,53 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     const isPostOwner = currentUserId === postOwnerId;
     const canDelete = isOwner || isPostOwner;
 
+    // Parse reactions - handle both { [userId]: emoji } and { [emoji]: [userIds] } formats
     const reactionCounts: { [key: string]: number } = {};
+    const userReactionMap: { [emoji: string]: string[] } = {};
+    
     if (comment.reactions) {
-      Object.values(comment.reactions).forEach(reaction => {
-        reactionCounts[reaction] = (reactionCounts[reaction] || 0) + 1;
-      });
+      if (Array.isArray(comment.reactions)) {
+        // If reactions is an array, just count occurrences
+        comment.reactions.forEach((reaction: any) => {
+          if (typeof reaction === 'string') {
+            reactionCounts[reaction] = (reactionCounts[reaction] || 0) + 1;
+          }
+        });
+      } else if (typeof comment.reactions === 'object') {
+        // If reactions is an object, iterate through entries
+        Object.entries(comment.reactions).forEach(([key, value]: [string, any]) => {
+          // Check if value looks like an emoji (short string, not a userId)
+          if (typeof value === 'string' && value.length < 10 && !value.match(/^[a-zA-Z0-9]{15,}$/)) {
+            // value is the emoji, key is userId
+            reactionCounts[value] = (reactionCounts[value] || 0) + 1;
+            if (!userReactionMap[value]) userReactionMap[value] = [];
+            userReactionMap[value].push(key);
+          } else if (Array.isArray(value)) {
+            // key is the emoji, value is array of userIds
+            reactionCounts[key] = (reactionCounts[key] || 0) + value.length;
+            userReactionMap[key] = value;
+          }
+        });
+      }
     }
 
-    const userReaction = comment.reactions?.[currentUser?.uid || ''];
+    // Find current user's reaction - look in all possible locations
+    let userReaction = '';
+    
+    if (comment.reactions) {
+      // First, try direct lookup
+      if (typeof comment.reactions === 'object' && !Array.isArray(comment.reactions)) {
+        userReaction = comment.reactions[currentUserId] || '';
+        // If not found, search through all reactions to find which emoji this user reacted with
+        if (!userReaction) {
+          Object.entries(comment.reactions).forEach(([key, value]: [string, any]) => {
+            if (Array.isArray(value) && value.includes(currentUserId)) {
+              userReaction = key;
+            }
+          });
+        }
+      }
+    }
 
     return (
       <View key={comment.id} style={[styles.commentRow, isReply && styles.replyRow]}>
@@ -328,12 +413,17 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
             {/* Reactions Display */}
             {Object.keys(reactionCounts).length > 0 && (
               <View style={styles.reactionsDisplay}>
-                {Object.entries(reactionCounts).map(([reaction, count]) => (
-                  <View key={reaction} style={styles.reactionBadge}>
-                    <Text style={styles.reactionEmoji}>{reaction}</Text>
-                    <Text style={styles.reactionCount}>{count}</Text>
-                  </View>
-                ))}
+                {Object.entries(reactionCounts)
+                  .filter(([reaction]) => {
+                    // Only show if it looks like an emoji (short string, not a userId)
+                    return reaction && reaction.length < 10 && !reaction.match(/^[a-zA-Z0-9]{15,}$/);
+                  })
+                  .map(([reaction, count]) => (
+                    <View key={reaction} style={styles.reactionBadge}>
+                      <Text style={styles.reactionEmoji}>{reaction}</Text>
+                      <Text style={styles.reactionCount}>{count}</Text>
+                    </View>
+                  ))}
               </View>
             )}
           </View>
@@ -615,14 +705,17 @@ const styles = StyleSheet.create({
   reactionBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    gap: 4,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
   reactionEmoji: {
-    fontSize: 14,
+    fontSize: 18,
+    fontWeight: '500',
   },
   reactionCount: {
     fontSize: 11,

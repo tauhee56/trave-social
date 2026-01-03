@@ -181,10 +181,12 @@ export default function Profile({ userIdProp }: any) {
     viewedUserId = currentUserId || undefined;
   }
   
-  console.log('[Profile] viewedUserId extracted:', viewedUserId, 'from params:', params, 'userIdProp:', userIdProp);
+  console.log('[Profile] viewedUserId extracted:', viewedUserId, 'currentUserId:', currentUserId, 'userIdProp:', userIdProp);
   
-  // Determine if viewing own profile
-  const isOwnProfile = viewedUserId === currentUserId || (!params.user && !userIdProp);
+  // Determine if viewing own profile - compare IDs or check if no explicit user passed
+  const isOwnProfile = (viewedUserId && currentUserId && viewedUserId === currentUserId) || (!userIdProp && !params.user && !!currentUserId);
+  
+  console.log('[Profile] isOwnProfile:', isOwnProfile, 'viewedUserId===currentUserId:', viewedUserId === currentUserId);
   
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);

@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     Dimensions,
     Modal,
     ScrollView,
@@ -16,15 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser } from './_components/UserContext';
 // import { getCurrentUser } from '../lib/firebaseHelpers';
 import { addPassportTicket, getPassportTickets } from '../lib/firebaseHelpers/passport';
-
-// Conditionally import location service
-let getCurrentLocation: any = null;
-try {
-  const locationService = require('../services/locationService');
-  getCurrentLocation = locationService.getCurrentLocation;
-} catch (error) {
-  console.log('Location service not available:', error);
-}
+import { getCurrentLocation } from '../services/locationService';
 
 const { width } = Dimensions.get('window');
 const STAMP_SIZE = (width - 48) / 3;
@@ -52,14 +45,13 @@ export default function PassportScreen() {
     city?: string;
     country?: string;
     countryCode?: string;
+    latitude?: number;
+    longitude?: number;
   } | null>(null);
-  const [showAddModal, setShowAddModal] = useState(false);
   const [showEditPopup, setShowEditPopup] = useState(false);
   const [selectedStamp, setSelectedStamp] = useState<PassportStamp | null>(null);
   const [selectedStampIndex, setSelectedStampIndex] = useState<number>(-1);
   const [detectingLocation, setDetectingLocation] = useState(false);
-  const [manualCity, setManualCity] = useState('');
-  const [manualCountry, setManualCountry] = useState('');
 
   useEffect(() => {
     loadPassportData();
@@ -79,38 +71,45 @@ export default function PassportScreen() {
 
       // Get current location if owner
       if (isOwner) {
+        // Set default location first
+        setCurrentLocation({
+          city: 'Detecting',
+          country: 'Please wait...',
+          countryCode: '',
+        });
+
+        setDetectingLocation(true);
+
         try {
-          setDetectingLocation(true);
-          if (getCurrentLocation) {
-            const location = await getCurrentLocation();
-            if (location && location.city) {
-              setCurrentLocation({
-                city: location.city,
-                country: location.country || 'Unknown',
-                countryCode: location.countryCode || '',
-              });
-            } else {
-              // Location returned but no city data
-              setCurrentLocation({
-                city: 'Your Location',
-                country: 'Enable GPS to detect',
-                countryCode: '',
-              });
-            }
-          } else {
-            // Location service not available
+          console.log('📍 [Passport] Attempting to get current location...');
+          const location = await getCurrentLocation();
+          console.log('📍 [Passport] Location result:', JSON.stringify(location));
+
+          if (location && location.city && location.country) {
             setCurrentLocation({
-              city: 'Your Location',
-              country: 'Location service unavailable',
+              city: location.city,
+              country: location.country,
+              countryCode: location.countryCode || '',
+              latitude: location.latitude,
+              longitude: location.longitude,
+            });
+            console.log('✅ [Passport] Location set:', location.city, location.country);
+          } else {
+            // Location returned but no city data
+            console.log('⚠️ [Passport] Location returned but no city data:', location);
+            setCurrentLocation({
+              city: 'Unknown Location',
+              country: 'Could not detect',
               countryCode: '',
             });
           }
         } catch (error: any) {
-          console.log('Location unavailable:', error?.message || error);
-          // Fallback when location fails
+          console.log('❌ [Passport] Location error:', error?.message || error);
+          console.log('❌ [Passport] Full error:', JSON.stringify(error));
+          // Fallback when location fails - show helpful message
           setCurrentLocation({
-            city: 'Your Location',
-            country: 'Enable location services',
+            city: 'Location Error',
+            country: 'Tap button to retry',
             countryCode: '',
           });
         } finally {
@@ -124,47 +123,114 @@ export default function PassportScreen() {
     }
   };
 
-  const handleAddToPassport = async (manualLocation?: any) => {
-    // Use manual location if provided, otherwise use auto-detected
-    const locationToAdd = manualLocation || currentLocation;
-
-    // Check if location is valid (not placeholder text)
-    const isPlaceholderLocation = 
-      !locationToAdd?.city || 
-      locationToAdd.city === 'Your Location' ||
-      !locationToAdd?.country ||
-      locationToAdd.country === 'Enable location services' ||
-      locationToAdd.country === 'Enable GPS to detect' ||
-      locationToAdd.country === 'Location service unavailable';
-
-    if (isPlaceholderLocation) {
-      alert('Please enable location services or enter location manually');
-      return;
-    }
-
+  const handleAddToPassport = async (skipConfirmation: boolean = false) => {
     try {
+      setDetectingLocation(true);
+
+      console.log('🔍 [Add] Getting fresh GPS location...');
+      let locationToAdd;
+
+      try {
+        const freshLocation = await getCurrentLocation();
+        console.log('📍 [Add] Fresh location result:', JSON.stringify(freshLocation));
+
+        if (!freshLocation || !freshLocation.city) {
+          throw new Error('Could not determine your location');
+        }
+
+        locationToAdd = {
+          city: freshLocation.city,
+          country: freshLocation.country || 'Unknown',
+          countryCode: freshLocation.countryCode || '',
+          latitude: freshLocation.latitude,
+          longitude: freshLocation.longitude,
+        };
+
+        // Update current location state
+        setCurrentLocation(locationToAdd);
+        console.log('✅ [Add] Fresh location detected:', locationToAdd.city, locationToAdd.country);
+
+      } catch (error: any) {
+        console.log('❌ [Add] Could not get fresh location:', error?.message || error);
+        console.log('❌ [Add] Full error:', JSON.stringify(error));
+        setDetectingLocation(false);
+
+        // Show user-friendly error message with retry
+        Alert.alert(
+          'Location Error',
+          error.message || 'Could not detect your location. Please make sure:\n\n• Location services are enabled\n• GPS signal is available\n• App has location permission',
+          [
+            { text: 'Try Again', onPress: () => handleAddToPassport() },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
+        return;
+      }
+
+      setDetectingLocation(false);
+
+      // Check if stamp already exists
+      const existingStamp = stamps.find(
+        s => s.city?.toLowerCase() === locationToAdd.city?.toLowerCase() &&
+             s.country?.toLowerCase() === locationToAdd.country?.toLowerCase()
+      );
+
+      if (existingStamp && !skipConfirmation) {
+        Alert.alert(
+          'Already Added',
+          `You already have a stamp for ${locationToAdd.city}, ${locationToAdd.country}!`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Add the ticket with location coordinates
       const ticket = {
         city: locationToAdd.city,
         country: locationToAdd.country,
         countryCode: locationToAdd.countryCode || '',
+        latitude: locationToAdd.latitude || 0,
+        longitude: locationToAdd.longitude || 0,
         visitDate: Date.now(),
         imageUrl: `https://source.unsplash.com/800x600/?${locationToAdd.city},${locationToAdd.country}`,
         notes: `Visited on ${new Date().toLocaleDateString()}`
       };
 
+      console.log('📝 Adding passport ticket:', ticket);
       const result = await addPassportTicket(userId, ticket);
+      console.log('📝 Add ticket result:', result);
 
       if (result.success) {
-        alert('Passport stamp added successfully! 🎉');
-        setShowAddModal(false);
+        console.log('✅ Passport stamp added successfully!');
+        Alert.alert(
+          '✅ Added to Passport!',
+          `${locationToAdd.city}, ${locationToAdd.country} has been added to your passport!`,
+          [{ text: 'Awesome!' }]
+        );
         // Reload stamps
         await loadPassportData();
       } else {
-        alert(result.error || 'Failed to add passport stamp');
+        console.error('❌ Failed to add stamp:', result.error);
+        Alert.alert(
+          'Failed to Add',
+          result.error || 'Could not add passport stamp. Please check your internet connection and try again.',
+          [
+            { text: 'Try Again', onPress: () => handleAddToPassport() },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
       }
     } catch (error: any) {
-      console.error('Error adding passport stamp:', error);
-      alert(error.message || 'Failed to add passport stamp');
+      console.error('❌ Error adding passport stamp:', error);
+      setDetectingLocation(false);
+      Alert.alert(
+        'Network Error',
+        'Could not connect to server. Please check your internet connection and try again.',
+        [
+          { text: 'Try Again', onPress: () => handleAddToPassport() },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
     }
   };
 
@@ -242,7 +308,7 @@ export default function PassportScreen() {
                 <Ionicons name="locate-outline" size={24} color="#666" />
               </View>
               <Text style={styles.locationText}>
-                {currentLocation?.city}, {currentLocation?.country}
+                {currentLocation?.city || 'Unknown'}, {currentLocation?.country || 'Unknown'}
               </Text>
             </View>
           )}
@@ -251,8 +317,16 @@ export default function PassportScreen() {
             style={styles.addButton}
             onPress={handleAddToPassport}
             activeOpacity={0.8}
+            disabled={detectingLocation}
           >
-            <Text style={styles.addButtonText}>Add to my passport</Text>
+            {detectingLocation ? (
+              <>
+                <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.addButtonText}>Detecting location...</Text>
+              </>
+            ) : (
+              <Text style={styles.addButtonText}>✨ Add to my passport</Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -341,111 +415,28 @@ export default function PassportScreen() {
             <View style={styles.bottomButtonContainer}>
               <TouchableOpacity
                 style={styles.bottomAddButton}
-                onPress={() => setShowAddModal(true)}
+                onPress={handleAddToPassport}
                 activeOpacity={0.8}
+                disabled={detectingLocation}
               >
-                <Text style={styles.bottomAddButtonText}>
-                  Add your current location to your passport
-                </Text>
+                {detectingLocation ? (
+                  <>
+                    <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.bottomAddButtonText}>Detecting location...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="add-circle-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.bottomAddButtonText}>Add current location</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           )}
         </>
       )}
 
-      {/* Add Location Modal */}
-      <Modal
-        visible={showAddModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowAddModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add to Passport</Text>
-            <Text style={styles.modalSubtitle}>
-              We detect that you are currently in:
-            </Text>
 
-            <View style={styles.modalLocationCard}>
-              <Ionicons name="locate-outline" size={24} color="#666" />
-              <Text style={styles.modalLocationText}>
-                {currentLocation?.city}, {currentLocation?.country}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.modalAddButton}
-              onPress={handleAddToPassport}
-            >
-              <Text style={styles.modalAddButtonText}>Add to my passport</Text>
-            </TouchableOpacity>
-
-            {/* Divider */}
-            <View style={styles.modalDivider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OR</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            {/* Manual Entry */}
-            <Text style={styles.manualEntryLabel}>Enter location manually:</Text>
-            
-            <View style={styles.manualInputContainer}>
-              <View style={styles.inputWrapper}>
-                <Text style={styles.inputLabel}>City</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="e.g., Paris"
-                  placeholderTextColor="#999"
-                  value={manualCity}
-                  onChangeText={setManualCity}
-                />
-              </View>
-              
-              <View style={styles.inputWrapper}>
-                <Text style={styles.inputLabel}>Country</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="e.g., France"
-                  placeholderTextColor="#999"
-                  value={manualCountry}
-                  onChangeText={setManualCountry}
-                />
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.modalAddButton, { marginTop: 12 }]}
-              disabled={!manualCity || !manualCountry}
-              onPress={() => {
-                if (manualCity && manualCountry) {
-                  handleAddToPassport({
-                    city: manualCity,
-                    country: manualCountry,
-                    countryCode: manualCountry.substring(0, 2).toUpperCase()
-                  });
-                  setManualCity('');
-                  setManualCountry('');
-                }
-              }}
-            >
-              <Text style={styles.modalAddButtonText}>Add manual location</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.modalCancelButton}
-              onPress={() => {
-                setShowAddModal(false);
-                setManualCity('');
-                setManualCountry('');
-              }}
-            >
-              <Text style={styles.modalCancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -626,6 +617,9 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     paddingVertical: 16,
     paddingHorizontal: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#F5A623',
     shadowOpacity: 0.3,
     shadowRadius: 10,
@@ -636,6 +630,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFF',
+  },
+  manualEntryButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  manualEntryText: {
+    fontSize: 14,
+    color: '#667eea',
+    fontWeight: '500',
   },
 
   // Stamps Grid
@@ -833,7 +837,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5A623',
     borderRadius: 25,
     paddingVertical: 14,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#E09000',
     borderBottomWidth: 4,
@@ -842,6 +848,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 5,
+    marginBottom: 10,
   },
   bottomAddButtonText: {
     fontSize: 14,
@@ -850,6 +857,21 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.1)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 1,
+  },
+  bottomManualButton: {
+    backgroundColor: '#fff',
+    borderRadius: 25,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#667eea',
+  },
+  bottomManualButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#667eea',
   },
 
   // Modal Styles

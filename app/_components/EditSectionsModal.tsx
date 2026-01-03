@@ -10,13 +10,15 @@ import { addUserSection, deleteUserSection, updateUserSection } from '../../lib/
 import { updateUserSectionsOrder } from '../../lib/firebaseHelpers/updateUserSectionsOrder';
 
 type Section = {
+  _id?: string;
   name: string;
   postIds: string[];
   coverImage?: string;
 };
 
 type Post = {
-  id: string;
+  _id: string;
+  id?: string;
   imageUrl?: string;
   imageUrls?: string[];
 };
@@ -56,10 +58,13 @@ export default function EditSectionsModal({
 
     const res = await getUserSectionsSorted(userId);
     console.log('📋 Fetched sections after create:', res);
+    console.log('📋 Response data type:', Array.isArray(res.data) ? 'array' : typeof res.data);
+    console.log('📋 Response data.data type:', res.data?.data ? (Array.isArray(res.data.data) ? 'array' : typeof res.data.data) : 'undefined');
 
     if (res.success && res.data) {
-      const sectionsData = Array.isArray(res.data) ? res.data : res.data.data || [];
-      console.log('✅ Updating sections in UI:', sectionsData);
+      const sectionsData = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.data) ? res.data.data : []);
+      console.log('✅ Updating sections in UI:', sectionsData.length, 'sections');
+      console.log('✅ Section names:', sectionsData.map((s: any) => s.name || s._id));
       onSectionsUpdate(sectionsData);
     } else {
       console.error('❌ Failed to fetch sections:', res);
@@ -80,7 +85,7 @@ export default function EditSectionsModal({
           await deleteUserSection(userId, sectionName);
           const res = await getUserSectionsSorted(userId);
           if (res.success && res.data) {
-            const sectionsData = Array.isArray(res.data) ? res.data : res.data.data || [];
+            const sectionsData = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.data) ? res.data.data : []);
             onSectionsUpdate(sectionsData);
           }
           if (selectedSectionForEdit === sectionName) {
@@ -92,8 +97,13 @@ export default function EditSectionsModal({
   };
 
   const handleSelectSection = (sectionName: string) => {
-    setSelectedSectionForEdit(prev => prev === sectionName ? null : sectionName);
-    setSectionMode('select');
+    // Toggle: if same section clicked again, close it; otherwise open the new section
+    if (selectedSectionForEdit === sectionName) {
+      setSelectedSectionForEdit(null);
+    } else {
+      setSelectedSectionForEdit(sectionName);
+      setSectionMode('select');
+    }
   };
 
   const handlePostSelection = async (post: Post) => {
@@ -101,12 +111,14 @@ export default function EditSectionsModal({
     const section = sections.find(s => s.name === selectedSectionForEdit);
     if (!section) return;
 
-    console.log('Post selected:', post.id, 'Mode:', sectionMode);
+    const postId = post._id || post.id;
+    console.log('Post selected:', postId, 'Mode:', sectionMode);
 
     if (sectionMode === 'cover') {
       const uri = post.imageUrl || post.imageUrls?.[0];
       console.log('Setting cover image:', uri);
       
+      // Cover is just a thumbnail, don't add post to section automatically
       // Update local state immediately for instant feedback
       const updatedSections = sections.map(s => 
         s.name === selectedSectionForEdit 
@@ -115,20 +127,31 @@ export default function EditSectionsModal({
       );
       onSectionsUpdate(updatedSections);
       
-      // Then save to Firebase
-      const result = await updateUserSection(userId, { name: selectedSectionForEdit, postIds: section.postIds, coverImage: uri });
-      console.log('Cover update result:', result);
+      // Then save to Firebase - use section._id if available, otherwise name
+      const sectionIdentifier = section._id || section.name;
+      console.log('💾 Updating section with ID/name:', sectionIdentifier);
+      const result = await updateUserSection(userId, sectionIdentifier, { name: section.name, postIds: section.postIds, coverImage: uri });
+      console.log('✅ Cover update result:', result);
       
       // Refresh from Firebase to ensure consistency
       const res = await getUserSectionsSorted(userId);
+      console.log('📋 Fetched sections after cover update:', res);
       if (res.success && res.data) {
-        onSectionsUpdate(res.data);
+        const sectionsData = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.data) ? res.data.data : []);
+        console.log('📋 Extracted sections data:', sectionsData.length, 'sections');
+        if (sectionsData.length > 0) {
+          onSectionsUpdate(sectionsData);
+        } else {
+          console.warn('⚠️ Sections data is empty, keeping current state');
+        }
+      } else {
+        console.error('❌ Failed to fetch sections after update:', res);
       }
     } else {
-      const newPostIds = section.postIds.includes(post.id)
-        ? section.postIds.filter(id => id !== post.id)
-        : [...section.postIds, post.id];
-      console.log('Updating postIds:', newPostIds);
+      const newPostIds = section.postIds.includes(postId)
+        ? section.postIds.filter(id => id !== postId)
+        : [...section.postIds, postId];
+      console.log('📝 Updating postIds:', newPostIds);
       
       // Update local state immediately for instant feedback
       const updatedSections = sections.map(s => 
@@ -138,14 +161,25 @@ export default function EditSectionsModal({
       );
       onSectionsUpdate(updatedSections);
       
-      // Then save to Firebase
-      const result = await updateUserSection(userId, { name: selectedSectionForEdit, postIds: newPostIds, coverImage: section.coverImage });
-      console.log('Post selection update result:', result);
+      // Then save to Firebase - use section._id if available, otherwise name
+      const sectionIdentifier = section._id || section.name;
+      console.log('💾 Updating section with ID/name:', sectionIdentifier);
+      const result = await updateUserSection(userId, sectionIdentifier, { name: section.name, postIds: newPostIds, coverImage: section.coverImage });
+      console.log('✅ Post selection update result:', result);
       
       // Refresh from Firebase to ensure consistency
       const res = await getUserSectionsSorted(userId);
+      console.log('📋 Fetched sections after post update:', res);
       if (res.success && res.data) {
-        onSectionsUpdate(res.data);
+        const sectionsData = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.data) ? res.data.data : []);
+        console.log('📋 Extracted sections data:', sectionsData.length, 'sections');
+        if (sectionsData.length > 0) {
+          onSectionsUpdate(sectionsData);
+        } else {
+          console.warn('⚠️ Sections data is empty, keeping current state');
+        }
+      } else {
+        console.error('❌ Failed to fetch sections after update:', res);
       }
     }
   };
@@ -165,15 +199,19 @@ export default function EditSectionsModal({
   const renameSection = async (oldName: string, newName: string) => {
     if (!userId) return;
     if (!newName.trim() || newName === oldName) return;
-    await updateUserSection(userId, {
+    const section = sections.find(s => s.name === oldName);
+    if (!section) return;
+    const sectionIdentifier = section._id || section.name;
+    await updateUserSection(userId, sectionIdentifier, {
       name: newName.trim(),
-      postIds: sections.find(s => s.name === oldName)?.postIds || [],
-      coverImage: sections.find(s => s.name === oldName)?.coverImage,
+      postIds: section.postIds || [],
+      coverImage: section.coverImage,
     });
     await deleteUserSection(userId, oldName);
     const res = await getUserSectionsSorted(userId);
     if (res.success && res.data) {
-      onSectionsUpdate(res.data);
+      const sectionsData = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.data) ? res.data.data : []);
+      onSectionsUpdate(sectionsData);
     }
   };
 
@@ -280,12 +318,13 @@ export default function EditSectionsModal({
               {/* Posts grid for selection */}
               <View style={styles.grid}>
                 {posts.map((p) => {
+                  const postId = p._id || p.id;
                   const section = sections.find(s => s.name === selectedSectionForEdit);
-                  const isSelected = sectionMode === 'select' && section?.postIds.includes(p.id);
+                  const isSelected = sectionMode === 'select' && section?.postIds.includes(postId);
                   const isCoverSelected = sectionMode === 'cover' && section?.coverImage === (p.imageUrl || p.imageUrls?.[0]);
                   return (
                     <TouchableOpacity
-                      key={p.id}
+                      key={postId}
                       style={styles.gridItem}
                       activeOpacity={0.7}
                       onPress={() => handlePostSelection(p)}
@@ -385,11 +424,11 @@ const SectionRow = ({ item, isSelected, onPress, onDelete, onRename, drag }: Sec
               />
             </TouchableOpacity>
             <View style={styles.selectedSectionActions}>
-              <View style={styles.selectedSectionActionRow}>
+              <View key="posts-count" style={styles.selectedSectionActionRow}>
                 <Ionicons name="albums-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
                 <Text style={styles.selectedSectionActionText}>{item.postIds?.length || 0} Posts</Text>
               </View>
-              <TouchableOpacity style={styles.selectedSectionActionRow} onPress={onDelete}>
+              <TouchableOpacity key="delete-action" style={styles.selectedSectionActionRow} onPress={onDelete}>
                 <Ionicons name="trash-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
                 <Text style={styles.selectedSectionActionText}>Delete this section</Text>
               </TouchableOpacity>
