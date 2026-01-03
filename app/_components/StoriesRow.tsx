@@ -243,15 +243,15 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                   </View>
                 </LinearGradient>
               </TouchableOpacity>
-              {/* Add story button overlay - TEMPORARILY HIDDEN */}
-              {/* <TouchableOpacity
+              {/* Add story button overlay - disabled while modal is open */}
+              <TouchableOpacity
                 pointerEvents={showUploadModal ? 'none' : 'auto'}
                 hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
                 style={[styles.addButton, { position: 'absolute', bottom: -16, right: -16, zIndex: 10 }]}
                 onPress={handleAddStory}
               >
                 <Feather name="plus" size={18} color="#fff" />
-              </TouchableOpacity> */}
+              </TouchableOpacity>
             </View>
           ) : (
             <TouchableOpacity
@@ -347,6 +347,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   onPress={() => {
                     console.log('[StoriesRow] ✅ Profile pic clicked - viewing stories...');
+                    console.log('[StoriesRow] Current storyUsers:', storyUsers.length, 'My UID:', authUser?.uid);
                     
                     // 🚫 BLOCK PICKER IMMEDIATELY
                     pickerBlockedRef.current = true;
@@ -362,7 +363,27 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                     
                     // Find and open own stories
                     const myUser = storyUsers.find(u => u.userId === authUser?.uid);
-                    console.log('[StoriesRow] My user:', myUser?.userId, 'Stories count:', myUser?.stories?.length);
+                    console.log('[StoriesRow] My user found:', !!myUser, 'Stories count:', myUser?.stories?.length);
+                    
+                    if (!myUser) {
+                      console.log('[StoriesRow] ❌ User not found in storyUsers, trying to load stories...');
+                      // Reload stories in case they weren't loaded
+                      loadStories().then(() => {
+                        setTimeout(() => {
+                          const retryUser = storyUsers.find(u => u.userId === authUser?.uid);
+                          if (retryUser && retryUser.stories && retryUser.stories.length > 0 && onStoryPress) {
+                            console.log('[StoriesRow] ✅ Retrying - Opening stories viewer for', retryUser.stories.length, 'stories');
+                            onStoryPress(retryUser.stories, 0);
+                            pickerBlockedRef.current = false;
+                          } else {
+                            console.log('[StoriesRow] ❌ Still no stories found after reload');
+                            pickerBlockedRef.current = false;
+                            setIsViewingStories(false);
+                          }
+                        }, 200);
+                      });
+                      return;
+                    }
                     
                     if (myUser && myUser.stories && myUser.stories.length > 0 && onStoryPress) {
                       console.log('[StoriesRow] ✅ Opening stories viewer for', myUser.stories.length, 'stories');
@@ -380,7 +401,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                         }, 300);
                       }, 200);
                     } else {
-                      console.log('[StoriesRow] ❌ No stories to view:', { hasUser: !!myUser, storiesCount: myUser?.stories?.length });
+                      console.log('[StoriesRow] ❌ No stories to view:', { hasUser: !!myUser, storiesCount: myUser?.stories?.length, hasCallback: !!onStoryPress });
                       pickerBlockedRef.current = false;
                       setIsViewingStories(false);
                     }
@@ -587,15 +608,31 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                   setUploadProgress(100);
                   
                   if (storyRes.success) {
+                    console.log('[StoriesRow] ✅ Story uploaded successfully, reloading stories...');
                     await loadStories();
+                    
                     setTimeout(() => {
                       setUploading(false);
                       setShowUploadModal(false);
                       setSelectedMedia(null);
                       setLocationQuery('');
                       setLocationSuggestions([]);
+                      pickerBlockedRef.current = false;
+                      setIsViewingStories(false);
+                      
+                      // Auto-open viewer after successful upload
+                      setTimeout(() => {
+                        console.log('[StoriesRow] Auto-opening viewer after upload...');
+                        const updatedUser = storyUsers.find(u => u.userId === authUser?.uid);
+                        console.log('[StoriesRow] Updated user after reload:', updatedUser?.userId, 'stories:', updatedUser?.stories?.length);
+                        if (updatedUser && updatedUser.stories && updatedUser.stories.length > 0 && onStoryPress) {
+                          console.log('[StoriesRow] ✅ Auto-opening story viewer...');
+                          onStoryPress(updatedUser.stories, 0);
+                        }
+                      }, 300);
                     }, 600);
                   } else {
+                    console.log('[StoriesRow] ❌ Story upload failed:', storyRes.error);
                     setUploading(false);
                     Alert.alert('Error', 'Failed to upload story');
                   }
