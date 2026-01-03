@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, Image } from 'react-native';
 
 type Props = {
   text?: string;
@@ -37,13 +37,29 @@ export default function MessageBubble({
         <View style={[styles.replyPreview, isSelf ? styles.replyPreviewSelf : styles.replyPreviewOther]}>
           <View style={styles.replyLine} />
           <View style={styles.replyContent}>
-            <Text style={styles.replyName}>{/* ...existing code... */}</Text>
+            <Text style={styles.replyName}>{isReplyFromSelf ? 'You' : 'Reply'}</Text>
+            <Text style={styles.replyText} numberOfLines={2}>{replyTo?.text}</Text>
           </View>
         </View>
       )}
-      {/* ...existing code... */}
+      <View style={[
+        styles.msgBubble,
+        compact && styles.msgBubbleCompact,
+        isSelf ? styles.msgBubbleRight : styles.msgBubbleLeft,
+      ]}>
+        {imageUrl && <Image source={{ uri: imageUrl }} style={styles.msgImage} />}
+        {text && <Text style={isSelf ? styles.msgTextSelf : styles.msgText}>{text}</Text>}
+        <View style={styles.msgFooter}>
+          <Text style={isSelf ? styles.msgTimeSelf : styles.msgTime}>
+            {formatTime(createdAt)}
+            {editedAt && ' (edited)'}
+          </Text>
+        </View>
+        {showTail && (isSelf ? <View style={styles.tailRight} /> : <View style={styles.tailLeft} />)}
+      </View>
     </View>
   );
+}
 }
 
 const styles = StyleSheet.create({
