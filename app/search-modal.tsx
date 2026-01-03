@@ -416,7 +416,7 @@ export default function SearchModal() {
                 windowSize={7}
                 removeClippedSubviews={true}
               />
-            )}          </View>
+            )}
         </KeyboardAvoidingView>
         {/* Bottom Action Bar: always visible above keyboard */}
         <View style={styles.actionBtnBar}>
