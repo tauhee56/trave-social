@@ -186,6 +186,12 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
   };
 
   async function handleAddStory() {
+    // Prevent picker from opening if we just closed a modal or are viewing stories
+    if (isViewingStories || showUploadModal) {
+      console.log('[StoriesRow] Blocked handleAddStory - isViewingStories:', isViewingStories, 'showUploadModal:', showUploadModal);
+      return;
+    }
+    console.log('[StoriesRow] handleAddStory called - opening picker');
     const pickerResult = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images', 'videos'],
       allowsEditing: true,
@@ -291,6 +297,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
         animationType="slide"
         transparent={false}
         onRequestClose={() => {
+          console.log('[StoriesRow] Modal onRequestClose called');
           // Reset all state when modal closes
           setShowUploadModal(false);
           setSelectedMedia(null);
@@ -298,6 +305,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
           setLocationSuggestions([]);
           setUploading(false);
           setUploadProgress(0);
+          setIsViewingStories(false); // Reset viewing flag
         }}
       >
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }} edges={['top', 'bottom']}>
