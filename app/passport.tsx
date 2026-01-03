@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -14,8 +15,6 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useUser } from './_components/UserContext';
-// import { getCurrentUser } from '../lib/firebaseHelpers';
 import { addPassportTicket, getPassportTickets } from '../lib/firebaseHelpers/passport';
 import { getCurrentLocation } from '../services/locationService';
 
@@ -34,10 +33,10 @@ interface PassportStamp {
 export default function PassportScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const currentUser = useUser();
-  const userId = (params.user as string) || currentUser?.uid;
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const userId = (params.user as string) || currentUserId;
   // Treat as owner only when both IDs exist and match
-  const isOwner = !!(currentUser?.uid && userId && currentUser.uid === userId);
+  const isOwner = !!(currentUserId && userId && currentUserId === userId);
 
   const [stamps, setStamps] = useState<PassportStamp[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,8 +52,24 @@ export default function PassportScreen() {
   const [selectedStampIndex, setSelectedStampIndex] = useState<number>(-1);
   const [detectingLocation, setDetectingLocation] = useState(false);
 
+  // Load current user ID from AsyncStorage
   useEffect(() => {
-    loadPassportData();
+    const loadUserId = async () => {
+      try {
+        const userId = await AsyncStorage.getItem('userId');
+        console.log('📡 [Passport] Loaded userId from AsyncStorage:', userId);
+        setCurrentUserId(userId);
+      } catch (error) {
+        console.error('❌ [Passport] Failed to load userId:', error);
+      }
+    };
+    loadUserId();
+  }, []);
+
+  useEffect(() => {
+    if (userId) {
+      loadPassportData();
+    }
   }, [userId]);
 
   const loadPassportData = async () => {
