@@ -418,6 +418,7 @@ export default function SearchModal() {
               />
             )}
             {/* Bottom Action Bar: always visible above keyboard */}
+            </View>
             <View style={styles.actionBtnBar}>
           <TouchableOpacity
             style={styles.clearAllBtn}
