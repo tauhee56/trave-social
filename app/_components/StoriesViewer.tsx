@@ -571,7 +571,7 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
         {/* Action Buttons */}
         <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center', gap: 20 }}>
           <TouchableOpacity onPress={handleLike} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 8 }}>
-            <Feather name={isLiked ? "heart" : "heart"} size={24} color={isLiked ? "#e74c3c" : "#222"} />
+            <Ionicons name={isLiked ? "heart" : "heart-outline"} size={24} color={isLiked ? "#e74c3c" : "#222"} />
             <Text style={{ marginLeft: 6, fontWeight: '700', color: '#222', fontSize: 15 }}>{likesCount}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowComments(!showComments)} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 24 }}>
