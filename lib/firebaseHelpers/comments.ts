@@ -87,7 +87,7 @@ export async function deleteCommentReply(postId: string, commentId: string, repl
  */
 export async function addCommentReaction(postId: string, commentId: string, userId: string, reactionType: string) {
   try {
-    const data = await apiService.post(`/posts/${postId}/comments/${commentId}/reactions`, { userId, reactionType });
+    const data = await apiService.post(`/posts/${postId}/comments/${commentId}/reactions`, { userId, reaction: reactionType });
     return data;
   } catch (error: any) {
     console.error('❌ addCommentReaction error:', error);

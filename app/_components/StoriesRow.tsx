@@ -4,7 +4,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Dimensions, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Dimensions, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import {} from "../../lib/firebaseHelpers";
 import { createStory, getAllStoriesForFeed, getUserProfile } from "../../lib/firebaseHelpers/index";
@@ -495,15 +495,19 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
 
                   clearInterval(interval);
                   setUploadProgress(100);
-                  setTimeout(() => {
-                    setUploading(false);
-                    setShowUploadModal(false);
-                    setSelectedMedia(null);
-                    setLocationQuery('');
-                    setLocationSuggestions([]);
-                  }, 600);
+                  
                   if (storyRes.success) {
                     await loadStories();
+                    setTimeout(() => {
+                      setUploading(false);
+                      setShowUploadModal(false);
+                      setSelectedMedia(null);
+                      setLocationQuery('');
+                      setLocationSuggestions([]);
+                    }, 600);
+                  } else {
+                    setUploading(false);
+                    Alert.alert('Error', 'Failed to upload story');
                   }
                 }}
               >

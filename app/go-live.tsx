@@ -117,6 +117,7 @@ export default function GoLiveScreen() {
   const isExplicitlyEndingRef = useRef<boolean>(false);
   const networkRetryCountRef = useRef<number>(0);
   const appStateRef = useRef<string>(AppState.currentState);
+  const tokenRefreshIntervalRef = useRef<any>(null);
 
   useEffect(() => {
     isStreamingRef.current = isStreaming;
@@ -519,6 +520,22 @@ export default function GoLiveScreen() {
 
       console.log('✅ Broadcaster joined channel successfully');
 
+      // Start token refresh interval (refresh every 30 minutes to avoid expiration)
+      // Agora tokens typically expire after 24 hours, refresh every 30 mins for safety
+      tokenRefreshIntervalRef.current = setInterval(async () => {
+        try {
+          console.log('🔄 Refreshing Agora token...');
+          const newToken = await getAgoraToken(channel, broadcasterUid, 'publisher');
+          if (newToken && agoraEngineRef.current) {
+            await agoraEngineRef.current.renewToken(newToken);
+            console.log('✅ Token refreshed successfully');
+          }
+        } catch (err) {
+          console.error('❌ Token refresh failed:', err);
+          // Non-critical error, stream can continue with current token
+        }
+      }, 30 * 60 * 1000); // Refresh every 30 minutes
+
       // TODO: Listen to comments from backend API
       // const response = await fetch(`/api/livestreams/${channel}/comments`);
       // const data = await response.json();
@@ -557,6 +574,12 @@ export default function GoLiveScreen() {
             try {
               isExplicitlyEndingRef.current = true;
               
+              // Clear token refresh interval
+              if (tokenRefreshIntervalRef.current) {
+                clearInterval(tokenRefreshIntervalRef.current);
+                tokenRefreshIntervalRef.current = null;
+              }
+
               // Leave Agora channel first
               try {
                 if (agoraEngineRef.current) {
