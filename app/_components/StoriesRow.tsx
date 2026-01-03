@@ -212,11 +212,21 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
         // Build users array with cached avatars
         for (const [userId, stories] of storyMap.entries()) {
           const firstStory = stories[0];
+          
+          // Transform stories to match StoriesViewer format (image -> imageUrl, video -> videoUrl)
+          const transformedStories = stories.map((story: any) => ({
+            ...story,
+            id: story._id || story.id,
+            imageUrl: story.image || story.imageUrl || story.mediaUrl,
+            videoUrl: story.video || story.videoUrl,
+            mediaType: story.video ? 'video' : 'image'
+          }));
+          
           users.push({
             userId: userId,
             userName: firstStory.userName || 'Anonymous',
             userAvatar: avatarMap.get(userId) || DEFAULT_AVATAR_URL,
-            stories: stories as any[]
+            stories: transformedStories as any[]
           });
         }
         
