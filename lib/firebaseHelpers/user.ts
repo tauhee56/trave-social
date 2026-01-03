@@ -51,7 +51,7 @@ export async function getAllStoriesForFeed() {
     
     // Get API base URL from environment or use Render production
     const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://trave-social-backend.onrender.com/api';
-    const fullUrl = `${apiBase}/stories/feed`;
+    const fullUrl = `${apiBase}/stories`;
     
     console.log('[getAllStoriesForFeed] URL:', fullUrl);
     

@@ -169,31 +169,40 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
         const now = Date.now();
         const users: StoryUser[] = [];
         
-        // Collect all unique user IDs first
-        const userIdsToFetch: string[] = [];
-        const storyGroupsWithActiveStories: { firstStory: any; activeStories: any[] }[] = [];
+        // Group stories by userId (API returns flat array, we need to group them)
+        const storyMap = new Map<string, any[]>();
         
-        for (const storyGroup of result.data) {
-          const activeStories = storyGroup.filter((story: any) => story.expiresAt > now);
-          if (activeStories.length > 0) {
-            const firstStory = activeStories[0];
-            userIdsToFetch.push(firstStory.userId);
-            storyGroupsWithActiveStories.push({ firstStory, activeStories });
+        for (const story of result.data) {
+          // Filter out expired stories
+          if (story.expiresAt <= now) {
+            console.log('[StoriesRow] Skipping expired story:', story._id);
+            continue;
           }
+          
+          const userId = story.userId;
+          if (!storyMap.has(userId)) {
+            storyMap.set(userId, []);
+          }
+          storyMap.get(userId)!.push(story);
         }
         
-        console.log('[StoriesRow] Active story groups:', storyGroupsWithActiveStories.length, 'unique users:', userIdsToFetch.length);
+        console.log('[StoriesRow] Grouped stories into', storyMap.size, 'users');
+        
+        // Collect user IDs to fetch profiles for
+        const userIdsToFetch = Array.from(storyMap.keys());
+        console.log('[StoriesRow] Need to fetch profiles for', userIdsToFetch.length, 'users');
+        
         // Batch fetch all user profiles at once
         const avatarMap = new Map<string, string>();
-        const uniqueUserIds = [...new Set(userIdsToFetch)];
-        
-        const profilePromises = uniqueUserIds.map(async (userId) => {
+        const profilePromises = userIdsToFetch.map(async (userId) => {
           try {
             const profileRes = await getUserProfile(userId);
             if (profileRes.success && 'data' in profileRes && profileRes.data) {
               return { userId, avatar: profileRes.data.avatar };
             }
-          } catch {}
+          } catch (e) {
+            console.log('[StoriesRow] Error fetching profile for', userId, e);
+          }
           return { userId, avatar: DEFAULT_AVATAR_URL };
         });
         
@@ -201,12 +210,13 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
         profiles.forEach(({ userId, avatar }) => avatarMap.set(userId, avatar));
         
         // Build users array with cached avatars
-        for (const { firstStory, activeStories } of storyGroupsWithActiveStories) {
+        for (const [userId, stories] of storyMap.entries()) {
+          const firstStory = stories[0];
           users.push({
-            userId: firstStory.userId,
-            userName: firstStory.userName,
-            userAvatar: avatarMap.get(firstStory.userId) || DEFAULT_AVATAR_URL,
-            stories: activeStories as any[]
+            userId: userId,
+            userName: firstStory.userName || 'Anonymous',
+            userAvatar: avatarMap.get(userId) || DEFAULT_AVATAR_URL,
+            stories: stories as any[]
           });
         }
         
