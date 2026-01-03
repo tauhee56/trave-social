@@ -731,7 +731,20 @@ export async function createStory(
   const upload = await uploadImage(mediaUri);
   if (!upload?.url) throw new Error(upload?.error || 'Upload failed');
   
-  const res = await apiService.post('/stories', { userId, mediaUrl: upload.url, mediaType, locationData });
+  // Get user's actual name
+  let userName = 'Anonymous';
+  try {
+    const userProfile = await getUserProfile(userId);
+    if (userProfile?.success && userProfile?.data?.displayName) {
+      userName = userProfile.data.displayName;
+    } else if (userProfile?.success && userProfile?.data?.name) {
+      userName = userProfile.data.name;
+    }
+  } catch (err) {
+    console.log('[createStory] Could not fetch user profile for name:', err);
+  }
+  
+  const res = await apiService.post('/stories', { userId, userName, mediaUrl: upload.url, mediaType, locationData });
   
   // Unwrap API response
   const storyData = res?.data || res;
