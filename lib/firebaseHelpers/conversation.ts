@@ -59,16 +59,20 @@ export async function sendMessage(
   conversationId: string, 
   senderId: string, 
   text: string, 
-  imageUrl?: string,
+  recipientId?: string,
   replyTo?: { id: string; text: string; senderId: string } | null
 ) {
   try {
     const messageData: any = {
       senderId,
       text,
-      imageUrl: imageUrl || null,
       read: false
     };
+    
+    // Add recipientId if provided
+    if (recipientId) {
+      messageData.recipientId = recipientId;
+    }
     
     // Add replyTo if replying to a message
     if (replyTo) {
