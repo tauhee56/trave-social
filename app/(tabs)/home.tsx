@@ -17,7 +17,7 @@ import {
 import PostCard from '../../app/_components/PostCard';
 import StoriesRow from '../../app/_components/StoriesRow';
 import LiveStreamsRow from '../../src/_components/LiveStreamsRow';
-import StoriesViewer from '../../src/_components/StoriesViewer';
+import StoriesViewer from '../../app/_components/StoriesViewer';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_CATEGORIES, getCategories } from '../../lib/firebaseHelpers/index';
