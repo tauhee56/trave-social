@@ -10,6 +10,7 @@ import { followUser, unfollowUser } from '../lib/firebaseHelpers/follow';
 import { useUser } from './_components/UserContext';
 
 const DEFAULT_AVATAR = 'https://via.placeholder.com/200x200.png?text=Profile';
+const API_URL = API_BASE_URL;
 
 type UserItem = {
   uid: string;
@@ -50,27 +51,51 @@ export default function FriendsScreen() {
   const fetchAllData = async () => {
     if (!userId) return;
     setLoading(true);
-    
+
     try {
-      // TODO: Implement backend API for fetching user's followers/following/friends/blocked
-      // For now, return empty lists
-      // const response = await fetch(`/api/users/${userId}/friends`);
-      // const data = await response.json();
-      // setFollowers(data.followers);
-      // setFollowing(data.following);
-      // setFriends(data.friends);
-      // setBlockedUsers(isOwnProfile ? data.blocked : []);
-      
-      setFollowers([]);
-      setFollowing([]);
-      setFriends([]);
-      setBlockedUsers([]);
-      setProfileName('User');
-      
+      const currentUserId = authUser?.uid;
+
+      // Fetch followers
+      const followersRes = await fetch(`${API_URL}/follow/users/${userId}/followers?currentUserId=${currentUserId}`);
+      const followersData = await followersRes.json();
+      if (followersData.success) {
+        setFollowers(followersData.data || []);
+      }
+
+      // Fetch following
+      const followingRes = await fetch(`${API_URL}/follow/users/${userId}/following?currentUserId=${currentUserId}`);
+      const followingData = await followingRes.json();
+      if (followingData.success) {
+        setFollowing(followingData.data || []);
+      }
+
+      // Fetch friends (mutual follows)
+      const friendsRes = await fetch(`${API_URL}/follow/users/${userId}/friends`);
+      const friendsData = await friendsRes.json();
+      if (friendsData.success) {
+        setFriends(friendsData.data || []);
+      }
+
+      // Fetch blocked users (only for own profile)
+      if (isOwnProfile) {
+        const blockedRes = await fetch(`${API_URL}/follow/users/${userId}/blocked`);
+        const blockedData = await blockedRes.json();
+        if (blockedData.success) {
+          setBlockedUsers(blockedData.data || []);
+        }
+      }
+
+      // Get profile name
+      const userRes = await fetch(`${API_URL}/users/${userId}`);
+      const userData = await userRes.json();
+      if (userData.success) {
+        setProfileName(userData.data?.name || 'User');
+      }
+
     } catch (error) {
       console.error('Error fetching data:', error);
     }
-    
+
     setLoading(false);
   };
 
@@ -120,7 +145,7 @@ export default function FriendsScreen() {
 
   const handleUnblock = async (targetUserId: string) => {
     if (!authUser?.uid) return;
-    
+
     Alert.alert(
       'Unblock User',
       'You will start seeing content from this user again.',
@@ -130,9 +155,18 @@ export default function FriendsScreen() {
           text: 'Unblock',
           onPress: async () => {
             try {
-              // TODO: implement unblock on backend API
-              setBlockedUsers(prev => prev.filter(u => u.uid !== targetUserId));
-              Alert.alert('Success', 'User unblocked (local only)');
+              // Call backend API to unblock
+              const response = await fetch(`${API_URL}/users/${authUser.uid}/block/${targetUserId}`, {
+                method: 'DELETE'
+              });
+              const data = await response.json();
+
+              if (data.success) {
+                setBlockedUsers(prev => prev.filter(u => u.uid !== targetUserId));
+                Alert.alert('Success', 'User unblocked');
+              } else {
+                Alert.alert('Error', 'Failed to unblock user');
+              }
             } catch (e) {
               Alert.alert('Error', 'Failed to unblock user');
             }
