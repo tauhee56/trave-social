@@ -55,6 +55,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
   const [locationSuggestions, setLocationSuggestions] = useState<any[]>([]);
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [authUser, setAuthUser] = useState<any>(null);
+  const [isViewingStories, setIsViewingStories] = useState(false);
   // Default avatar placeholder
   const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   
@@ -311,6 +312,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
               <View style={styles.modalHeader}>
                 <TouchableOpacity
                   onPress={() => { 
+                    console.log('[StoriesRow] Close button pressed');
                     setShowUploadModal(false); 
                     setSelectedMedia(null);
                     setLocationQuery('');
@@ -324,6 +326,8 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                     activeOpacity={0.7}
                     onPress={() => {
                       console.log('[StoriesRow] Profile pic clicked, viewing stories...');
+                      // Set flag FIRST to prevent picker from opening
+                      setIsViewingStories(true);
                       // Close modal and view own stories
                       setShowUploadModal(false);
                       setSelectedMedia(null);
@@ -337,9 +341,12 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                         console.log('[StoriesRow] Opening stories viewer...');
                         setTimeout(() => {
                           onStoryPress(myUser.stories, 0);
+                          // Reset flag after opening viewer
+                          setIsViewingStories(false);
                         }, 100);
                       } else {
                         console.log('[StoriesRow] No stories to view');
+                        setIsViewingStories(false);
                       }
                     }}
                   >
@@ -392,7 +399,13 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
               ) : (
                 <TouchableOpacity
                   style={styles.imagePickerArea}
+                  disabled={isViewingStories}
                   onPress={async () => {
+                    if (isViewingStories) {
+                      console.log('[StoriesRow] Picker disabled - viewing stories');
+                      return;
+                    }
+                    console.log('[StoriesRow] Opening image picker...');
                     const pickerResult = await ImagePicker.launchImageLibraryAsync({ 
                       mediaTypes: ['images', 'videos'], 
                       allowsEditing: true, 
