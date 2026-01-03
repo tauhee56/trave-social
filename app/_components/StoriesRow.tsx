@@ -56,6 +56,10 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [authUser, setAuthUser] = useState<any>(null);
   const [isViewingStories, setIsViewingStories] = useState(false);
+  
+  // Use ref to prevent picker from opening during transitions
+  const pickerBlockedRef = React.useRef(false);
+  
   // Default avatar placeholder
   const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   
@@ -186,9 +190,9 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
   };
 
   async function handleAddStory() {
-    // Prevent picker from opening if we just closed a modal or are viewing stories
-    if (isViewingStories || showUploadModal) {
-      console.log('[StoriesRow] Blocked handleAddStory - isViewingStories:', isViewingStories, 'showUploadModal:', showUploadModal);
+    // CRITICAL: Block picker if we're transitioning to view stories
+    if (pickerBlockedRef.current || isViewingStories || showUploadModal) {
+      console.log('[StoriesRow] 🚫 Picker BLOCKED:', { pickerBlocked: pickerBlockedRef.current, isViewingStories, showUploadModal });
       return;
     }
     console.log('[StoriesRow] handleAddStory called - opening picker');
@@ -239,9 +243,10 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                   </View>
                 </LinearGradient>
               </TouchableOpacity>
-              {/* Add story button overlay */}
+              {/* Add story button overlay - disabled while modal is open */}
               <TouchableOpacity
-                style={[styles.addButton, { position: 'absolute', bottom: -4, right: -4, zIndex: 2 }]}
+                pointerEvents={showUploadModal ? 'none' : 'auto'}
+                style={[styles.addButton, { position: 'absolute', bottom: -12, right: -12, zIndex: 2 }]}
                 onPress={handleAddStory}
               >
                 <Feather name="plus" size={18} color="#fff" />
@@ -249,6 +254,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
             </View>
           ) : (
             <TouchableOpacity
+              pointerEvents={showUploadModal ? 'none' : 'auto'}
               style={styles.storyButton}
               activeOpacity={0.8}
               onPress={handleAddStory}
@@ -340,9 +346,14 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   onPress={() => {
                     console.log('[StoriesRow] ✅ Profile pic clicked - viewing stories...');
-                    // Set flag FIRST to prevent picker from opening
+                    
+                    // 🚫 BLOCK PICKER IMMEDIATELY
+                    pickerBlockedRef.current = true;
+                    
+                    // Set flag to prevent picker from opening
                     setIsViewingStories(true);
-                    // Close modal and view own stories
+                    
+                    // Close modal
                     setShowUploadModal(false);
                     setSelectedMedia(null);
                     setLocationQuery('');
@@ -351,15 +362,25 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                     // Find and open own stories
                     const myUser = storyUsers.find(u => u.userId === authUser?.uid);
                     console.log('[StoriesRow] My user:', myUser?.userId, 'Stories count:', myUser?.stories?.length);
+                    
                     if (myUser && myUser.stories && myUser.stories.length > 0 && onStoryPress) {
                       console.log('[StoriesRow] ✅ Opening stories viewer for', myUser.stories.length, 'stories');
+                      
+                      // Open viewer after modal close animation
                       setTimeout(() => {
+                        console.log('[StoriesRow] Calling onStoryPress callback...');
                         onStoryPress(myUser.stories, 0);
-                        // Reset flag after opening viewer
-                        setIsViewingStories(false);
-                      }, 150);
+                        
+                        // Unblock picker after viewer opens
+                        setTimeout(() => {
+                          pickerBlockedRef.current = false;
+                          setIsViewingStories(false);
+                          console.log('[StoriesRow] ✅ Unblocked picker');
+                        }, 300);
+                      }, 200);
                     } else {
                       console.log('[StoriesRow] ❌ No stories to view:', { hasUser: !!myUser, storiesCount: myUser?.stories?.length });
+                      pickerBlockedRef.current = false;
                       setIsViewingStories(false);
                     }
                   }}
@@ -410,10 +431,10 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
               ) : (
                 <TouchableOpacity
                   style={styles.imagePickerArea}
-                  disabled={isViewingStories}
+                  disabled={isViewingStories || pickerBlockedRef.current}
                   onPress={async () => {
-                    if (isViewingStories) {
-                      console.log('[StoriesRow] Picker disabled - viewing stories');
+                    if (isViewingStories || pickerBlockedRef.current) {
+                      console.log('[StoriesRow] 🚫 Picker disabled:', { isViewingStories, pickerBlocked: pickerBlockedRef.current });
                       return;
                     }
                     console.log('[StoriesRow] Opening image picker...');
@@ -620,8 +641,8 @@ const styles = StyleSheet.create({
   },
   addButton: {
     position: 'absolute',
-    bottom: -4,
-    right: -4,
+    bottom: -12,
+    right: -12,
     backgroundColor: '#007aff',
     borderRadius: 14,
     width: 28,
