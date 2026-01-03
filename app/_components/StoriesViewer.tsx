@@ -85,7 +85,9 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
   const [localStories, setLocalStories] = useState(stories);
   const [videoDuration, setVideoDuration] = useState(5000); // ms
   const videoRef = useRef<Video>(null);
-  const currentUser = useUser();
+  const userContextUser = useUser();
+  // Get current user from AsyncStorage (token-based auth) instead of UserContext
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [latestAvatar, setLatestAvatar] = useState<string | null>(null);
   const [editingComment, setEditingComment] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
@@ -94,6 +96,22 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
   const [showHighlightModal, setShowHighlightModal] = useState(false);
   const [userHighlights, setUserHighlights] = useState<any[]>([]);
   const [loadingHighlights, setLoadingHighlights] = useState(false);
+
+  // Load current user from AsyncStorage on mount
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const userId = await AsyncStorage.getItem('userId');
+        if (userId) {
+          setCurrentUser({ uid: userId });
+          console.log('[StoriesViewer] Loaded user from AsyncStorage:', userId);
+        }
+      } catch (error) {
+        console.error('[StoriesViewer] Failed to load userId from storage:', error);
+      }
+    };
+    loadCurrentUser();
+  }, []);
 
   const loadUserHighlights = async () => {
     if (!currentUser?.uid) return;
