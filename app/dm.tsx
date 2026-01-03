@@ -245,15 +245,20 @@ export default function DM() {
       await sendMessage(conversationId, currentUserId, messageText, otherUserId, replyData);
       // Send notification to recipient
       if (otherUserId && otherUserId !== currentUserId) {
-        // Fetch sender profile for name and avatar from backend
-        let senderName = '';
-        let senderAvatar = '';
-        // TODO: Replace with backend API call to fetch sender profile
-        // Example:
-        // const response = await fetch(`/api/users/${currentUserTyped.uid}`);
-        // const senderData = await response.json();
-        // senderName = senderData.displayName || senderData.name || 'User';
-        // senderAvatar = senderData.avatar || senderData.photoURL || DEFAULT_AVATAR_URL;
+        // Fetch sender profile for name and avatar
+        let senderName = 'User';
+        let senderAvatar = DEFAULT_AVATAR_URL;
+        
+        try {
+          const senderProfile = await getUserProfile(currentUserId);
+          if (senderProfile) {
+            senderName = senderProfile.displayName || senderProfile.username || 'User';
+            senderAvatar = senderProfile.avatar || DEFAULT_AVATAR_URL;
+          }
+        } catch (err) {
+          console.warn('Could not fetch sender profile for notification:', err);
+        }
+        
         await addNotification({
           recipientId: String(otherUserId),
           senderId: currentUserId,

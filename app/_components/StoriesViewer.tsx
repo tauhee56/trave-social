@@ -103,8 +103,27 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
       try {
         const userId = await AsyncStorage.getItem('userId');
         if (userId) {
-          setCurrentUser({ uid: userId });
-          console.log('[StoriesViewer] Loaded user from AsyncStorage:', userId);
+          // Load full user profile
+          try {
+            const { apiService } = await import('../../app/_services/apiService');
+            const response = await apiService.get(`/users/${userId}`);
+            if (response.success && response.data) {
+              setCurrentUser({
+                uid: userId,
+                displayName: response.data.displayName || response.data.name || 'User',
+                photoURL: response.data.avatar || response.data.photoURL || null
+              });
+              console.log('[StoriesViewer] Loaded full user profile:', response.data.displayName);
+            } else {
+              // Fallback to just userId
+              setCurrentUser({ uid: userId });
+              console.log('[StoriesViewer] Loaded userId only:', userId);
+            }
+          } catch (error) {
+            // Fallback to just userId
+            setCurrentUser({ uid: userId });
+            console.log('[StoriesViewer] Loaded userId only (profile fetch failed):', userId);
+          }
         }
       } catch (error) {
         console.error('[StoriesViewer] Failed to load userId from storage:', error);
@@ -267,16 +286,35 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
       Alert.alert('Please Login', 'You need to be logged in to like stories.');
       return;
     }
+
+    const storyId = currentStory.id;
+    const userId = currentUser.uid;
+
+    // Optimistic update
     const updatedStories = [...localStories];
     const likes = updatedStories[currentIndex].likes || [];
-    
-    // Remove backend like/unlike calls, only update local state
+
     if (isLiked) {
-      updatedStories[currentIndex].likes = likes.filter(id => id !== currentUser.uid);
-      setLocalStories(updatedStories);
+      updatedStories[currentIndex].likes = likes.filter(id => id !== userId);
     } else {
-      updatedStories[currentIndex].likes = [...likes, currentUser.uid];
-      setLocalStories(updatedStories);
+      updatedStories[currentIndex].likes = [...likes, userId];
+    }
+    setLocalStories(updatedStories);
+
+    // Backend call
+    try {
+      const { apiService } = await import('../../app/_services/apiService');
+      const response = await apiService.post(`/stories/${storyId}/like`, { userId });
+
+      if (!response.success) {
+        // Revert on failure
+        setLocalStories([...localStories]);
+        console.error('[StoriesViewer] Like failed:', response.error);
+      }
+    } catch (error) {
+      // Revert on error
+      setLocalStories([...localStories]);
+      console.error('[StoriesViewer] Like error:', error);
     }
   };
 
@@ -322,19 +360,50 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
     } else {
       // New top-level comment
       if (!commentText.trim()) return;
+
+      const storyId = currentStory.id;
+      const text = commentText.trim();
+
+      // Optimistic update
       const newComment: StoryComment = {
         id: Date.now().toString(),
         userId: currentUser.uid,
         userName: currentUser.displayName || 'User',
         userAvatar: avatarToSave,
-        text: commentText.trim(),
+        text,
         createdAt: new Date(),
       };
       const updatedStories = [...localStories];
       updatedStories[currentIndex].comments = [...(updatedStories[currentIndex].comments || []), newComment];
       setLocalStories(updatedStories);
       setCommentText('');
-      // Save to Firestore: Function not available, only update local state
+
+      // Backend call
+      try {
+        const { apiService } = await import('../../app/_services/apiService');
+        const response = await apiService.post(`/stories/${storyId}/comments`, {
+          userId: currentUser.uid,
+          userName: currentUser.displayName || 'User',
+          text
+        });
+
+        if (response.success && response.data) {
+          // Update with real comment ID from backend
+          const updatedWithRealId = [...localStories];
+          const commentIndex = updatedWithRealId[currentIndex].comments?.findIndex(c => c.id === newComment.id);
+          if (commentIndex !== undefined && commentIndex >= 0 && updatedWithRealId[currentIndex].comments) {
+            updatedWithRealId[currentIndex].comments[commentIndex] = {
+              ...response.data,
+              id: response.data._id || response.data.id
+            };
+            setLocalStories(updatedWithRealId);
+          }
+        } else {
+          console.error('[StoriesViewer] Comment failed:', response.error);
+        }
+      } catch (error) {
+        console.error('[StoriesViewer] Comment error:', error);
+      }
     }
   };
 
