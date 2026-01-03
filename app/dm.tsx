@@ -97,12 +97,9 @@ export default function DM() {
     
     const initializeDM = async () => {
       try {
-        setLoading(true);
-        
         // Step 1: Initialize conversation immediately
         if (!currentUserTyped?.uid || !otherUserId) {
           console.log('[DM] Missing user IDs, cannot initialize:', { currentUid: currentUserTyped?.uid, otherUserId });
-          setLoading(false);
           return;
         }
 
@@ -124,8 +121,6 @@ export default function DM() {
         setCanMessage(true);
       } catch (error) {
         console.error('[DM] Error initializing:', error);
-      } finally {
-        if (isMounted) setLoading(false);
       }
     };
 
