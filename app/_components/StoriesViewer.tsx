@@ -223,21 +223,30 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
     const increment = 100 / (duration / 50);
     const interval = setInterval(() => {
       setProgress(prev => {
-        if (prev >= 100) {
+        const newProgress = prev + increment;
+        if (newProgress >= 100) {
           if (currentIndex < localStories.length - 1) {
             setCurrentIndex(currentIndex + 1);
             setImageLoading(true);
             setVideoDuration(5000);
             return 0;
           } else {
-            onClose();
+            // Don't call onClose here - use useEffect to watch for end condition
             return 100;
           }
         }
-        return prev + increment;
+        return newProgress;
       });
     }, 50);
     return () => clearInterval(interval);
+  }, [currentIndex, localStories.length, isPaused, showComments, imageLoading, videoDuration]);
+
+  // Call onClose when story reaches end
+  useEffect(() => {
+    if (progress >= 100 && currentIndex >= localStories.length - 1) {
+      onClose();
+    }
+  }, [progress, currentIndex, localStories.length, onClose]);
   }, [currentIndex, localStories.length, isPaused, showComments, imageLoading, videoDuration]);
 
   const currentStory = localStories[currentIndex];
