@@ -422,7 +422,13 @@ export default function DM() {
             <FlatList
               ref={flatListRef}
               data={messages}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item, index) => {
+                // Use message ID if available, otherwise use senderId + timestamp
+                if (item.id) return item.id;
+                if (item.senderId && item.createdAt) return `${item.senderId}_${item.createdAt}_${index}`;
+                // Fallback to index (less ideal but prevents warnings)
+                return `msg_${index}`;
+              }}
               renderItem={renderMessage}
               contentContainerStyle={{ paddingVertical: 10 }}
               onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
