@@ -608,12 +608,12 @@ export async function createPost(
       mediaUrls.push(upload.url);
     }
     
-    const payload = { 
-      userId, 
-      content: caption,  // Backend expects 'content' field
-      caption,  // Also send caption for compatibility
-      location, 
-      locationData, 
+    const payload = {
+      userId,
+      content: caption || ' ',  // Backend expects 'content' field (use space if empty)
+      caption: caption || ' ',  // Also send caption for compatibility
+      location,
+      locationData,
       mediaType, 
       mediaUrls, 
       category, 

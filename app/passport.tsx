@@ -63,10 +63,30 @@ export default function PassportScreen() {
 
       // Load passport stamps
       if (userId) {
+        console.log('📡 [Passport] Loading data for userId:', userId);
         const result = await getPassportTickets(userId);
-        if (Array.isArray(result)) {
+        console.log('📡 [Passport] Result:', result);
+
+        // Backend returns { locations: [], ticketCount: 0 }
+        if (result && result.locations) {
+          // Convert locations to stamps format
+          const stamps = result.locations.map((loc: any, index: number) => ({
+            id: `${loc.city}-${loc.country}-${index}`,
+            city: loc.city,
+            country: loc.country,
+            visitDate: loc.visitedAt ? new Date(loc.visitedAt).getTime() : Date.now(),
+            imageUrl: `https://source.unsplash.com/800x600/?${loc.city},${loc.country}`,
+            notes: `Visited on ${new Date(loc.visitedAt || Date.now()).toLocaleDateString()}`
+          }));
+          setStamps(stamps);
+        } else if (Array.isArray(result)) {
           setStamps(result as PassportStamp[]);
+        } else {
+          setStamps([]);
         }
+      } else {
+        console.log('⚠️ [Passport] No userId available');
+        setStamps([]);
       }
 
       // Get current location if owner
