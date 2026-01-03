@@ -47,10 +47,29 @@ export async function getUserHighlights(userId: string, requesterUserId?: string
  */
 export async function getAllStoriesForFeed() {
   try {
-    const res = await fetch(`/api/stories/feed`);
+    console.log('[getAllStoriesForFeed] Fetching stories feed...');
+    
+    // Get API base URL from environment or use Render production
+    const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://trave-social-backend.onrender.com/api';
+    const fullUrl = `${apiBase}/stories/feed`;
+    
+    console.log('[getAllStoriesForFeed] URL:', fullUrl);
+    
+    const res = await fetch(fullUrl, {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('[getAllStoriesForFeed] Response status:', res.status);
     const data = await res.json();
+    console.log('[getAllStoriesForFeed] Response success:', data.success);
+    
     return { success: data.success, data: data.data || [] };
   } catch (error: any) {
+    console.log('[getAllStoriesForFeed] Error:', error.message);
     return { success: false, error: error.message };
   }
 }

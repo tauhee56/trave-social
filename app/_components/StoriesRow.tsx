@@ -43,7 +43,7 @@ interface StoryUser {
   stories: any[];
 }
 
-function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: (stories: any[], initialIndex: number) => void; refreshTrigger?: number }): React.ReactElement {
+function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger, resetTrigger }: { onStoryPress?: (stories: any[], initialIndex: number) => void; onStoryViewerClose?: () => void; refreshTrigger?: number; resetTrigger?: number }): React.ReactElement {
   const [storyUsers, setStoryUsers] = useState<StoryUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -93,6 +93,30 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
     loadCurrentUserAvatar();
   }, [refreshTrigger]);
 
+  // Reset state when StoriesViewer closes
+  useEffect(() => {
+    const resetViewerState = () => {
+      console.log('[StoriesRow] 🔄 Resetting viewer state from parent signal');
+      setIsViewingStories(false);
+      pickerBlockedRef.current = false;
+    };
+    
+    // If callback is provided, we can use it to know when viewer closes
+    // For now, we reset based on state changes
+    return () => {
+      resetViewerState();
+    };
+  }, []);
+
+  // Listen for reset trigger from parent (when StoriesViewer closes)
+  useEffect(() => {
+    if (resetTrigger && resetTrigger > 0) {
+      console.log('[StoriesRow] 🔄 Reset trigger received:', resetTrigger);
+      setIsViewingStories(false);
+      pickerBlockedRef.current = false;
+    }
+  }, [resetTrigger]);
+
   // Fetch location suggestions from Google Places API
   useEffect(() => {
     if (locationQuery.length < 2) {
@@ -136,8 +160,12 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
 
   const loadStories = async () => {
     try {
+      console.log('[StoriesRow] 📥 Loading stories...');
       const result = await getAllStoriesForFeed();
-      if (result.success && result.data) {
+      console.log('[StoriesRow] API Response received:', JSON.stringify(result).substring(0, 200));
+      console.log('[StoriesRow] Got result.success:', result.success, 'result.data type:', typeof result.data, 'length:', result.data?.length);
+      
+      if (result.success && result.data && Array.isArray(result.data)) {
         const now = Date.now();
         const users: StoryUser[] = [];
         
@@ -154,6 +182,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
           }
         }
         
+        console.log('[StoriesRow] Active story groups:', storyGroupsWithActiveStories.length, 'unique users:', userIdsToFetch.length);
         // Batch fetch all user profiles at once
         const avatarMap = new Map<string, string>();
         const uniqueUserIds = [...new Set(userIdsToFetch)];
@@ -181,10 +210,13 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
           });
         }
         
+        console.log('[StoriesRow] ✅ Setting storyUsers:', users.length, 'users');
         setStoryUsers(users);
+      } else {
+        console.log('[StoriesRow] ❌ Result not success or no data');
       }
     } catch (error) {
-      console.error('StoriesRow - Error loading stories:', error);
+      console.error('[StoriesRow] ❌ Error loading stories:', error);
     }
     setLoading(false);
   };
@@ -243,15 +275,15 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                   </View>
                 </LinearGradient>
               </TouchableOpacity>
-              {/* Add story button overlay - disabled while modal is open */}
-              <TouchableOpacity
+              {/* Add story button overlay - TEMPORARILY HIDDEN */}
+              {/* <TouchableOpacity
                 pointerEvents={showUploadModal ? 'none' : 'auto'}
                 hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
                 style={[styles.addButton, { position: 'absolute', bottom: -16, right: -16, zIndex: 10 }]}
                 onPress={handleAddStory}
               >
                 <Feather name="plus" size={18} color="#fff" />
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </View>
           ) : (
             <TouchableOpacity
@@ -347,61 +379,41 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   onPress={() => {
                     console.log('[StoriesRow] ✅ Profile pic clicked - viewing stories...');
-                    console.log('[StoriesRow] Current storyUsers:', storyUsers.length, 'My UID:', authUser?.uid);
                     
-                    // 🚫 BLOCK PICKER IMMEDIATELY
+                    // 🚫 BLOCK PICKER IMMEDIATELY AND KEEP IT BLOCKED
                     pickerBlockedRef.current = true;
-                    
-                    // Set flag to prevent picker from opening
                     setIsViewingStories(true);
                     
-                    // Close modal
+                    // Close upload modal
                     setShowUploadModal(false);
                     setSelectedMedia(null);
                     setLocationQuery('');
                     setLocationSuggestions([]);
                     
-                    // Find and open own stories
+                    // Find own stories
                     const myUser = storyUsers.find(u => u.userId === authUser?.uid);
-                    console.log('[StoriesRow] My user found:', !!myUser, 'Stories count:', myUser?.stories?.length);
-                    
-                    if (!myUser) {
-                      console.log('[StoriesRow] ❌ User not found in storyUsers, trying to load stories...');
-                      // Reload stories in case they weren't loaded
-                      loadStories().then(() => {
-                        setTimeout(() => {
-                          const retryUser = storyUsers.find(u => u.userId === authUser?.uid);
-                          if (retryUser && retryUser.stories && retryUser.stories.length > 0 && onStoryPress) {
-                            console.log('[StoriesRow] ✅ Retrying - Opening stories viewer for', retryUser.stories.length, 'stories');
-                            onStoryPress(retryUser.stories, 0);
-                            pickerBlockedRef.current = false;
-                          } else {
-                            console.log('[StoriesRow] ❌ Still no stories found after reload');
-                            pickerBlockedRef.current = false;
-                            setIsViewingStories(false);
-                          }
-                        }, 200);
-                      });
-                      return;
-                    }
+                    console.log('[StoriesRow] My user:', myUser?.userId, 'Stories count:', myUser?.stories?.length);
                     
                     if (myUser && myUser.stories && myUser.stories.length > 0 && onStoryPress) {
                       console.log('[StoriesRow] ✅ Opening stories viewer for', myUser.stories.length, 'stories');
                       
-                      // Open viewer after modal close animation
+                      // Open viewer after modal close animation (give time for modal to close first)
                       setTimeout(() => {
                         console.log('[StoriesRow] Calling onStoryPress callback...');
                         onStoryPress(myUser.stories, 0);
                         
-                        // Unblock picker after viewer opens
-                        setTimeout(() => {
-                          pickerBlockedRef.current = false;
-                          setIsViewingStories(false);
-                          console.log('[StoriesRow] ✅ Unblocked picker');
-                        }, 300);
-                      }, 200);
+                        // Don't unblock yet - wait for StoriesViewer to actually close
+                        // This will be handled by the parent when StoriesViewer closes
+                      }, 300);
+                      
+                      // Call the close callback if provided (for resetting parent state)
+                      if (onStoryViewerClose) {
+                        // The close callback should be called from parent when viewer closes
+                        console.log('[StoriesRow] Note: Parent should reset state when StoriesViewer closes');
+                      }
                     } else {
-                      console.log('[StoriesRow] ❌ No stories to view:', { hasUser: !!myUser, storiesCount: myUser?.stories?.length, hasCallback: !!onStoryPress });
+                      console.log('[StoriesRow] ❌ No stories to view:', { hasUser: !!myUser, storiesCount: myUser?.stories?.length });
+                      // Reset immediately if no stories
                       pickerBlockedRef.current = false;
                       setIsViewingStories(false);
                     }
@@ -608,31 +620,15 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                   setUploadProgress(100);
                   
                   if (storyRes.success) {
-                    console.log('[StoriesRow] ✅ Story uploaded successfully, reloading stories...');
                     await loadStories();
-                    
                     setTimeout(() => {
                       setUploading(false);
                       setShowUploadModal(false);
                       setSelectedMedia(null);
                       setLocationQuery('');
                       setLocationSuggestions([]);
-                      pickerBlockedRef.current = false;
-                      setIsViewingStories(false);
-                      
-                      // Auto-open viewer after successful upload
-                      setTimeout(() => {
-                        console.log('[StoriesRow] Auto-opening viewer after upload...');
-                        const updatedUser = storyUsers.find(u => u.userId === authUser?.uid);
-                        console.log('[StoriesRow] Updated user after reload:', updatedUser?.userId, 'stories:', updatedUser?.stories?.length);
-                        if (updatedUser && updatedUser.stories && updatedUser.stories.length > 0 && onStoryPress) {
-                          console.log('[StoriesRow] ✅ Auto-opening story viewer...');
-                          onStoryPress(updatedUser.stories, 0);
-                        }
-                      }, 300);
                     }, 600);
                   } else {
-                    console.log('[StoriesRow] ❌ Story upload failed:', storyRes.error);
                     setUploading(false);
                     Alert.alert('Error', 'Failed to upload story');
                   }

@@ -52,6 +52,7 @@ export default function Home() {
     const [selectedStories, setSelectedStories] = useState<any[]>([]);
     const [storyInitialIndex, setStoryInitialIndex] = useState(0);
     const [storiesRefreshTrigger, setStoriesRefreshTrigger] = useState(0);
+    const [storiesRowResetTrigger, setStoriesRowResetTrigger] = useState(0);
     const flatListRef = React.useRef<FlatList>(null);
 
     // Get current user ID from AsyncStorage (token-based auth)
@@ -374,7 +375,15 @@ export default function Home() {
                                 setStoryInitialIndex(initialIndex || 0);
                                 setShowStoriesViewer(true);
                             }}
+                            onStoryViewerClose={() => {
+                                console.log('[Home] StoriesViewer closed - resetting state');
+                                setShowStoriesViewer(false);
+                                setSelectedStories([]);
+                                setStoryInitialIndex(0);
+                                setStoriesRowResetTrigger(prev => prev + 1);
+                            }}
                             refreshTrigger={storiesRefreshTrigger}
+                            resetTrigger={storiesRowResetTrigger}
                         />
                         <LiveStreamsRow />
                         <View style={styles.headerSection}>
@@ -428,8 +437,20 @@ export default function Home() {
                 onEndReachedThreshold={0.5}
             />
             {showStoriesViewer && (
-                <Modal visible={showStoriesViewer} animationType="fade" onRequestClose={() => setShowStoriesViewer(false)}>
-                    <StoriesViewer stories={selectedStories} initialIndex={storyInitialIndex} onClose={() => setShowStoriesViewer(false)} />
+                <Modal visible={showStoriesViewer} animationType="fade" onRequestClose={() => {
+                    console.log('[Home] StoriesViewer onRequestClose');
+                    setShowStoriesViewer(false);
+                    setSelectedStories([]);
+                    setStoryInitialIndex(0);
+                    setStoriesRowResetTrigger(prev => prev + 1);
+                }}>
+                    <StoriesViewer stories={selectedStories} initialIndex={storyInitialIndex} onClose={() => {
+                        console.log('[Home] StoriesViewer onClose callback');
+                        setShowStoriesViewer(false);
+                        setSelectedStories([]);
+                        setStoryInitialIndex(0);
+                        setStoriesRowResetTrigger(prev => prev + 1);
+                    }} />
                 </Modal>
             )}
         </View>
