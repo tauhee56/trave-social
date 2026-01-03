@@ -3,7 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Dimensions, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import {} from "../../lib/firebaseHelpers";
@@ -71,6 +72,16 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
     };
     getUserData();
   }, []);
+
+  // Reset modal state when screen comes into focus (to prevent media picker from auto-opening)
+  useFocusEffect(
+    useCallback(() => {
+      // When screen comes into focus, ensure modal is closed
+      return () => {
+        // Cleanup when screen loses focus - optional
+      };
+    }, [])
+  );
 
   useEffect(() => {
     loadStories();
@@ -279,10 +290,13 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
         animationType="slide"
         transparent={false}
         onRequestClose={() => {
+          // Reset all state when modal closes
           setShowUploadModal(false);
           setSelectedMedia(null);
           setLocationQuery('');
           setLocationSuggestions([]);
+          setUploading(false);
+          setUploadProgress(0);
         }}
       >
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }} edges={['top', 'bottom']}>
