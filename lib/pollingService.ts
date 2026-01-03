@@ -47,13 +47,19 @@ export async function startConversationsPolling(
       // Pass userId as query parameter
       const response = await apiService.get(`/conversations?userId=${userId}`);
       
-      console.log('📡 Conversations API response:', JSON.stringify(response.data).substring(0, 200));
+      console.log('📡 Conversations API full response:', JSON.stringify(response).substring(0, 300));
       
-      // Unwrap response data structure - backend returns { success, data: [] }
-      let conversations = response.data?.data;
+      // apiService returns response.data directly, so response is { success, data: [] }
+      // NOT response.data.data
+      let conversations = response?.data;
+      
+      if (!response?.success) {
+        console.warn('⚠️ API returned success:false', response?.error || 'unknown error');
+        conversations = [];
+      }
       
       if (!Array.isArray(conversations)) {
-        console.warn('⚠️ Conversations not an array, got:', typeof conversations, conversations);
+        console.warn('⚠️ Conversations not an array, got:', typeof conversations, JSON.stringify(conversations).substring(0, 100));
         conversations = [];
       }
 
