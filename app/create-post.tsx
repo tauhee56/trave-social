@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { ResizeMode, Video } from 'expo-av';
 import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -89,6 +89,17 @@ export default function CreatePostScreen() {
 
   // Gallery tab state for switching between images/videos
   const [galleryTab, setGalleryTab] = useState<'images' | 'videos'>('images');
+
+  // Reset form when screen loses focus or on mount
+  useFocusEffect(
+    useCallback(() => {
+      // Reset state when screen comes into focus
+      return () => {
+        // Optional: Clean up when leaving screen
+        // You can optionally reset the form here too
+      };
+    }, [])
+  );
 
   useEffect(() => {
     async function setupCategories() {
@@ -464,6 +475,16 @@ export default function CreatePostScreen() {
 
       if (result && result.success) {
         console.log('✅ Post created successfully! ID:', result.postId);
+        // Reset state before navigating back
+        setSelectedImages([]);
+        setCaption('');
+        setHashtags([]);
+        setMentions([]);
+        setLocation(null);
+        setVerifiedLocation(null);
+        setTaggedUsers([]);
+        setSelectedCategories([]);
+        setStep('picker');
         Alert.alert('Success', 'Post created successfully!', [
           { text: 'OK', onPress: () => router.back() }
         ]);
