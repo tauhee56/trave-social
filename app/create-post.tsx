@@ -540,33 +540,70 @@ export default function CreatePostScreen() {
       >
         {step === 'picker' ? (
           <View style={{ flex: 1 }}>
-            {/* Gallery header with picker button */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee', padding: 8 }}>
-              <TouchableOpacity
-                onPress={async () => {
-                  if (ImagePicker) {
-                    const result = await ImagePicker.launchImageLibraryAsync({
-                      mediaTypes: ['images', 'videos'],
-                      allowsMultipleSelection: true,
-                      quality: 1,
-                    });
-                    if (!result.canceled && result.assets) {
-                      const uris = result.assets.map((a: any) => a.uri);
-                      setSelectedImages(uris);
-                      setStep('details'); // Go directly to post details after selection
+            {/* Gallery header with picker button and tabs */}
+            <View style={{ backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8 }}>
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (ImagePicker) {
+                      const result = await ImagePicker.launchImageLibraryAsync({
+                        mediaTypes: ['images', 'videos'],
+                        allowsMultipleSelection: true,
+                        quality: 1,
+                      });
+                      if (!result.canceled && result.assets) {
+                        const uris = result.assets.map((a: any) => a.uri);
+                        setSelectedImages(uris);
+                        setStep('details'); // Go directly to post details after selection
+                      }
                     }
-                  }
-                }}
-                style={{ padding: 8, borderRadius: 8, backgroundColor: '#f5f5f5', flexDirection: 'row', alignItems: 'center', marginRight: 12 }}
-              >
-                <Feather name="folder" size={20} color="#FFB800" />
-                <Text style={{ marginLeft: 6, color: '#222', fontWeight: '600' }}>Albums</Text>
-              </TouchableOpacity>
-              <Text style={{ fontWeight: '600', fontSize: 16, color: '#222' }}>Gallery</Text>
+                  }}
+                  style={{ padding: 8, borderRadius: 8, backgroundColor: '#f5f5f5', flexDirection: 'row', alignItems: 'center', marginRight: 12 }}
+                >
+                  <Feather name="folder" size={20} color="#FFB800" />
+                  <Text style={{ marginLeft: 6, color: '#222', fontWeight: '600' }}>Albums</Text>
+                </TouchableOpacity>
+                <Text style={{ fontWeight: '600', fontSize: 16, color: '#222', flex: 1 }}>Gallery</Text>
+              </View>
+              
+              {/* Tab switcher for Images/Videos */}
+              <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#eee' }}>
+                <TouchableOpacity 
+                  onPress={() => setGalleryTab('images')}
+                  style={{ 
+                    flex: 1, 
+                    paddingVertical: 12, 
+                    alignItems: 'center', 
+                    borderBottomWidth: galleryTab === 'images' ? 3 : 0,
+                    borderBottomColor: '#FFB800',
+                    backgroundColor: galleryTab === 'images' ? '#fff8f0' : '#fff'
+                  }}
+                >
+                  <Text style={{ fontWeight: galleryTab === 'images' ? '700' : '500', color: galleryTab === 'images' ? '#FFB800' : '#999', fontSize: 14 }}>
+                    📷 Images ({galleryImages.length})
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => setGalleryTab('videos')}
+                  style={{ 
+                    flex: 1, 
+                    paddingVertical: 12, 
+                    alignItems: 'center', 
+                    borderBottomWidth: galleryTab === 'videos' ? 3 : 0,
+                    borderBottomColor: '#FFB800',
+                    backgroundColor: galleryTab === 'videos' ? '#fff8f0' : '#fff'
+                  }}
+                >
+                  <Text style={{ fontWeight: galleryTab === 'videos' ? '700' : '500', color: galleryTab === 'videos' ? '#FFB800' : '#999', fontSize: 14 }}>
+                    🎥 Videos ({galleryVideos.length})
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            {/* Gallery grid (images only) */}
+            
+            {/* Gallery grid (images or videos based on tab) */}
             <FlatList
-              data={galleryImages}
+              data={galleryTab === 'images' ? galleryImages : galleryVideos}
               numColumns={3}
               keyExtractor={(uri, idx) => uri + idx}
               renderItem={({ item }) => (
@@ -576,14 +613,29 @@ export default function CreatePostScreen() {
                   } else {
                     setSelectedImages([...selectedImages, item]);
                   }
-                }} style={{ width: GRID_SIZE, height: GRID_SIZE, borderWidth: 1, borderColor: '#eee' }}>
-                  <Image source={{ uri: item }} style={{ width: '100%', height: '100%' }} />
+                }} style={{ width: GRID_SIZE, height: GRID_SIZE, borderWidth: 1, borderColor: '#eee', position: 'relative' }}>
+                  {galleryTab === 'videos' ? (
+                    <>
+                      <Video 
+                        source={{ uri: item }} 
+                        style={{ width: '100%', height: '100%' }}
+                        resizeMode={ResizeMode.COVER}
+                        useNativeControls={false}
+                        shouldPlay={false}
+                      />
+                      <View style={{ position: 'absolute', top: '50%', left: '50%', marginLeft: -12, marginTop: -12 }}>
+                        <Feather name="play-circle" size={24} color="#FFB800" />
+                      </View>
+                    </>
+                  ) : (
+                    <Image source={{ uri: item }} style={{ width: '100%', height: '100%' }} />
+                  )}
                   {selectedImages.includes(item) && (
-                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderWidth: 3, borderColor: '#FFB800', borderRadius: 8 }} />
+                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderWidth: 3, borderColor: '#FFB800', backgroundColor: 'rgba(255,184,0,0.1)' }} />
                   )}
                 </TouchableOpacity>
               )}
-              ListEmptyComponent={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}><Text>No images found</Text></View>}
+              ListEmptyComponent={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 }}><Text>No {galleryTab === 'images' ? 'images' : 'videos'} found</Text></View>}
             />
             <TouchableOpacity onPress={() => setStep('details')} style={{ backgroundColor: '#FFB800', margin: 16, borderRadius: 6, padding: 16, alignItems: 'center' }}>
               <Text style={{ color: '#000', fontWeight: '600', fontSize: 16 }}>Next</Text>
@@ -706,7 +758,14 @@ export default function CreatePostScreen() {
             <View style={{ backgroundColor: '#fff', paddingHorizontal: 16, paddingVertical: 10, marginBottom: 8, borderRadius: 8, borderWidth: 1, borderColor: '#eee' }}>
               <Text style={{ fontWeight: '600', fontSize: 16, marginBottom: 6 }}>Selected Options:</Text>
               {selectedImages.length > 0 && (
-                <Text style={{ color: '#111', marginBottom: 4 }}>Images: {selectedImages.length}</Text>
+                <>
+                  <Text style={{ color: '#111', marginBottom: 4 }}>📷 Images/Videos: {selectedImages.length}</Text>
+                  {selectedImages.length > 0 && (
+                    <Text style={{ color: '#999', fontSize: 12, marginBottom: 4 }}>
+                      {selectedImages.filter(img => img.toLowerCase().endsWith('.mp4') || img.toLowerCase().endsWith('.mov') || img.toLowerCase().includes('video')).length} videos, {selectedImages.filter(img => !img.toLowerCase().endsWith('.mp4') && !img.toLowerCase().endsWith('.mov') && !img.toLowerCase().includes('video')).length} images
+                    </Text>
+                  )}
+                </>
               )}
               {selectedCategories.length > 0 && (
                 <Text style={{ color: '#111', marginBottom: 4 }}>Category: {selectedCategories[0].name}</Text>
