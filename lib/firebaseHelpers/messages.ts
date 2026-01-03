@@ -16,26 +16,40 @@ export async function reactToMessage(conversationId: string, messageId: string, 
 
 /**
  * Subscribe to real-time messages in a conversation
+ * Optimized polling - checks every 1 second instead of 5
  */
 export function subscribeToMessages(conversationId: string, callback: (messages: any[]) => void) {
-  // Use polling for messages with proper API service
+  console.log('[subscribeToMessages] Starting polling for:', conversationId);
+  
+  // Initial immediate fetch
+  (async () => {
+    try {
+      const res = await apiService.get(`/conversations/${conversationId}/messages`);
+      console.log('[subscribeToMessages] Initial fetch:', { success: res?.success, count: res?.messages?.length });
+      if (res.success && res.messages) {
+        callback(res.messages);
+      }
+    } catch (error) {
+      console.error('[subscribeToMessages] Initial fetch error:', error);
+    }
+  })();
+  
+  // Then poll every 1 second (much faster than 5s)
   const pollInterval = setInterval(async () => {
     try {
       const res = await apiService.get(`/conversations/${conversationId}/messages`);
-      console.log('[subscribeToMessages] Got response:', { success: res?.success, hasMessages: !!res?.messages, messageCount: res?.messages?.length });
       if (res.success && res.messages) {
         callback(res.messages);
-      } else {
-        console.warn('[subscribeToMessages] Invalid response:', res);
-        callback([]);
       }
     } catch (error) {
       console.error('Error polling messages:', error);
-      callback([]); // Return empty array on error
     }
-  }, 5000);
+  }, 1000); // 1 second instead of 5
 
-  return () => clearInterval(pollInterval);
+  return () => {
+    console.log('[subscribeToMessages] Stopping polling for:', conversationId);
+    clearInterval(pollInterval);
+  };
 }
 
 /**

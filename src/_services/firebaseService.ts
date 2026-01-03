@@ -2,16 +2,17 @@ import apiService from './apiService';
 
 // getCurrentUid removed, use context
 
-export async function getUserProfile(userId: string) {
+export async function getUserProfile(userId: string, requesterUserId?: string) {
   try {
-    const response = await apiService.get(`/users/${userId}`);
+    const params = requesterUserId ? { requesterUserId } : {};
+    const response = await apiService.get(`/users/${userId}`, params);
     console.log('[API] getUserProfile response:', response);
-    
+
     // Return the response as-is if it has success property
     if (response && typeof response === 'object' && 'success' in response) {
       return response;
     }
-    
+
     // Fallback: wrap in success object
     return { success: true, data: response };
   } catch (error: any) {

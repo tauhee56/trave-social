@@ -399,10 +399,10 @@ export default function Profile({ userIdProp }: any) {
         
         setLoading(true);
         try {
-          console.log('[Profile] Fetching data for user:', viewedUserId);
-          
-          // Fetch profile
-          const profileRes = await getUserProfileAPI(viewedUserId);
+          console.log('[Profile] Fetching data for user:', viewedUserId, 'requester:', currentUserId);
+
+          // Fetch profile with requester ID for privacy check
+          const profileRes = await getUserProfileAPI(viewedUserId, currentUserId || undefined);
           console.log('[Profile] Profile response:', profileRes);
           console.log('[Profile] Full response structure:', {
             hasSuccess: 'success' in profileRes,

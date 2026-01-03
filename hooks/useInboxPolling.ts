@@ -20,9 +20,9 @@ export function useInboxPolling(
   userId: string | null,
   options: UseInboxPollingOptions = {}
 ) {
-  const { pollingInterval = 15000, autoStart = true } = options;
+  const { pollingInterval = 3000, autoStart = true } = options; // 3 seconds instead of 15
 
-  console.log('🟡 useInboxPolling INIT: userId=', userId, 'autoStart=', autoStart);
+  console.log('🟡 useInboxPolling INIT: userId=', userId, 'autoStart=', autoStart, 'pollingInterval=', pollingInterval);
 
   const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
