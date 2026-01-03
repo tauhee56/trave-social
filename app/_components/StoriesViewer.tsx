@@ -255,7 +255,10 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
   }
 
   const handleLike = async () => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      Alert.alert('Please Login', 'You need to be logged in to like stories.');
+      return;
+    }
     const updatedStories = [...localStories];
     const likes = updatedStories[currentIndex].likes || [];
     
@@ -270,7 +273,10 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
   };
 
   const handleComment = async () => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      Alert.alert('Please Login', 'You need to be logged in to comment on stories.');
+      return;
+    }
     let avatarToSave = DEFAULT_AVATAR_URL;
     if (currentUser.photoURL && currentUser.photoURL !== DEFAULT_AVATAR_URL && currentUser.photoURL !== '') {
       avatarToSave = currentUser.photoURL;
