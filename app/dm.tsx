@@ -242,7 +242,7 @@ export default function DM() {
       // Update user as active when sending message
       await updateUserPresence(currentUserId, conversationId);
       
-      await sendMessage(conversationId, currentUserId, messageText, undefined, replyData);
+      await sendMessage(conversationId, currentUserId, messageText, otherUserId, replyData);
       // Send notification to recipient
       if (otherUserId && otherUserId !== currentUserId) {
         // Fetch sender profile for name and avatar from backend

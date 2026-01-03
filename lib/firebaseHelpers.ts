@@ -328,8 +328,13 @@ export async function fetchMessages(conversationId: string) {
   return apiService.getMessages(conversationId);
 }
 
-export async function sendMessage(conversationId: string, sender: string, text: string) {
-  return apiService.sendMessage(conversationId, sender, text);
+export async function sendMessage(conversationId: string, sender: string, text: string, recipientId?: string) {
+  return apiService.post(`/conversations/${conversationId}/messages`, { 
+    sender, 
+    senderId: sender, 
+    text,
+    recipientId
+  });
 }
 
 function getCurrentUid() {
