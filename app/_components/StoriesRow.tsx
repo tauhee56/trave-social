@@ -246,6 +246,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
               {/* Add story button overlay - disabled while modal is open */}
               <TouchableOpacity
                 pointerEvents={showUploadModal ? 'none' : 'auto'}
+                hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
                 style={[styles.addButton, { position: 'absolute', bottom: -12, right: -12, zIndex: 2 }]}
                 onPress={handleAddStory}
               >
@@ -644,12 +645,12 @@ const styles = StyleSheet.create({
     bottom: -12,
     right: -12,
     backgroundColor: '#007aff',
-    borderRadius: 14,
-    width: 28,
-    height: 28,
+    borderRadius: 12,
+    width: 26,
+    height: 26,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
+    borderWidth: 2,
     borderColor: '#fff',
   },
   storyWrapper: {
