@@ -417,9 +417,8 @@ export default function SearchModal() {
                 removeClippedSubviews={true}
               />
             )}
-        </KeyboardAvoidingView>
-        {/* Bottom Action Bar: always visible above keyboard */}
-        <View style={styles.actionBtnBar}>
+            {/* Bottom Action Bar: always visible above keyboard */}
+            <View style={styles.actionBtnBar}>
           <TouchableOpacity
             style={styles.clearAllBtn}
             onPress={() => {
@@ -453,7 +452,8 @@ export default function SearchModal() {
             <Feather name="search" size={18} color="#fff" />
             <Text style={styles.searchBtnBarText}>Search</Text>
           </TouchableOpacity>
-        </View>
+            </View>
+        </KeyboardAvoidingView>
       </View>
     </SafeAreaView>
   );
