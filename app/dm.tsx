@@ -25,15 +25,26 @@ import { useUser } from './_components/UserContext';
 const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
 export default function DM() {
-  const { user: paramUser, conversationId: paramConversationId, otherUserId, id } = useLocalSearchParams();
-  const realOtherUserId = typeof id === 'string' ? id : otherUserId;
+  const params = useLocalSearchParams();
+  const { user: paramUser, conversationId: paramConversationId } = params;
+  // Extract otherUserId - could be passed as 'otherUserId' or 'id'
+  let otherUserId = params.otherUserId;
+  if (Array.isArray(otherUserId)) {
+    otherUserId = otherUserId[0];
+  }
+  if (!otherUserId && params.id) {
+    otherUserId = Array.isArray(params.id) ? params.id[0] : params.id;
+  }
+  
   const router = useRouter();
   const navigation = useNavigation();
   const currentUserTyped = useUser();
   
+  console.log('[DM] Received params:', { otherUserId, paramUser, paramConversationId });
+  
   // Use the hook to fetch and subscribe to the other user's profile
   const { profile: otherUserProfile, loading: profileLoading } = useUserProfile(
-    typeof realOtherUserId === 'string' ? realOtherUserId : null
+    typeof otherUserId === 'string' ? otherUserId : null
   );
   
   const username = otherUserProfile?.username;
@@ -89,8 +100,8 @@ export default function DM() {
         setLoading(true);
         
         // Step 1: Initialize conversation immediately
-        if (!currentUserTyped?.uid || !realOtherUserId) {
-          console.log('[DM] Missing user IDs, cannot initialize');
+        if (!currentUserTyped?.uid || !otherUserId) {
+          console.log('[DM] Missing user IDs, cannot initialize:', { currentUid: currentUserTyped?.uid, otherUserId });
           setLoading(false);
           return;
         }
@@ -98,12 +109,15 @@ export default function DM() {
         // Get or create conversation ID
         const result = await getOrCreateConversation(
           String(currentUserTyped.uid),
-          typeof realOtherUserId === 'string' ? realOtherUserId : ''
+          typeof otherUserId === 'string' ? otherUserId : ''
         );
         
+        console.log('[DM] getOrCreateConversation result:', result);
         if (isMounted && result?.success && result?.conversationId) {
           setConversationId(result.conversationId);
           console.log('[DM] Conversation initialized:', result.conversationId);
+        } else {
+          console.error('[DM] Failed to create/get conversation:', result);
         }
         
         // Step 2: Allow messaging (skip permission check - user can always message)
@@ -118,7 +132,7 @@ export default function DM() {
     initializeDM();
 
     return () => { isMounted = false; };
-  }, [currentUserTyped?.uid, realOtherUserId]);
+  }, [currentUserTyped?.uid, otherUserId]);
 
   useEffect(() => {
     if (!conversationId) return;

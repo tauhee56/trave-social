@@ -331,73 +331,82 @@ export default function SearchModal() {
               <FlatList
                 data={users}
                 keyExtractor={(item: User) => item.uid}
-                renderItem={({ item }: { item: User }) => (
-                  <View style={styles.userResultRow}>
-                    <TouchableOpacity
-                      style={{ flexDirection: 'row', flex: 1, alignItems: 'center' }}
-                      onPress={() => router.push(`/user-profile?uid=${item.uid}`)}
-                      accessibilityLabel={`Open profile for ${item.displayName || 'Traveler'}`}
-                    >
-                      <Image source={{ uri: item.photoURL || DEFAULT_AVATAR_URL }} style={styles.avatarImage} />
-                      <View style={{ marginLeft: 12, flex: 1 }}>
-                        <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'}</Text>
-                        <Text style={{ color: '#666', fontSize: 12 }}>{item.bio || 'No bio available'}</Text>
-                      </View>
-                    </TouchableOpacity>
-                    <View style={{ flexDirection: 'row', gap: 8, paddingLeft: 8 }}>
+                renderItem={({ item }: { item: User }) => {
+                  const isOwnProfile = currentUserId === item.uid;
+                  return (
+                    <View style={styles.userResultRow}>
                       <TouchableOpacity
-                        style={styles.userActionBtn}
-                        onPress={() => {
-                          if (!currentUserId || !item.uid) {
-                            console.log('[SearchModal] Missing IDs for message:', { currentUserId, itemUid: item.uid });
-                            return;
-                          }
-                          console.log('[SearchModal] Navigating to DM with:', item.uid);
-                          router.push({
-                            pathname: '/dm',
-                            params: {
-                              otherUserId: item.uid,
-                              user: item.displayName || 'Traveler',
-                              avatar: item.photoURL || DEFAULT_AVATAR_URL
-                            }
-                          });
-                        }}
-                        accessibilityLabel="Send message"
+                        style={{ flexDirection: 'row', flex: 1, alignItems: 'center' }}
+                        onPress={() => router.push(`/user-profile?uid=${item.uid}`)}
+                        accessibilityLabel={`Open profile for ${item.displayName || 'Traveler'}`}
                       >
-                        <Feather name="message-circle" size={18} color="#007AFF" />
+                        <Image source={{ uri: item.photoURL || DEFAULT_AVATAR_URL }} style={styles.avatarImage} />
+                        <View style={{ marginLeft: 12, flex: 1 }}>
+                          <Text style={{ fontWeight: '600' }}>{item.displayName || 'Traveler'} {isOwnProfile ? '(You)' : ''}</Text>
+                          <Text style={{ color: '#666', fontSize: 12 }}>{item.bio || 'No bio available'}</Text>
+                        </View>
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.userActionBtn}
-                        onPress={() => {
-                          if (!currentUserId || !item.uid) {
-                            console.log('[SearchModal] Missing IDs for follow:', { currentUserId, itemUid: item.uid });
-                            return;
-                          }
-                          const isFollowing = followingMap[item.uid];
-                          console.log('[SearchModal] Toggle follow for', item.uid, 'currently following:', isFollowing);
-                          if (isFollowing) {
-                            unfollowUser(currentUserId, item.uid).then(res => {
-                              console.log('[SearchModal] Unfollow response:', res);
-                              if (res.success) {
-                                setFollowingMap(prev => ({ ...prev, [item.uid]: false }));
+                      {!isOwnProfile && (
+                        <View style={{ flexDirection: 'row', gap: 8, paddingLeft: 8 }}>
+                          <TouchableOpacity
+                            style={styles.userActionBtn}
+                            onPress={() => {
+                              if (!currentUserId || !item.uid) {
+                                console.log('[SearchModal] Missing IDs for message:', { currentUserId, itemUid: item.uid });
+                                return;
                               }
-                            });
-                          } else {
-                            followUser(currentUserId, item.uid).then(res => {
-                              console.log('[SearchModal] Follow response:', res);
-                              if (res.success) {
-                                setFollowingMap(prev => ({ ...prev, [item.uid]: true }));
+                              console.log('[SearchModal] Navigating to DM with:', item.uid);
+                              router.push({
+                                pathname: '/dm',
+                                params: {
+                                  otherUserId: item.uid,
+                                  user: item.displayName || 'Traveler',
+                                  avatar: item.photoURL || DEFAULT_AVATAR_URL
+                                }
+                              });
+                            }}
+                            accessibilityLabel="Send message"
+                          >
+                            <Feather name="message-circle" size={18} color="#007AFF" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.userActionBtn}
+                            onPress={() => {
+                              if (!currentUserId || !item.uid) {
+                                console.log('[SearchModal] Missing IDs for follow:', { currentUserId, itemUid: item.uid });
+                                return;
                               }
-                            });
-                          }
-                        }}
-                        accessibilityLabel={followingMap[item.uid] ? "Unfollow" : "Follow"}
-                      >
-                        <Feather name={followingMap[item.uid] ? "check" : "user-plus"} size={18} color={followingMap[item.uid] ? "#34C759" : "#666"} />
-                      </TouchableOpacity>
+                              const isFollowing = followingMap[item.uid];
+                              console.log('[SearchModal] Toggle follow for', item.uid, 'currently following:', isFollowing);
+                              if (isFollowing) {
+                                unfollowUser(currentUserId, item.uid).then(res => {
+                                  console.log('[SearchModal] Unfollow response:', res);
+                                  if (res.success) {
+                                    setFollowingMap(prev => ({ ...prev, [item.uid]: false }));
+                                  }
+                                }).catch(err => {
+                                  console.error('[SearchModal] Unfollow error:', err);
+                                });
+                              } else {
+                                followUser(currentUserId, item.uid).then(res => {
+                                  console.log('[SearchModal] Follow response:', res);
+                                  if (res.success) {
+                                    setFollowingMap(prev => ({ ...prev, [item.uid]: true }));
+                                  }
+                                }).catch(err => {
+                                  console.error('[SearchModal] Follow error:', err);
+                                });
+                              }
+                            }}
+                            accessibilityLabel={followingMap[item.uid] ? "Unfollow" : "Follow"}
+                          >
+                            <Feather name={followingMap[item.uid] ? "check" : "user-plus"} size={18} color={followingMap[item.uid] ? "#34C759" : "#666"} />
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
-                  </View>
-                )}
+                  );
+                }
                 ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No travelers found</Text>}
                 style={{ marginTop: 16, maxHeight: 120 }}
                 initialNumToRender={15}
