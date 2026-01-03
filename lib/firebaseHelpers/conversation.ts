@@ -1,5 +1,7 @@
 // Conversation and DM helpers
 
+import { apiService } from '../../app/_services/apiService';
+
 // Get or create a conversation between two users
 export async function getOrCreateConversation(userId1: string, userId2: string) {
   try {
@@ -19,10 +21,9 @@ export function subscribeToConversations(userId: string, callback: (convos: any[
   // Use polling for conversations
   const pollInterval = setInterval(async () => {
     try {
-      const res = await fetch(`/api/users/${userId}/conversations`);
-      const data = await res.json();
-      if (data.success) {
-        callback(data.data || []);
+      const res = await apiService.get(`/conversations?userId=${userId}`);
+      if (res.success) {
+        callback(res.data || []);
       }
     } catch (error) {
       console.error('Error polling conversations:', error);
@@ -35,9 +36,8 @@ export function subscribeToConversations(userId: string, callback: (convos: any[
 // Get all conversations for a user
 export async function getUserConversations(userId: string) {
   try {
-    const res = await fetch(`/api/users/${userId}/conversations`);
-    const data = await res.json();
-    return data.data || [];
+    const res = await apiService.get(`/conversations?userId=${userId}`);
+    return res.data || [];
   } catch (error: any) {
     console.error('Error in getUserConversations:', error);
     return [];
@@ -47,13 +47,8 @@ export async function getUserConversations(userId: string) {
 // Mark a conversation as read
 export async function markConversationAsRead(conversationId: string, userId: string) {
   try {
-    const res = await fetch(`/api/conversations/${conversationId}/read`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId })
-    });
-    const data = await res.json();
-    return data;
+    const res = await apiService.patch(`/conversations/${conversationId}/read`, { userId });
+    return res;
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -84,7 +79,6 @@ export async function sendMessage(
       };
     }
     
-    const { apiService } = await import('../app/_services/apiService');
     const res = await apiService.post(`/conversations/${conversationId}/messages`, messageData);
     console.log('[SendMessage] Response:', res);
     return res;
