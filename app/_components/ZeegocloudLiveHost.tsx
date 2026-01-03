@@ -66,6 +66,36 @@ export default function ZeegocloudLiveHost({
 
             config={{
               ...HOST_DEFAULT_CONFIG,
+              // Enable camera and audio by default
+              turnOnCameraWhenJoining: true,
+              turnOnMicrophoneWhenJoining: true,
+              useFrontFacingCamera: true,
+
+              // Video quality settings
+              videoResolutionDefault: 'MEDIUM', // 360p
+
+              // Enable all controls
+              bottomMenuBarConfig: {
+                hostButtons: ['toggleCameraButton', 'toggleMicrophoneButton', 'switchCameraButton', 'beautyButton'],
+                coHostButtons: ['toggleCameraButton', 'toggleMicrophoneButton', 'switchCameraButton'],
+                audienceButtons: [],
+                maxCount: 5,
+                showInRoomMessageButton: true,
+              },
+
+              // Top menu bar config
+              topMenuBarConfig: {
+                isVisible: true,
+                buttons: ['minimizingButton', 'leaveButton'],
+              },
+
+              // Member list config
+              memberListConfig: {
+                showMicrophoneState: true,
+                showCameraState: true,
+              },
+
+              // Callbacks
               onLeaveLiveStreaming: () => {
                 console.log('🔴 Host left live stream');
                 onLeave?.();

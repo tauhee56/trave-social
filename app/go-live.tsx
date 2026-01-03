@@ -194,6 +194,37 @@ export default function GoLiveScreen() {
     }
   }, [currentUser]);
 
+  // Request camera and microphone permissions
+  const requestPermissions = async () => {
+    try {
+      const { Camera } = await import('expo-camera');
+      const { Audio } = await import('expo-av');
+
+      console.log('📷 Requesting camera permission...');
+      const cameraPermission = await Camera.requestCameraPermissionsAsync();
+      console.log('📷 Camera permission:', cameraPermission.status);
+
+      console.log('🎤 Requesting microphone permission...');
+      const audioPermission = await Audio.requestPermissionsAsync();
+      console.log('🎤 Microphone permission:', audioPermission.status);
+
+      if (cameraPermission.status !== 'granted') {
+        Alert.alert('Permission Required', 'Camera permission is required for live streaming');
+        return false;
+      }
+
+      if (audioPermission.status !== 'granted') {
+        Alert.alert('Permission Required', 'Microphone permission is required for live streaming');
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Permission request error:', error);
+      return false;
+    }
+  };
+
   // Start streaming
   const handleStartStream = async () => {
     if (!streamTitle.trim()) {
@@ -203,6 +234,14 @@ export default function GoLiveScreen() {
 
     try {
       setIsInitializing(true);
+
+      // Request permissions first
+      const hasPermissions = await requestPermissions();
+      if (!hasPermissions) {
+        setIsInitializing(false);
+        return;
+      }
+
       const success = await initZeegoCloud();
 
       if (success && zeegocloudServiceRef.current) {
@@ -412,10 +451,10 @@ export default function GoLiveScreen() {
       {/* ZeegoCloud Video Component */}
       <View style={styles.videoContainer}>
         <ZeegocloudLiveHost
-          roomId={roomId}
-          userId={currentUser?.uid || 'anonymous'}
+          roomID={roomId}
+          userID={currentUser?.uid || 'anonymous'}
           userName={currentUser?.displayName || 'Anonymous'}
-          onStreamEnd={handleEndStream}
+          onLeave={handleEndStream}
         />
       </View>
 
