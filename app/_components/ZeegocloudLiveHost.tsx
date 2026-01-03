@@ -143,17 +143,8 @@ export default function ZeegocloudLiveHost({
     );
   }
 
-  if (error) {
-    return (
-      <View style={[styles.container, styles.centered]}>
-        <Text style={styles.errorText}>⚠️ {error}</Text>
-        <Text style={styles.errorSubtext}>Please try again later</Text>
-      </View>
-    );
-  }
-
-  // Use fallback camera if ZegoCloud failed to load
-  if (useFallbackCamera || !ZegoComponent) {
+  // Always use fallback camera (ZegoCloud native module not available in Expo Go)
+  if (useFallbackCamera || !ZegoComponent || error) {
     return (
       <View style={styles.container}>
         {isCameraOn ? (
@@ -163,11 +154,12 @@ export default function ZeegocloudLiveHost({
             type={cameraType}
           >
             <View style={styles.fallbackOverlay}>
-              <Text style={styles.fallbackText}>📹 Live Stream</Text>
+              <View style={styles.statusBadge}>
+                <View style={styles.liveDot} />
+                <Text style={styles.fallbackText}>LIVE</Text>
+              </View>
               <Text style={styles.fallbackSubtext}>
-                {useFallbackCamera
-                  ? 'Camera Active • Using Expo Camera'
-                  : 'Connecting...'}
+                📹 Camera Active
               </Text>
               {isMuted && (
                 <View style={styles.mutedBadge}>
@@ -225,21 +217,39 @@ const styles = StyleSheet.create({
   },
   fallbackOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 0, 0, 0.9)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginBottom: 12,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#fff',
+    marginRight: 8,
+  },
   fallbackText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 8,
   },
   fallbackSubtext: {
-    color: '#ccc',
+    color: '#fff',
     fontSize: 14,
     textAlign: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
   },
   mutedBadge: {
     marginTop: 16,
