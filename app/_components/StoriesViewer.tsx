@@ -448,7 +448,22 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
               <Feather name="bookmark" size={22} color="#fff" />
             </TouchableOpacity>
           )}
-          {/* Delete button disabled */}
+          {currentUser?.uid === currentStory.userId && (
+            <TouchableOpacity onPress={async () => {
+              const storyId = currentStory.id;
+              const res = await deleteStory(storyId);
+              if (res.success) {
+                const updated = localStories.filter((s, idx) => idx !== currentIndex);
+                setLocalStories(updated);
+                if (updated.length === 0) onClose();
+                else if (currentIndex >= updated.length) setCurrentIndex(updated.length - 1);
+              } else {
+                alert('Failed to delete story: ' + res.error);
+              }
+            }} style={{ marginRight: 12 }}>
+              <Feather name="trash-2" size={22} color="#fff" />
+            </TouchableOpacity>
+          )}
           {currentUser?.uid !== currentStory.userId && (
             <TouchableOpacity
               onPress={async () => {

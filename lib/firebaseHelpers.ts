@@ -734,15 +734,27 @@ export async function createStory(
   // Get user's actual name
   let userName = 'Anonymous';
   try {
+    console.log('[createStory] Fetching profile for userId:', userId);
     const userProfile = await getUserProfile(userId);
-    if (userProfile?.success && userProfile?.data?.displayName) {
-      userName = userProfile.data.displayName;
-    } else if (userProfile?.success && userProfile?.data?.name) {
-      userName = userProfile.data.name;
+    console.log('[createStory] User profile result:', userProfile);
+    
+    if (userProfile?.success && userProfile?.data) {
+      if (userProfile.data.displayName) {
+        userName = userProfile.data.displayName;
+        console.log('[createStory] Using displayName:', userName);
+      } else if (userProfile.data.name) {
+        userName = userProfile.data.name;
+        console.log('[createStory] Using name:', userName);
+      } else if (userProfile.data.userName) {
+        userName = userProfile.data.userName;
+        console.log('[createStory] Using userName:', userName);
+      }
     }
   } catch (err) {
     console.log('[createStory] Could not fetch user profile for name:', err);
   }
+  
+  console.log('[createStory] Final userName to send:', userName);
   
   const res = await apiService.post('/stories', { userId, userName, mediaUrl: upload.url, mediaType, locationData });
   
