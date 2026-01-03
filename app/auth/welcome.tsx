@@ -98,7 +98,7 @@ export default function WelcomeScreen() {
             <ActivityIndicator size="large" color="#f39c12" style={{ marginBottom: 32 }} />
           ) : (
             <Image
-              source={{ uri: logoUrl || 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/logo/logo.png' }}
+              source={{ uri: logoUrl || 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1766418070/logo/logo.png' }}
               style={styles.logo}
               accessibilityLabel="App Logo"
             />
