@@ -307,7 +307,7 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
           >
             {/* Main content card */}
             <View style={styles.uploadModalCard}>
-              {/* Header */}
+              {/* Header with User Profile */}
               <View style={styles.modalHeader}>
                 <TouchableOpacity
                   onPress={() => { 
@@ -319,7 +319,13 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                 >
                   <Feather name="x" size={24} color="#222" />
                 </TouchableOpacity>
-                <Text style={styles.modalTitle}>Create Story</Text>
+                <View style={{ flex: 1, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
+                  <Image
+                    source={{ uri: currentUserAvatar || DEFAULT_AVATAR_URL }}
+                    style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }}
+                  />
+                  <Text style={styles.modalTitle}>Create Story</Text>
+                </View>
                 <View style={{ width: 24 }} />
               </View>
 
@@ -529,6 +535,30 @@ function StoriesRowComponent({ onStoryPress, refreshTrigger }: { onStoryPress?: 
                   {uploading ? 'Sharing...' : 'Share Story'}
                 </Text>
               </TouchableOpacity>
+
+              {/* View Your Stories Button */}
+              <TouchableOpacity
+                style={[styles.shareButton, { backgroundColor: '#f0f0f0', marginTop: 8 }]}
+                onPress={() => {
+                  // Close modal and view own stories
+                  setShowUploadModal(false);
+                  setSelectedMedia(null);
+                  setLocationQuery('');
+                  setLocationSuggestions([]);
+                  
+                  // Find and open own stories
+                  const myUser = storyUsers.find(u => u.userId === authUser?.uid);
+                  if (myUser && myUser.stories.length > 0 && onStoryPress) {
+                    setTimeout(() => {
+                      onStoryPress(myUser.stories, 0);
+                    }, 300);
+                  }
+                }}
+              >
+                <Text style={[styles.shareButtonText, { color: '#222' }]}>
+                  👁️ View Your Stories
+                </Text>
+              </TouchableOpacity>
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
@@ -621,6 +651,10 @@ const styles = StyleSheet.create({
     paddingTop: 0,
     paddingHorizontal: 0,
     paddingBottom: 0,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 2,
+    borderTopColor: '#FFB800',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -628,9 +662,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: responsiveValues.spacing,
     paddingHorizontal: responsiveValues.modalPadding,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    backgroundColor: '#fff',
+    borderBottomWidth: 2,
+    borderBottomColor: '#FFB800',
+    backgroundColor: '#fffbf5',
   },
   modalTitle: {
     fontSize: responsiveValues.titleSize,
