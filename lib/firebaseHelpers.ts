@@ -883,14 +883,14 @@ export default {
 // ============= SEARCH & REGIONS =============
 export async function getRegions() {
   try {
-    // Return static regions for now - you can fetch from backend later
+    // Return static regions with updated Cloudinary URLs
     const regions = [
-      { id: '1', name: 'North America', image: 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/regions/northamerica.png' },
-      { id: '2', name: 'Europe', image: 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/regions/europe.png' },
-      { id: '3', name: 'Asia', image: 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/regions/asia.png' },
-      { id: '4', name: 'South America', image: 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/regions/southamerica.png' },
-      { id: '5', name: 'Africa', image: 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/regions/africa.png' },
-      { id: '6', name: 'Australia', image: 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/regions/australia.png' },
+      { id: 'world', name: 'World', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1767485393/regions/world.png' },
+      { id: 'us', name: 'United States', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1767485391/regions/us.png' },
+      { id: 'eastasia', name: 'East Asia', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1767485382/regions/eastasia.png' },
+      { id: 'me', name: 'Middle East', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1767485386/regions/middleeast.png' },
+      { id: 'sea', name: 'South Asia', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1767485389/regions/southeastasia.png' },
+      { id: 'japan', name: 'Japan', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1767485384/regions/Japan.png' },
     ];
     return { success: true, data: regions };
   } catch (error) {

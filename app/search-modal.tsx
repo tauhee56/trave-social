@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getRegions, searchUsers } from "../lib/firebaseHelpers/index";
 import { followUser, sendFollowRequest, unfollowUser } from "../lib/firebaseHelpers/follow";
@@ -271,10 +272,12 @@ export default function SearchModal() {
                             accessibilityLabel={`Select region ${item.name}`}
                           >
                             <View style={styles.regionImageWrap}>
-                              <Image 
+                              <ExpoImage 
                                 source={{ uri: item.image }} 
-                                style={styles.regionImage} 
-                                resizeMode="cover"
+                                style={styles.regionImage}
+                                contentFit="cover"
+                                cachePolicy="memory-disk"
+                                onError={(e) => console.log('[SearchModal] Image error for', item.id, ':', e)}
                               />
                             </View>
                             <Text style={styles.regionName}>{item.name}</Text>
@@ -297,10 +300,12 @@ export default function SearchModal() {
                             accessibilityLabel={`Select region ${item.name}`}
                           >
                             <View style={styles.regionImageWrap}>
-                              <Image 
+                              <ExpoImage 
                                 source={{ uri: item.image }} 
-                                style={styles.regionImage} 
-                                resizeMode="cover"
+                                style={styles.regionImage}
+                                contentFit="cover"
+                                cachePolicy="memory-disk"
+                                onError={(e) => console.log('[SearchModal] Image error for', item.id, ':', e)}
                               />
                             </View>
                             <Text style={styles.regionName}>{item.name}</Text>
