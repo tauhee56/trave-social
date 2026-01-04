@@ -17,7 +17,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CameraControls from './CameraControls';
-import { StreamingUser } from '../services/implementations/SafeStreamingService';
+import { StreamingUser } from '../../services/implementations/SafeStreamingService';
 
 interface SimpleStreamingUIProps {
   isHost: boolean;

@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
-import SafeStreamingService, { StreamingState } from '../services/implementations/SafeStreamingService';
+import { SafeStreamingService, StreamingState } from '../../services/implementations/SafeStreamingService';
 
 interface UseStreamingOptions {
   autoInitialize?: boolean;

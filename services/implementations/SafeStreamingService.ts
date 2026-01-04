@@ -74,9 +74,9 @@ export class SafeStreamingService {
 
       // Try to load ZegoCloud
       try {
-        const { ZegoUIKit } = await import('@zegocloud/zego-uikit-prebuilt-live-streaming-rn');
-        if (ZegoUIKit) {
-          this.zegoUIKit = ZegoUIKit;
+        const zegoModule = await import('@zegocloud/zego-uikit-prebuilt-live-streaming-rn');
+        if (zegoModule && zegoModule.default) {
+          this.zegoUIKit = zegoModule.default;
           this.state.hasZegoSupport = true;
           console.log('[SafeStreaming] ZegoCloud support available');
         }

@@ -24,13 +24,13 @@ export const safeInitializeZegoCloud = async (): Promise<any> => {
     // Import dynamically to catch any native module errors
     const zegoModule = await import('@zegocloud/zego-uikit-prebuilt-live-streaming-rn');
 
-    if (!zegoModule || !zegoModule.ZegoUIKitPrebuiltLiveStreaming) {
+    if (!zegoModule || !zegoModule.default) {
       console.warn('[ZegoCloud] UIKit not available, using fallback streaming service');
       return null;
     }
 
     console.log('[ZegoCloud] Initialized successfully');
-    return zegoModule.ZegoUIKitPrebuiltLiveStreaming;
+    return zegoModule.default;
   } catch (error) {
     console.error('[ZegoCloud] Failed to initialize:', error);
     console.warn('[ZegoCloud] Falling back to basic streaming mode');
