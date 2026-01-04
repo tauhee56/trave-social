@@ -107,8 +107,8 @@ export function sendMessage(data: {
   timestamp?: Date;
 }) {
   if (!socket || !socket.connected) {
-    console.error('[Socket] Cannot send message - not connected');
-    throw new Error('Socket not connected');
+    console.warn('[Socket] Cannot send message - not connected. Message will be sent via API only.');
+    return; // Graceful fallback - API will handle it
   }
 
   console.log('[Socket] 📤 Sending message:', {
@@ -130,7 +130,7 @@ export function subscribeToMessages(
   onMessage: (message: any) => void
 ): () => void {
   if (!socket) {
-    console.error('[Socket] Cannot subscribe - socket not initialized');
+    console.warn('[Socket] Cannot subscribe - socket not initialized. Messages will still work via API polling.');
     return () => {};
   }
 

@@ -6,10 +6,12 @@ import { apiService } from "../_services/apiService";
 
 async function savePost(postId: string, userId: string) {
   try {
-    await apiService.post(`/users/${userId}/saved`, { postId });
+    console.log('[SaveButton] Sending save request:', { userId, postId, postIdType: typeof postId });
+    const response = await apiService.post(`/users/${userId}/saved`, { postId });
+    console.log('[SaveButton] Save response:', response);
     return { success: true };
   } catch (error: any) {
-    console.error('Error saving post:', error);
+    console.error('[SaveButton] Error saving post:', error);
     return { success: false, error: error.message };
   }
 }

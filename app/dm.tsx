@@ -105,6 +105,7 @@ export default function DM() {
 
   // Real-time messaging states
   const [isTyping, setIsTyping] = useState(false);
+  const [socketReady, setSocketReady] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Emoji reactions list (Instagram style)
@@ -159,8 +160,38 @@ export default function DM() {
     return () => { isMounted = false; };
   }, [currentUserId, otherUserId]);
 
+  // Initialize socket connection
   useEffect(() => {
-    if (!conversationId) return;
+    if (!currentUserId) return;
+
+    console.log('[DM] Initializing socket for user:', currentUserId);
+    const socket = initializeSocket(currentUserId);
+
+    // Wait for socket to connect
+    const onConnect = () => {
+      console.log('[DM] Socket connected and ready');
+      setSocketReady(true);
+    };
+
+    socket.on('connect', onConnect);
+
+    // If already connected
+    if (socket.connected) {
+      setSocketReady(true);
+    }
+
+    return () => {
+      console.log('[DM] Cleaning up socket');
+      socket.off('connect', onConnect);
+      setSocketReady(false);
+    };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (!conversationId || !socketReady) return;
+
+    console.log('[DM] Setting up conversation:', conversationId, 'Socket ready:', socketReady);
+
     setMessages([]);
     setHasMoreMessages(true);
     setLoading(true);
@@ -198,12 +229,68 @@ export default function DM() {
         }
       });
 
-    // Subscribe to real-time messages via socket
-    const unsub = subscribeToMessages(conversationId, (messages: any[]) => {
+    // Subscribe to real-time messages via socket (only if socket is ready)
+    const unsubMessages = socketSubscribeToMessages(conversationId, (newMessage: any) => {
       if (isMounted) {
-        setMessages(messages);
+        console.log('[DM] New message received via socket:', newMessage);
+        setMessages(prev => [...prev, newMessage]);
+
+        // Mark as read if we're the recipient
+        if (currentUserId && newMessage.recipientId === currentUserId) {
+          markMessageAsRead({
+            conversationId,
+            messageId: newMessage.id,
+            userId: currentUserId
+          });
+        }
       }
     });
+
+    // Subscribe to message sent confirmation
+    const unsubSent = subscribeToMessageSent((message: any) => {
+      if (isMounted && message.conversationId === conversationId) {
+        console.log('[DM] Message sent confirmation:', message.id);
+        // Update message status to sent
+        setMessages(prev => prev.map(m =>
+          m.id === message.id ? { ...m, sent: true } : m
+        ));
+      }
+    });
+
+    // Subscribe to message delivered status
+    const unsubDelivered = subscribeToMessageDelivered((data: any) => {
+      if (isMounted && data.conversationId === conversationId) {
+        console.log('[DM] Message delivered:', data.messageId);
+        setMessages(prev => prev.map(m =>
+          m.id === data.messageId ? { ...m, delivered: true } : m
+        ));
+      }
+    });
+
+    // Subscribe to message read status
+    const unsubRead = subscribeToMessageRead((data: any) => {
+      if (isMounted && data.conversationId === conversationId) {
+        console.log('[DM] Message read:', data.messageId);
+        setMessages(prev => prev.map(m =>
+          m.id === data.messageId ? { ...m, read: true } : m
+        ));
+      }
+    });
+
+    // Subscribe to typing indicators
+    const unsubTyping = subscribeToTyping(
+      conversationId,
+      (data) => {
+        if (data.userId === otherUserId) {
+          setIsTyping(true);
+        }
+      },
+      (data) => {
+        if (data.userId === otherUserId) {
+          setIsTyping(false);
+        }
+      }
+    );
 
     // Mark as read when opening conversation
     if (currentUserId) {
@@ -213,10 +300,14 @@ export default function DM() {
     return () => {
       isMounted = false;
       if (loadingTimeout) clearTimeout(loadingTimeout);
-      if (typeof unsub === 'function') unsub();
+      unsubMessages();
+      unsubSent();
+      unsubDelivered();
+      unsubRead();
+      unsubTyping();
     };
     // eslint-disable-next-line
-  }, [conversationId]);
+  }, [conversationId, currentUserId, otherUserId, socketReady]);
 
   // Remove loadMessagesPage (pagination) for now; can be re-added with backend support
   const loadMessagesPage = () => {
@@ -254,17 +345,39 @@ export default function DM() {
     setReplyingTo(null);
     setSending(true);
 
+    // Stop typing indicator
+    if (otherUserId) {
+      stopTypingIndicator({
+        conversationId,
+        userId: currentUserId,
+        recipientId: otherUserId
+      });
+    }
+
     try {
       // Update user as active when sending message
       await updateUserPresence(currentUserId, conversationId);
-      
+
+      // Send via Socket.IO for real-time delivery
+      if (otherUserId) {
+        socketSendMessage({
+          conversationId,
+          senderId: currentUserId,
+          recipientId: otherUserId,
+          text: messageText,
+          timestamp: new Date()
+        });
+      }
+
+      // Also save via API (fallback)
       await sendMessage(conversationId, currentUserId, messageText, otherUserId, replyData);
+
       // Send notification to recipient
       if (otherUserId && otherUserId !== currentUserId) {
         // Fetch sender profile for name and avatar
         let senderName = 'User';
         let senderAvatar = DEFAULT_AVATAR_URL;
-        
+
         try {
           const senderProfile = await getUserProfile(currentUserId);
           if (senderProfile) {
@@ -274,7 +387,7 @@ export default function DM() {
         } catch (err) {
           console.warn('Could not fetch sender profile for notification:', err);
         }
-        
+
         await addNotification({
           recipientId: String(otherUserId),
           senderId: currentUserId,
@@ -473,6 +586,13 @@ export default function DM() {
           )}
         </View>
 
+        {/* Typing indicator */}
+        {isTyping && (
+          <View style={styles.typingIndicator}>
+            <Text style={styles.typingText}>{username} is typing...</Text>
+          </View>
+        )}
+
         {/* Reply preview bar above input */}
         {replyingTo && (
           <View style={styles.replyBar}>
@@ -500,7 +620,32 @@ export default function DM() {
                 style={styles.input}
                 value={canMessage ? input : ''}
                 onChangeText={text => {
-                  if (canMessage) setInput(text);
+                  if (canMessage) {
+                    setInput(text);
+
+                    // Send typing indicator
+                    if (otherUserId && text.length > 0) {
+                      sendTypingIndicator({
+                        conversationId: conversationId || '',
+                        userId: currentUserId || '',
+                        recipientId: otherUserId
+                      });
+
+                      // Clear previous timeout
+                      if (typingTimeoutRef.current) {
+                        clearTimeout(typingTimeoutRef.current);
+                      }
+
+                      // Stop typing after 2 seconds of inactivity
+                      typingTimeoutRef.current = setTimeout(() => {
+                        stopTypingIndicator({
+                          conversationId: conversationId || '',
+                          userId: currentUserId || '',
+                          recipientId: otherUserId
+                        });
+                      }, 2000);
+                    }
+                  }
                 }}
                 placeholder={canMessage ? "Message..." : "You can't message this user"}
                 placeholderTextColor="#8e8e8e"
@@ -1076,5 +1221,16 @@ const styles = StyleSheet.create({
   },
   replyBarClose: {
     padding: 4,
+  },
+  // Typing indicator styles
+  typingIndicator: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  typingText: {
+    fontSize: 13,
+    color: '#666',
+    fontStyle: 'italic',
   },
 });

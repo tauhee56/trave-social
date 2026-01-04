@@ -18,6 +18,8 @@ export default function SavedPostsScreen() {
   const loadSavedPosts = useCallback(async () => {
     try {
       const storedUserId = await AsyncStorage.getItem('userId');
+      console.log('[SavedPosts] Loaded userId from storage:', storedUserId);
+      
       if (!storedUserId) {
         Alert.alert('Error', 'User not logged in');
         router.push('/auth/welcome');
@@ -28,14 +30,20 @@ export default function SavedPostsScreen() {
       setLoading(true);
 
       // Fetch saved posts from backend
-      const response = await fetch(`${API_BASE_URL}/users/${storedUserId}/saved?limit=50`, {
+      const url = `${API_BASE_URL}/users/${storedUserId}/saved?limit=50`;
+      console.log('[SavedPosts] Fetching from:', url);
+      
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
       });
 
+      console.log('[SavedPosts] Response status:', response.status);
       const json = await response.json();
+      console.log('[SavedPosts] Response JSON:', JSON.stringify(json, null, 2));
+      
       if (json.success) {
         console.log('✅ Loaded', json.data.length, 'saved posts');
         setSavedPosts(json.data);

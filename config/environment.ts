@@ -176,6 +176,20 @@ export const STORAGE_KEYS = {
   offlineQueue: '@offline_queue',
 } as const;
 
+// API Base URL Helper
+export function getAPIBaseURL(): string {
+  // Try env variable first
+  if (process.env.EXPO_PUBLIC_API_BASE_URL) {
+    console.log('📡 [environment] Using env:', process.env.EXPO_PUBLIC_API_BASE_URL);
+    return process.env.EXPO_PUBLIC_API_BASE_URL;
+  }
+
+  // Use Render URL (production)
+  const renderUrl = 'https://trave-social-backend.onrender.com/api';
+  console.log('📡 [environment] Using Render:', renderUrl);
+  return renderUrl;
+}
+
 export default {
   FIREBASE_CONFIG,
   GOOGLE_MAPS_CONFIG,
