@@ -44,6 +44,11 @@
         "NSLocationWhenInUseUsageDescription": "Allow Trave-Social to use your location for map features and location tagging.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Allow Trave-Social to track your travels to create passport stamps.",
         "NSLocationAlwaysUsageDescription": "Allow Trave-Social to track your travels even when the app is closed to create passport stamps."
+      },
+      "entitlements": {
+        "com.apple.developer.applesignin": [
+          "Default"
+        ]
       }
     },
     "web": {
@@ -52,6 +57,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-apple-authentication",
       "./plugins/withCleartextTraffic.js",
       "./plugins/withNetworkSecurityConfig.js",
       "./plugins/withAppAuthRedirectScheme.js",
