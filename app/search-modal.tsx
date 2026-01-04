@@ -33,12 +33,12 @@ const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile
 
 // Default regions (fallback if Firebase fetch fails)
 const defaultRegions: Region[] = [
-  { id: 'world', name: 'World', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1766418231/regions/world.png' },
-  { id: 'us', name: 'United States', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1766418234/regions/us.png' },
-  { id: 'eastasia', name: 'East Asia', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1766418223/regions/eastasia.png' },
-  { id: 'me', name: 'Middle East', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1766418226/regions/middleeast.png' },
-  { id: 'sea', name: 'South Asia', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1766418228/regions/southeastasia.png' },
-  { id: 'japan', name: 'Japan', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1766418219/regions/Japan.png' },
+  { id: 'world', name: 'World', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1767485393/regions/world.png' },
+  { id: 'us', name: 'United States', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1767485391/regions/us.png' },
+  { id: 'eastasia', name: 'East Asia', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1767485382/regions/eastasia.png' },
+  { id: 'me', name: 'Middle East', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1767485386/regions/middleeast.png' },
+  { id: 'sea', name: 'South Asia', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1767485389/regions/southeastasia.png' },
+  { id: 'japan', name: 'Japan', image: 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1767485384/regions/Japan.png' },
 ];
 
 export default function SearchModal() {
