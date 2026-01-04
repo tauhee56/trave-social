@@ -73,9 +73,9 @@ export default function RootLayout() {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         const token = await AsyncStorage.getItem('token');
         const userId = await AsyncStorage.getItem('userId');
-        
+
         console.log('🔐 RootLayout checkAuth: token=', token ? 'YES' : 'NO', 'userId=', userId ? 'YES' : 'NO');
-        
+
         if (token && userId) {
           setUser({ token, userId });
         } else {
@@ -88,12 +88,16 @@ export default function RootLayout() {
         setLoading(false);
       }
     }
-    
+
     console.log('🔐 RootLayout AUTH EFFECT RUNNING');
     checkAuth();
-    
-    // No interval needed - token only changes on login/logout which updates AsyncStorage
-    // Individual screens handle their own focus-based checks if needed
+
+    // Listen for storage changes (logout events)
+    const checkInterval = setInterval(() => {
+      checkAuth();
+    }, 2000); // Check every 2 seconds for logout
+
+    return () => clearInterval(checkInterval);
   }, []);
 
   useEffect(() => {

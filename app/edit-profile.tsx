@@ -414,28 +414,41 @@ export default function EditProfile() {
 
         {/* Bottom Buttons */}
         <View style={styles.bottomBar}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.logoutBtn}
             onPress={async () => {
               Alert.alert(
-                'Log out',
+                'Log Out',
                 'Are you sure you want to log out?',
                 [
                   { text: 'Cancel', style: 'cancel' },
                   {
-                    text: 'Log out',
+                    text: 'Log Out',
                     style: 'destructive',
                     onPress: async () => {
                       try {
+                        console.log('[Logout] Starting logout process...');
                         const { logoutUser } = await import('./_services/firebaseAuthService');
                         const result = await logoutUser();
+
                         if (result.success) {
-                          console.log('Logout successful, redirecting to welcome');
+                          console.log('✅ [Logout] AsyncStorage cleared successfully');
+                          console.log('[Logout] Navigating to welcome screen...');
                           router.replace('/auth/welcome');
+
+                          // Force reload after a moment to ensure clean state
+                          setTimeout(() => {
+                            console.log('[Logout] Reloading app...');
+                            if (typeof window !== 'undefined' && window.location) {
+                              window.location.reload();
+                            }
+                          }, 100);
                         } else {
+                          console.error('❌ [Logout] Failed:', result.error);
                           Alert.alert('Error', 'Failed to log out');
                         }
-                      } catch (err) {
+                      } catch (err: any) {
+                        console.error('❌ [Logout] Exception:', err);
                         Alert.alert('Error', 'Failed to log out');
                       }
                     }

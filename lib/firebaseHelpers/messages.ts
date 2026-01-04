@@ -27,19 +27,23 @@ export function subscribeToMessages(conversationId: string, callback: (messages:
       const res = await apiService.get(`/conversations/${conversationId}/messages`);
       console.log('[subscribeToMessages] Initial fetch:', { success: res?.success, count: res?.messages?.length });
       if (res.success && res.messages) {
-        callback(res.messages);
+        // Reverse messages so newest are first (for inverted FlatList)
+        const sortedMessages = res.messages.slice().reverse();
+        callback(sortedMessages);
       }
     } catch (error) {
       console.error('[subscribeToMessages] Initial fetch error:', error);
     }
   })();
-  
+
   // Then poll every 1 second (much faster than 5s)
   const pollInterval = setInterval(async () => {
     try {
       const res = await apiService.get(`/conversations/${conversationId}/messages`);
       if (res.success && res.messages) {
-        callback(res.messages);
+        // Reverse messages so newest are first (for inverted FlatList)
+        const sortedMessages = res.messages.slice().reverse();
+        callback(sortedMessages);
       }
     } catch (error) {
       console.error('Error polling messages:', error);

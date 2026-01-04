@@ -212,7 +212,9 @@ export default function DM() {
       .then(res => {
         if (isMounted) {
           console.log('[DM] Fetched messages:', res?.messages?.length || 0);
-          setMessages(res?.messages || []);
+          // Reverse messages so newest are first (for inverted FlatList)
+          const sortedMessages = (res?.messages || []).slice().reverse();
+          setMessages(sortedMessages);
         }
       })
       .catch(err => {
@@ -233,7 +235,8 @@ export default function DM() {
     const unsubMessages = socketSubscribeToMessages(conversationId, (newMessage: any) => {
       if (isMounted) {
         console.log('[DM] New message received via socket:', newMessage);
-        setMessages(prev => [...prev, newMessage]);
+        // Add new message at the beginning (array is reversed for inverted FlatList)
+        setMessages(prev => [newMessage, ...prev]);
 
         // Mark as read if we're the recipient
         if (currentUserId && newMessage.recipientId === currentUserId) {
