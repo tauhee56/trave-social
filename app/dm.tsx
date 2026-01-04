@@ -235,8 +235,17 @@ export default function DM() {
     const unsubMessages = socketSubscribeToMessages(conversationId, (newMessage: any) => {
       if (isMounted) {
         console.log('[DM] New message received via socket:', newMessage);
-        // Add new message at the beginning (array is reversed for inverted FlatList)
-        setMessages(prev => [newMessage, ...prev]);
+
+        // Prevent duplicate messages - check if message already exists
+        setMessages(prev => {
+          const exists = prev.some(msg => msg.id === newMessage.id);
+          if (exists) {
+            console.log('[DM] Message already exists, skipping:', newMessage.id);
+            return prev;
+          }
+          // Add new message at the beginning (array is reversed for inverted FlatList)
+          return [newMessage, ...prev];
+        });
 
         // Mark as read if we're the recipient
         if (currentUserId && newMessage.recipientId === currentUserId) {
@@ -348,6 +357,25 @@ export default function DM() {
     setReplyingTo(null);
     setSending(true);
 
+    // Create temporary message ID
+    const tempMessageId = `temp_${Date.now()}`;
+    const tempMessage = {
+      id: tempMessageId,
+      senderId: currentUserId,
+      recipientId: otherUserId,
+      text: messageText,
+      timestamp: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      read: false,
+      delivered: false,
+      sent: false, // Mark as sending
+      replyTo: replyData
+    };
+
+    // Immediately add to local state for instant UI update
+    console.log('[DM] Adding temp message to local state:', tempMessageId);
+    setMessages(prev => [tempMessage, ...prev]);
+
     // Stop typing indicator
     if (otherUserId) {
       stopTypingIndicator({
@@ -372,8 +400,21 @@ export default function DM() {
         });
       }
 
-      // Also save via API (fallback)
-      await sendMessage(conversationId, currentUserId, messageText, otherUserId, replyData);
+      // Also save via API (fallback) and get real message ID
+      const result = await sendMessage(conversationId, currentUserId, messageText, otherUserId, replyData);
+
+      // Replace temp message with real message from backend
+      if (result && result.message) {
+        console.log('[DM] Replacing temp message with real message:', result.message.id);
+        setMessages(prev => prev.map(msg =>
+          msg.id === tempMessageId ? { ...result.message, sent: true } : msg
+        ));
+      } else {
+        // Mark temp message as sent
+        setMessages(prev => prev.map(msg =>
+          msg.id === tempMessageId ? { ...msg, sent: true } : msg
+        ));
+      }
 
       // Send notification to recipient
       if (otherUserId && otherUserId !== currentUserId) {
@@ -401,7 +442,10 @@ export default function DM() {
         });
       }
     } catch (error) {
-      console.error('Send message error:', error);
+      console.error('[DM] Send message error:', error);
+      // Remove temp message on error
+      setMessages(prev => prev.filter(msg => msg.id !== tempMessageId));
+      Alert.alert('Error', 'Failed to send message. Please try again.');
     } finally {
       setSending(false);
       // Try to reload inbox if available

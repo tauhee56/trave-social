@@ -123,6 +123,31 @@ export function sendMessage(data: {
 }
 
 /**
+ * Subscribe to a conversation room
+ */
+export function subscribeToConversation(conversationId: string) {
+  if (!socket || !socket.connected) {
+    console.warn('[Socket] Cannot subscribe to conversation - not connected');
+    return;
+  }
+
+  console.log('[Socket] 📬 Subscribing to conversation:', conversationId);
+  socket.emit('subscribeToConversation', conversationId);
+}
+
+/**
+ * Unsubscribe from a conversation room
+ */
+export function unsubscribeFromConversation(conversationId: string) {
+  if (!socket || !socket.connected) {
+    return;
+  }
+
+  console.log('[Socket] 📭 Unsubscribing from conversation:', conversationId);
+  socket.emit('unsubscribeFromConversation', conversationId);
+}
+
+/**
  * Subscribe to new messages
  */
 export function subscribeToMessages(
@@ -133,6 +158,9 @@ export function subscribeToMessages(
     console.warn('[Socket] Cannot subscribe - socket not initialized. Messages will still work via API polling.');
     return () => {};
   }
+
+  // Subscribe to conversation room
+  subscribeToConversation(conversationId);
 
   const handler = (message: any) => {
     if (message.conversationId === conversationId) {
@@ -145,6 +173,7 @@ export function subscribeToMessages(
 
   return () => {
     socket?.off('newMessage', handler);
+    unsubscribeFromConversation(conversationId);
   };
 }
 
