@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
+import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from "react";
@@ -287,10 +288,11 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
               >
                 <LinearGradient colors={['#f39c12', '#e0245e', '#007aff']} style={styles.gradientBorder}>
                   <View style={styles.storyAvatarWrapper}>
-                    <Image
+                    <ExpoImage
                       source={{ uri: currentUserAvatar || DEFAULT_AVATAR_URL }}
                       style={styles.storyAvatar}
-                      resizeMode="cover"
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
                     />
                   </View>
                 </LinearGradient>
@@ -314,10 +316,11 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
             >
               <LinearGradient colors={['#ddd', '#ddd']} style={styles.gradientBorder}>
                 <View style={styles.storyAvatarWrapper}>
-                  <Image
+                  <ExpoImage
                     source={{ uri: currentUserAvatar || DEFAULT_AVATAR_URL }}
                     style={styles.storyAvatar}
-                    resizeMode="cover"
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
                   />
                   <View style={styles.addButton}>
                     <Feather name="plus" size={18} color="#fff" />
@@ -338,10 +341,11 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
             >
               <LinearGradient colors={['#f39c12', '#e0245e', '#007aff']} style={styles.gradientBorder}>
                 <View style={styles.storyAvatarWrapper}>
-                  <Image
+                  <ExpoImage
                     source={{ uri: user.userAvatar || DEFAULT_AVATAR_URL }}
                     style={styles.storyAvatar}
-                    resizeMode="cover"
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
                   />
                 </View>
               </LinearGradient>
@@ -439,9 +443,11 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
                     }
                   }}
                 >
-                  <Image
+                  <ExpoImage
                     source={{ uri: currentUserAvatar || DEFAULT_AVATAR_URL }}
                     style={{ width: 40, height: 40, borderRadius: 20 }}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
                   />
                 </TouchableOpacity>
               </View>
