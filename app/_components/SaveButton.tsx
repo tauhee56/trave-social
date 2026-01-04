@@ -28,7 +28,7 @@ export default function SaveButton({ post, currentUser }: any) {
   const user = useUser();
   // Use currentUser prop if provided, otherwise fall back to context
   const userForSave = currentUser || user;
-  const userId = typeof userForSave === 'string' ? userForSave : (userForSave?.uid || userForSave?.id || userForSave?.userId);
+  const userId = typeof userForSave === 'string' ? userForSave : (userForSave?.uid || userForSave?.id || userForSave?.userId || userForSave?._id);
   const [saved, setSaved] = useState(post.savedBy?.includes(userId));
   React.useEffect(() => {
     setSaved(post.savedBy?.includes(userId));
