@@ -804,8 +804,8 @@ export async function leaveLiveStream(streamId: string, userId: string) {
 }
 
 // Real-time listeners to be replaced by WebSockets later
-export function subscribeToMessages(onMessage: (msg: any) => void) {
-  return socketSubscribeToMessages(onMessage);
+export function subscribeToMessages(conversationId: string, onMessage: (msg: any) => void) {
+  return socketSubscribeToMessages(conversationId, onMessage);
 }
 
 export function subscribeToLiveStream(streamId: string, onUserJoined: (data: any) => void, onUserLeft: (data: any) => void, onLiveComment: (comment: any) => void) {

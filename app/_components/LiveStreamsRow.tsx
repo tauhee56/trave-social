@@ -26,30 +26,35 @@ function LiveStreamsRowComponent() {
   useEffect(() => {
     const fetchLiveStreams = async () => {
       try {
+        console.log('[LiveStreams] Fetching live streams...');
         let res = await apiService.get('/live-streams');
+        console.log('[LiveStreams] Response:', res);
+
         // Defensive: handle all possible response shapes
         let streams: any[] = [];
         if (res && typeof res === 'object') {
           streams = res.streams || res.data || [];
         }
         if (!Array.isArray(streams)) streams = [];
-        
-        
+
+
         // Sort by viewer count (safe)
         if (streams.length > 0) {
           streams.sort((a: any, b: any) => (b?.viewerCount || 0) - (a?.viewerCount || 0));
         }
         setLiveStreams(streams);
-      } catch (error) {
-        console.error('Error fetching live streams:', error);
+        console.log('[LiveStreams] Set', streams.length, 'streams');
+      } catch (error: any) {
+        console.warn('[LiveStreams] Failed to fetch (backend may be sleeping):', error.message);
+        // Silently fail - don't show error to user, just hide the section
         setLiveStreams([]);
       }
     };
 
     fetchLiveStreams();
 
-    // Refresh every 30 seconds instead of real-time
-    const interval = setInterval(fetchLiveStreams, 30000);
+    // Refresh every 60 seconds (reduced frequency to avoid spam during cold start)
+    const interval = setInterval(fetchLiveStreams, 60000);
     return () => clearInterval(interval);
   }, []);
 

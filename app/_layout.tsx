@@ -11,6 +11,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 // import { auth } from "../config/firebase";
 // import { initSentry } from "../lib/sentry";
 import { UserProvider } from "../src/_components/UserContext";
+import { initializeBackend } from "./_services/backendWakeup";
 // Suppress non-critical warnings
 LogBox.ignoreLogs([
   'Unable to activate keep awake',
@@ -56,6 +57,13 @@ export default function RootLayout() {
       }
     }
     loadFonts();
+  }, []);
+
+  // Initialize backend on app start (wake up if sleeping)
+  useEffect(() => {
+    initializeBackend().catch(err => {
+      console.warn('Backend initialization failed:', err);
+    });
   }, []);
 
   useEffect(() => {

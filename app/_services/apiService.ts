@@ -46,7 +46,7 @@ function getAxiosInstance() {
     
     axiosInstance = axios.create({
       baseURL: API_BASE,
-      timeout: 15000,  // Reduced to 15s for faster feedback
+      timeout: 60000,  // 60s for Render.com cold start
       validateStatus: () => true,
     });
     
@@ -86,7 +86,7 @@ function getAxiosInstance() {
 // Add response interceptor to handle errors - moved inside getAxiosInstance()
 
 // Retry logic for handling Render cold starts
-async function apiRequestWithRetry(method: string, url: string, data?: any, config?: any, retries: number = 2): Promise<any> {
+async function apiRequestWithRetry(method: string, url: string, data?: any, config?: any, retries: number = 3): Promise<any> {
   let lastError: any;
   
   for (let attempt = 1; attempt <= retries; attempt++) {

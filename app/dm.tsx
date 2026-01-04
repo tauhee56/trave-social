@@ -21,6 +21,18 @@ import {
 import { getFormattedActiveStatus, subscribeToUserPresence, updateUserOffline, updateUserPresence, UserPresence } from '../lib/userPresence';
 import MessageBubble from '../src/_components/MessageBubble';
 import useUserProfile from '../src/_hooks/useUserProfile';
+import {
+  initializeSocket,
+  sendMessage as socketSendMessage,
+  subscribeToMessages as socketSubscribeToMessages,
+  subscribeToMessageSent,
+  subscribeToMessageDelivered,
+  subscribeToMessageRead,
+  markMessageAsRead,
+  sendTypingIndicator,
+  stopTypingIndicator,
+  subscribeToTyping
+} from './_services/socketService';
 
 const DEFAULT_AVATAR_URL = 'https://res.cloudinary.com/YOUR_CLOUD_NAME/image/upload/v1/default/default-pic.jpg';
 
@@ -90,6 +102,10 @@ export default function DM() {
   
   // Track other user's active status
   const [otherUserPresence, setOtherUserPresence] = useState<UserPresence | null>(null);
+
+  // Real-time messaging states
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Emoji reactions list (Instagram style)
   const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];

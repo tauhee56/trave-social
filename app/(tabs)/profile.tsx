@@ -787,6 +787,10 @@ export default function Profile({ userIdProp }: any) {
               <Ionicons name="albums-outline" size={16} color="#000" style={{ marginRight: 4 }} />
               <Text style={styles.pillText}>Sections</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.pillBtn} onPress={() => router.push({pathname: '/saved-posts', params: {userId: viewedUserId}} as any)}>
+              <Ionicons name="bookmark-outline" size={16} color="#000" style={{ marginRight: 4 }} />
+              <Text style={styles.pillText}>Saved</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.pillBtn} onPress={() => router.push('/passport' as any)}>
               <Ionicons name="map-outline" size={16} color="#000" style={{ marginRight: 4 }} />
               <Text style={styles.pillText}>Passport</Text>
