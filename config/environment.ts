@@ -15,7 +15,7 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
 
 function getEnvVar(key: string, defaultValue?: string): string {
   const value = env[key] || process.env[key];
-  if (!value && !isDevelopment) {
+  if (!value && !isDevelopment && defaultValue === undefined) {
     throw new Error(`Missing critical environment variable: ${key}`);
   }
   return value || defaultValue || '';
@@ -34,13 +34,13 @@ export const FIREBASE_CONFIG = {
 
 // Google Maps Configuration
 export const GOOGLE_MAPS_CONFIG = {
-  apiKey: getEnvVar('EXPO_PUBLIC_GOOGLE_MAP_API_KEY'),
+  apiKey: getEnvVar('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'),
   provider: 'google' as const,
 } as const;
 
 // Agora Configuration (app ID is semi-public, but certificate is NOT)
 export const AGORA_CONFIG = {
-  appId: getEnvVar('EXPO_PUBLIC_AGORA_APP_ID'),
+  appId: getEnvVar('EXPO_PUBLIC_AGORA_APP_ID', ''),
   // Certificate should NEVER be in frontend - request tokens from backend only
   tokenServerUrl: getEnvVar('EXPO_PUBLIC_AGORA_TOKEN_URL', ''),
 } as const;

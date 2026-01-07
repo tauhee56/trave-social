@@ -54,15 +54,21 @@ export async function requestNotificationPermissions() {
  */
 export async function getPushNotificationToken() {
   try {
-    // Only get token if not in Expo Go
-    if (!Constants.expoConfig?.extra?.eas || Platform.OS === 'web') {
-      console.log('Push notifications not available in Expo Go or web');
+    if (Platform.OS === 'web') {
+      console.log('Push notifications not available on web');
+      return { success: false, error: 'Not available on web' };
+    }
+
+    const appOwnership = (Constants as any)?.appOwnership;
+    if (appOwnership === 'expo') {
+      console.log('Push notifications not available in Expo Go');
       return { success: false, error: 'Not available in Expo Go' };
     }
 
-    const token = await Notifications.getExpoPushTokenAsync({
-      projectId: Constants.expoConfig?.extra?.eas?.projectId,
-    });
+    const projectId = (Constants as any)?.expoConfig?.extra?.eas?.projectId;
+    const token = projectId
+      ? await Notifications.getExpoPushTokenAsync({ projectId })
+      : await Notifications.getExpoPushTokenAsync();
     
     return { success: true, token: token.data };
   } catch (error) {

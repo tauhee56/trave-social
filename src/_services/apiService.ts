@@ -2,6 +2,11 @@ import axios from 'axios';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+function normalizeApiBase(url: string): string {
+  const trimmed = url.replace(/\/+$/, '');
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+}
+
 // Determine API base URL based on platform
 const getAPIBaseURL = () => {
   // Try env variable first
@@ -26,7 +31,7 @@ const getAPIBaseURL = () => {
       }
     }
 
-    return envUrl;
+    return normalizeApiBase(envUrl);
   }
 
   // Dev fallback for native

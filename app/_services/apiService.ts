@@ -3,6 +3,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+function normalizeApiBase(url: string): string {
+  const trimmed = url.replace(/\/+$/, '');
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+}
+
 // ✅ SIMPLIFIED API URL RESOLUTION - Clean & Efficient
 const getAPIBaseURL = () => {
   // Priority 1: Environment variable (for all platforms)
@@ -29,7 +34,7 @@ const getAPIBaseURL = () => {
       }
     }
 
-    return envUrl;
+    return normalizeApiBase(envUrl);
   }
 
   // Priority 2: Development localhost

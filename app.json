@@ -75,7 +75,8 @@
             "enableShrinkResourcesInReleaseBuilds": false,
             "gradleVersion": "7.6.0",
             "compileSdkVersion": 35,
-            "targetSdkVersion": 34
+            "targetSdkVersion": 34,
+            "enableMinifyInReleaseBuilds": false
           }
         }
       ],
@@ -138,8 +139,11 @@
       "FIREBASE_STORAGE_BUCKET": "travel-app-3da72.firebasestorage.app",
       "FIREBASE_MESSAGING_SENDER_ID": "709095117662",
       "FIREBASE_APP_ID": "1:709095117662:web:5f00f45bb4e392ee17f5cf",
-      "FIREBASE_MEASUREMENT_ID": "G-PFZRL4FDFD"
+      "FIREBASE_MEASUREMENT_ID": "G-PFZRL4FDFD",
+      "eas": {
+        "projectId": "513a1158-d790-4560-869c-77d75b5ffd6e"
+      }
     },
-    "owner": "Barkat464"
+    "owner": "tauheedahmad"
   }
 }
