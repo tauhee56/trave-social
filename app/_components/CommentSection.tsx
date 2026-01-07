@@ -30,14 +30,14 @@ export interface CommentSectionProps {
 
 const REACTIONS = ['❤️', '😂', '😮', '😢', '👏', '🔥'];
 
-export const CommentSection: React.FC<CommentSectionProps> = ({ 
-  postId, 
+export const CommentSection: React.FC<CommentSectionProps> = ({
+  postId,
   postOwnerId,
   currentAvatar,
   currentUser: userProp,
-  maxHeight = 400, 
+  maxHeight = 400,
   showInput = true,
-  highlightedCommentId 
+  highlightedCommentId
 }) => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +47,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   const [editingComment, setEditingComment] = useState<{ id: string; text: string; isReply: boolean; parentId?: string } | null>(null);
   const [showMenu, setShowMenu] = useState<{ commentId: string; isReply: boolean; parentId?: string; replyId?: string } | null>(null);
   const [showReactions, setShowReactions] = useState<string | null>(null);
-  
+
   const scrollRef = useRef<ScrollView>(null);
   const userFromContext = useUser();
   // Use prop if provided, otherwise fall back to context
@@ -83,7 +83,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     // Handle currentUser being either string (userId) or object
     let userId: string | undefined;
     let displayName: string = 'User';
-    
+
     if (typeof currentUser === 'string') {
       // currentUser is just a userId string
       userId = currentUser;
@@ -97,21 +97,21 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     } else {
       console.log('[CommentSection] handleAddComment - currentUser is null/undefined:', currentUser);
     }
-    
+
     if (!newComment.trim()) {
       console.log('[CommentSection] Skipping - no text');
       return;
     }
-    
+
     if (!userId) {
       console.log('[CommentSection] ERROR - Cannot extract userId from currentUser:', currentUser);
       Alert.alert('Error', 'Please login to comment');
       return;
     }
-    
+
     const commentText = newComment.trim();
     setNewComment(''); // Clear input immediately for better UX
-    
+
     // Optimistic UI update - add comment immediately
     const tempComment: Comment = {
       id: `temp-${Date.now()}`,
@@ -123,9 +123,9 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       replies: [],
       reactions: {}
     };
-    
+
     setComments(prev => [tempComment, ...prev]);
-    
+
     // Then save to backend
     console.log('[CommentSection] Adding comment to post:', postId, 'userId:', userId, 'userName:', displayName);
     const result = await addComment(
@@ -135,17 +135,22 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       currentAvatar,
       commentText
     );
-    
+
     console.log('[CommentSection] addComment result:', result);
-    
+
     if (!result.success) {
       // If failed, remove the temp comment and show error
       setComments(prev => prev.filter(c => c.id !== tempComment.id));
       setNewComment(commentText); // Restore the text
       Alert.alert('Error', 'Failed to post comment: ' + result.error);
     } else {
-      // Emit event to update post's commentCount in PostCard
-      feedEventEmitter.emitPostUpdated(postId, { commentAdded: true, newCommentCount: true });
+      // Emit event to update post's commentCount in PostCard with ACTUAL count from backend
+      const actualCount = result.commentCount || result.data?.commentCount;
+      console.log('[CommentSection] Emitting post updated event with commentCount:', actualCount);
+      feedEventEmitter.emitPostUpdated(postId, {
+        commentAdded: true,
+        commentCount: actualCount  // Pass actual count, not boolean
+      });
       // Reload to get the real comment with correct ID
       await loadComments();
     }
@@ -153,7 +158,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
   const handleAddReply = async () => {
     if (!replyText.trim() || !replyTo || !currentUser) return;
-    
+
     const reply = {
       id: Date.now().toString(),
       userId: currentUser.uid,
@@ -162,9 +167,9 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       text: replyText.trim(),
       createdAt: Date.now()
     };
-    
+
     const result = await addCommentReply(postId, replyTo.id, reply);
-    
+
     if (result.success) {
       setReplyText('');
       setReplyTo(null);
@@ -174,7 +179,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
   const handleEditComment = async () => {
     if (!editingComment || !currentUser) return;
-    
+
     // Extract userId from currentUser (can be string or object)
     let userId = '';
     if (typeof currentUser === 'string') {
@@ -187,7 +192,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       Alert.alert('Error', 'Cannot edit comment - user not identified');
       return;
     }
-    
+
     if (editingComment.isReply && editingComment.parentId) {
       const result = await editCommentReply(
         postId,
@@ -273,7 +278,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       // Get current comment's reactions
       const commentsData = await getPostComments(postId);
       const comments = commentsData?.data || commentsData || [];
-      
+
       // Find the comment recursively
       const findComment = (commentList: any[]): any => {
         for (const comment of commentList) {
@@ -340,7 +345,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     } else {
       currentUserId = currentUser?.uid || currentUser?.id || currentUser?.userId || currentUser?.firebaseUid || currentUser?._id || '';
     }
-    
+
     const isOwner = currentUserId === comment.userId;
     const isPostOwner = currentUserId === postOwnerId;
     const canDelete = isOwner || isPostOwner;
@@ -348,7 +353,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     // Parse reactions - handle both { [userId]: emoji } and { [emoji]: [userIds] } formats
     const reactionCounts: { [key: string]: number } = {};
     const userReactionMap: { [emoji: string]: string[] } = {};
-    
+
     if (comment.reactions) {
       if (Array.isArray(comment.reactions)) {
         // If reactions is an array, just count occurrences
@@ -377,7 +382,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
     // Find current user's reaction - look in all possible locations
     let userReaction = '';
-    
+
     if (comment.reactions) {
       // First, try direct lookup
       if (typeof comment.reactions === 'object' && !Array.isArray(comment.reactions)) {
@@ -521,40 +526,40 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       {/* Input Section - Fixed at Bottom */}
       {showInput && (
         <View style={styles.inputContainer}>
-            {replyTo && (
-              <View style={styles.replyingTo}>
-                <Text style={styles.replyingToText}>
-                  Replying to <Text style={styles.replyingToName}>{replyTo.userName}</Text>
-                </Text>
-                <TouchableOpacity onPress={() => { setReplyTo(null); setReplyText(''); }}>
-                  <Feather name="x" size={16} color="#666" />
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <View style={styles.inputRow}>
-              <Image
-                source={{ uri: currentAvatar }}
-                style={styles.inputAvatar}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder={replyTo ? "Write a reply..." : "Add a comment..."}
-                placeholderTextColor="#999"
-                value={replyTo ? replyText : newComment}
-                onChangeText={replyTo ? setReplyText : setNewComment}
-                multiline
-                maxLength={500}
-              />
-              <TouchableOpacity
-                style={[styles.sendBtn, !(replyTo ? replyText : newComment).trim() && styles.sendBtnDisabled]}
-                onPress={replyTo ? handleAddReply : handleAddComment}
-                disabled={!(replyTo ? replyText : newComment).trim()}
-              >
-                <Ionicons name="send" size={20} color={(replyTo ? replyText : newComment).trim() ? '#007aff' : '#ccc'} />
+          {replyTo && (
+            <View style={styles.replyingTo}>
+              <Text style={styles.replyingToText}>
+                Replying to <Text style={styles.replyingToName}>{replyTo.userName}</Text>
+              </Text>
+              <TouchableOpacity onPress={() => { setReplyTo(null); setReplyText(''); }}>
+                <Feather name="x" size={16} color="#666" />
               </TouchableOpacity>
             </View>
+          )}
+
+          <View style={styles.inputRow}>
+            <Image
+              source={{ uri: currentAvatar }}
+              style={styles.inputAvatar}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder={replyTo ? "Write a reply..." : "Add a comment..."}
+              placeholderTextColor="#999"
+              value={replyTo ? replyText : newComment}
+              onChangeText={replyTo ? setReplyText : setNewComment}
+              multiline
+              maxLength={500}
+            />
+            <TouchableOpacity
+              style={[styles.sendBtn, !(replyTo ? replyText : newComment).trim() && styles.sendBtnDisabled]}
+              onPress={replyTo ? handleAddReply : handleAddComment}
+              disabled={!(replyTo ? replyText : newComment).trim()}
+            >
+              <Ionicons name="send" size={20} color={(replyTo ? replyText : newComment).trim() ? '#007aff' : '#ccc'} />
+            </TouchableOpacity>
           </View>
+        </View>
       )}
 
       {/* Edit Modal */}

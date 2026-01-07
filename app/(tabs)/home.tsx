@@ -20,7 +20,7 @@ import LiveStreamsRow from '../../src/_components/LiveStreamsRow';
 import StoriesViewer from '../../app/_components/StoriesViewer';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DEFAULT_CATEGORIES, getCategories } from '../../lib/firebaseHelpers/index';
+import { DEFAULT_CATEGORIES, getAllStoriesForFeed, getUserProfile } from '../../lib/firebaseHelpers/index';
 import { apiService } from '../_services/apiService';
 
 const { width } = Dimensions.get("window");
@@ -54,6 +54,7 @@ export default function Home() {
     const [storiesRefreshTrigger, setStoriesRefreshTrigger] = useState(0);
     const [storiesRowResetTrigger, setStoriesRowResetTrigger] = useState(0);
     const flatListRef = React.useRef<FlatList>(null);
+    const openedStoryIdRef = React.useRef<string | null>(null);
 
     // Get current user ID from AsyncStorage (token-based auth)
     useEffect(() => {
@@ -65,13 +66,13 @@ export default function Home() {
           // Also fetch user's display name and other info
           if (userId) {
             try {
-              const response = await apiService.get(`/users/${userId}`);
-              if (response.success && response.data) {
+              const response = await apiService.getUser(userId);
+              if (response?.success && response?.data) {
                 setCurrentUserData(response.data);
-                console.log('[Home] Loaded current user data:', response.data?.displayName || response.data?.name);
+                if (__DEV__) console.log('[Home] User data loaded:', response.data?.displayName || response.data?.name);
               }
             } catch (error) {
-              console.log('[Home] Could not fetch user data:', error);
+              console.error('[Home] User data fetch failed:', error);
             }
           }
         } catch (error) {
@@ -80,6 +81,68 @@ export default function Home() {
       };
       getUserId();
     }, []);
+
+    // Deep-link support: open StoriesViewer by storyId (used by notifications)
+    useEffect(() => {
+        const storyIdParam = params?.storyId != null ? String(params.storyId) : '';
+        if (!storyIdParam) return;
+
+        if (openedStoryIdRef.current === storyIdParam) return;
+        openedStoryIdRef.current = storyIdParam;
+
+        (async () => {
+            try {
+                const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
+
+                const res = await getAllStoriesForFeed();
+                if (!res?.success || !Array.isArray(res.data)) return;
+
+                const now = Date.now();
+                const activeStories = res.data.filter((s: any) => {
+                    if (s?.expiresAt == null) return true;
+                    return Number(s.expiresAt) > now;
+                });
+
+                const target = activeStories.find((s: any) => {
+                    const id = s?._id || s?.id;
+                    return id != null && String(id) === storyIdParam;
+                });
+                if (!target) return;
+
+                const ownerId = target?.userId != null ? String(target.userId) : '';
+                if (!ownerId) return;
+
+                let ownerAvatar = DEFAULT_AVATAR_URL;
+                try {
+                    const profileRes: any = await getUserProfile(ownerId);
+                    if (profileRes?.success && profileRes?.data?.avatar) {
+                        ownerAvatar = profileRes.data.avatar;
+                    }
+                } catch {}
+
+                const ownerStoriesRaw = activeStories.filter((s: any) => String(s?.userId || '') === ownerId);
+                const transformed = ownerStoriesRaw.map((story: any) => ({
+                    ...story,
+                    id: story._id || story.id,
+                    userId: ownerId,
+                    userName: story.userName || 'Anonymous',
+                    userAvatar: ownerAvatar,
+                    imageUrl: story.image || story.imageUrl || story.mediaUrl,
+                    videoUrl: story.video || story.videoUrl,
+                    mediaType: story.video ? 'video' : 'image'
+                }));
+
+                const idx = Math.max(0, transformed.findIndex((s: any) => String(s?.id || '') === storyIdParam));
+                if (transformed.length === 0) return;
+
+                setSelectedStories(transformed);
+                setStoryInitialIndex(idx);
+                setShowStoriesViewer(true);
+            } catch (e) {
+                console.log('[Home] Failed to open story deep-link:', e);
+            }
+        })();
+    }, [params?.storyId]);
 
     // Memoized shuffle
     const shufflePosts = useCallback((postsArray: any[]) => {
@@ -143,25 +206,22 @@ export default function Home() {
     const loadInitialFeed = async (pageNum = 0) => {
         if (pageNum === 0) setLoading(true);
         try {
-            // Request posts with pagination from backend
-            const limit = 50; // Request 50 posts at a time from backend
+            // ✅ OPTIMIZED: Use standard API service method
+            const limit = 50;
             const skip = pageNum * limit;
-            const response = await apiService.get(`/posts?skip=${skip}&limit=${limit}`);
-            console.log('[Home] Posts response:', response);
+            const response = await apiService.getPosts({ skip, limit });
             
-            // Handle various response formats from backend
+            // ✅ CLEAN RESPONSE HANDLING
             let postsData: any[] = [];
-            if (response?.data && Array.isArray(response.data)) {
+            if (response?.success && Array.isArray(response.data)) {
                 postsData = response.data;
-                console.log('[Home] Using response.data format:', postsData.length);
-            } else if (response?.posts && Array.isArray(response.posts)) {
-                postsData = response.posts;
-                console.log('[Home] Using response.posts format:', postsData.length);
+                if (__DEV__) console.log('[Home] ✅ Got posts:', postsData.length);
             } else if (Array.isArray(response)) {
                 postsData = response;
-                console.log('[Home] Using response as array:', postsData.length);
+                if (__DEV__) console.log('[Home] ✅ Got posts (array):', postsData.length);
             } else {
-                console.log('[Home] Unhandled response format:', response);
+                console.warn('[Home] ⚠️ Unexpected response format:', response);
+                postsData = [];
             }
             
             // Normalize posts: convert MongoDB _id to id, ensure required fields exist
@@ -203,17 +263,22 @@ export default function Home() {
     };
 
     const loadCategories = async () => {
-        const cats = await getCategories();
-        const mappedCats = Array.isArray(cats)
-            ? cats.map((c: any) => {
-                if (typeof c === 'string') return { name: c, image: 'https://via.placeholder.com/40x40.png?text=' + encodeURIComponent(c) };
-                return {
-                    name: typeof c.name === 'string' ? c.name : '',
-                    image: typeof c.image === 'string' ? c.image : 'https://via.placeholder.com/40x40.png?text=' + encodeURIComponent(c.name || 'Category')
-                };
-            }).filter((c: any) => c.name && c.image)
-            : [];
-        setCategories(mappedCats.length > 0 ? mappedCats : defaultCategoryObjects);
+        try {
+            const cats = await apiService.getCategories();
+            const mappedCats = Array.isArray(cats?.data) 
+                ? cats.data.map((c: any) => {
+                    if (typeof c === 'string') return { name: c, image: 'https://via.placeholder.com/40x40.png?text=' + encodeURIComponent(c) };
+                    return {
+                        name: typeof c.name === 'string' ? c.name : '',
+                        image: typeof c.image === 'string' ? c.image : 'https://via.placeholder.com/40x40.png?text=' + encodeURIComponent(c.name || 'Category')
+                    };
+                }).filter((c: any) => c.name && c.image)
+                : [];
+            setCategories(mappedCats.length > 0 ? mappedCats : defaultCategoryObjects);
+        } catch (error) {
+            console.error('[Home] Failed to load categories:', error);
+            setCategories(defaultCategoryObjects);
+        }
     };
 
     useEffect(() => {
@@ -282,7 +347,7 @@ export default function Home() {
             const uniquePosts = Array.from(new Map(filteredRaw.map(p => [p.id, p])).values());
             console.log('[Home] After dedup - uniquePosts count:', uniquePosts.length);
             
-            const filtered = await filterPostsByPrivacy(uniquePosts, currentUserId);
+            const filtered = await filterPostsByPrivacy(uniquePosts, currentUserId || undefined);
             console.log('[Home] After privacy filter - filtered count:', filtered.length);
             
             // Log details of posts being filtered

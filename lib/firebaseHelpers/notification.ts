@@ -1,13 +1,10 @@
+import { apiService } from '../../app/_services/apiService';
+
 // Get notifications for a user
 export async function getUserNotifications(userId: string) {
   try {
-    const res = await fetch(`/api/users/${userId}/notifications`);
-    const data = await res.json();
-    if (data.success) {
-      return data.data;
-    } else {
-      return [];
-    }
+    const res = await apiService.get(`/notifications/${userId}`);
+    return res?.data || [];
   } catch (error: any) {
     return [];
   }
@@ -20,12 +17,7 @@ export async function getUserNotifications(userId: string) {
  */
 export async function addNotification(recipientId: string, senderId: string, type: string, message: string, createdAt: any) {
   try {
-    const res = await fetch(`/api/notifications`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recipientId, senderId, type, message, createdAt })
-    });
-    const data = await res.json();
+    const data = await apiService.post('/notifications', { recipientId, type, message, createdAt });
     return data;
   } catch (error: any) {
     return { success: false, error: error.message };

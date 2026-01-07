@@ -25,7 +25,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -34,6 +33,14 @@ import { logger } from '../utils/logger';
 import { ZEEGOCLOUD_CONFIG, generateRoomId } from '../config/zeegocloud';
 import ZeegocloudStreamingService from '../services/implementations/ZeegocloudStreamingService';
 import ZeegocloudLiveHost from './_components/ZeegocloudLiveHost';
+
+ let MapView: any = null;
+ let Marker: any = null;
+ if (Platform.OS !== 'web') {
+   const RNMaps = require('react-native-maps');
+   MapView = RNMaps.default ?? RNMaps;
+   Marker = RNMaps.Marker;
+ }
 
 const { width, height } = Dimensions.get('window');
 const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
@@ -412,10 +419,13 @@ export default function GoLiveScreen() {
       {/* ZeegoCloud Video Component */}
       <View style={styles.videoContainer}>
         <ZeegocloudLiveHost
-          roomId={roomId}
-          userId={currentUser?.uid || 'anonymous'}
+          roomID={roomId}
+          userID={currentUser?.uid || 'anonymous'}
           userName={currentUser?.displayName || 'Anonymous'}
-          onStreamEnd={handleEndStream}
+          onLeave={handleEndStream}
+          isCameraOn={isCameraOn}
+          isMuted={isMuted}
+          isUsingFrontCamera={isUsingFrontCamera}
         />
       </View>
 
@@ -551,17 +561,23 @@ export default function GoLiveScreen() {
             </TouchableOpacity>
           </View>
 
-          <MapView
-            style={styles.map}
-            initialRegion={{
-              latitude: location.latitude,
-              longitude: location.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-          >
-            <Marker coordinate={location} title="You are here" />
-          </MapView>
+          {Platform.OS !== 'web' && MapView ? (
+            <MapView
+              style={styles.map}
+              initialRegion={{
+                latitude: location.latitude,
+                longitude: location.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              }}
+            >
+              <Marker coordinate={location} title="You are here" />
+            </MapView>
+          ) : (
+            <View style={[styles.map, { alignItems: 'center', justifyContent: 'center' }]}>
+              <Text style={{ color: '#666' }}>Map is not available on web preview.</Text>
+            </View>
+          )}
         </View>
       )}
     </SafeAreaView>

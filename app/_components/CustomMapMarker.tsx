@@ -80,3 +80,5 @@ export const CustomMapMarker: React.FC<CustomMapMarkerProps> = ({ imageUrl, imag
     </View>
   );
 };
+
+export default CustomMapMarker;

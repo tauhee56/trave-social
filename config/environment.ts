@@ -5,6 +5,7 @@
  */
 
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 // Get environment variables
 const env = Constants.expoConfig?.extra || process.env;
@@ -180,8 +181,53 @@ export const STORAGE_KEYS = {
 export function getAPIBaseURL(): string {
   // Try env variable first
   if (process.env.EXPO_PUBLIC_API_BASE_URL) {
-    console.log('📡 [environment] Using env:', process.env.EXPO_PUBLIC_API_BASE_URL);
-    return process.env.EXPO_PUBLIC_API_BASE_URL;
+    const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+    console.log('📡 [environment] Using env:', envUrl);
+
+    // On real devices, localhost points to the device itself. If envUrl is localhost in dev,
+    // derive the host from the Expo dev server (Metro) so the device can reach the laptop.
+    if (__DEV__ && Platform.OS !== 'web') {
+      const isLocalhost = envUrl.includes('localhost') || envUrl.includes('127.0.0.1');
+      if (isLocalhost) {
+        const debuggerHost =
+          (Constants as any)?.expoConfig?.hostUri ||
+          (Constants as any)?.manifest2?.extra?.expoClient?.hostUri ||
+          (Constants as any)?.manifest?.debuggerHost;
+
+        const host = typeof debuggerHost === 'string' ? debuggerHost.split(':')[0] : null;
+        if (host) {
+          const derivedUrl = `http://${host}:5000/api`;
+          console.log('📡 [environment] Dev host derived from debuggerHost:', derivedUrl);
+          return derivedUrl;
+        }
+      }
+    }
+
+    return envUrl;
+  }
+
+  if (typeof window !== 'undefined') {
+    const host = window.location?.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      const localUrl = 'http://localhost:5000/api';
+      console.log('📡 [environment] Web localhost detected, using local URL:', localUrl);
+      return localUrl;
+    }
+  }
+
+  // Development fallback for native if env is missing
+  if (__DEV__ && Platform.OS !== 'web') {
+    const debuggerHost =
+      (Constants as any)?.expoConfig?.hostUri ||
+      (Constants as any)?.manifest2?.extra?.expoClient?.hostUri ||
+      (Constants as any)?.manifest?.debuggerHost;
+
+    const host = typeof debuggerHost === 'string' ? debuggerHost.split(':')[0] : null;
+    if (host) {
+      const derivedUrl = `http://${host}:5000/api`;
+      console.log('📡 [environment] Dev host derived from debuggerHost:', derivedUrl);
+      return derivedUrl;
+    }
   }
 
   // Use Render URL (production)

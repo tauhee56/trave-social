@@ -48,26 +48,12 @@ export async function getUserHighlights(userId: string, requesterUserId?: string
 export async function getAllStoriesForFeed() {
   try {
     console.log('[getAllStoriesForFeed] Fetching stories feed...');
-    
-    // Get API base URL from environment or use Render production
-    const apiBase = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://trave-social-backend.onrender.com/api';
-    const fullUrl = `${apiBase}/stories`;
-    
-    console.log('[getAllStoriesForFeed] URL:', fullUrl);
-    
-    const res = await fetch(fullUrl, {
-      method: 'GET',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    console.log('[getAllStoriesForFeed] Response status:', res.status);
-    const data = await res.json();
-    console.log('[getAllStoriesForFeed] Response success:', data.success);
-    
-    return { success: data.success, data: data.data || [] };
+
+    // Use apiService so baseURL is resolved correctly on real devices (no localhost/relative issues)
+    const { apiService } = await import('../../app/_services/apiService');
+    const res = await apiService.get('/stories');
+    const stories = res?.data || [];
+    return { success: res?.success !== false, data: Array.isArray(stories) ? stories : [] };
   } catch (error: any) {
     console.log('[getAllStoriesForFeed] Error:', error.message);
     return { success: false, error: error.message };
@@ -164,6 +150,27 @@ export async function searchUsers(queryText: string, resultLimit: number = 20) {
     const { apiService } = await import('../../app/_services/apiService');
     const res = await apiService.get('/users/search', { q: queryText, limit: Math.min(50, resultLimit) });
     let results = res.data || [];
+
+    // Normalize IDs:
+    // - App-wide `userId` (AsyncStorage) is usually Mongo `_id`
+    // - Some endpoints may return firebase uid fields (`firebaseUid`/`uid`)
+    // We normalize `uid` to Mongo `_id` when available to keep DM/inbox consistent.
+    if (Array.isArray(results)) {
+      results = results.map((u: any) => {
+        const mongoId = u?._id || u?.id;
+        const firebaseId = u?.firebaseUid || u?.uid;
+        const normalizedUid = mongoId ? String(mongoId) : (firebaseId ? String(firebaseId) : '');
+
+        return {
+          ...u,
+          uid: normalizedUid,
+          firebaseUid: u?.firebaseUid || (typeof u?.uid === 'string' && u.uid.length > 0 ? u.uid : undefined),
+          displayName: u?.displayName || u?.name || u?.username || u?.email?.split?.('@')?.[0] || 'User',
+          photoURL: u?.photoURL || u?.avatar || null,
+        };
+      });
+    }
+
     if (queryText.trim().length > 0) {
       const searchLower = queryText.toLowerCase();
       results = results.filter((user: any) => 

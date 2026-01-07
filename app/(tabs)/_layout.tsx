@@ -3,31 +3,35 @@ import { Image as ExpoImage } from 'expo-image';
 import { Tabs, useFocusEffect, useRouter, useSegments } from "expo-router";
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, StyleSheet, Text, TouchableOpacity, View, FlatList, Modal, ScrollView } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNotifications } from '../../hooks/useNotifications';
 import { notificationService } from '../../lib/notificationService';
+import { getPushNotificationToken, requestNotificationPermissions, savePushToken } from '../../services/notificationService';
 let RtcSurfaceView: any = null;
 let VideoSourceType: any = null;
 let RenderModeType: any = null;
+
 try {
   const AgoraSDK = require('react-native-agora');
   RtcSurfaceView = AgoraSDK.RtcSurfaceView;
   VideoSourceType = AgoraSDK.VideoSourceType;
   RenderModeType = AgoraSDK.RenderModeType;
 } catch {}
+
 // Minimize overlay removed
 import { SafeAreaView } from "react-native-safe-area-context";
 import { logAnalyticsEvent, setAnalyticsUserId } from '../../lib/analytics';
 import { getUserConversations } from '../../lib/firebaseHelpers/conversation';
 import { getUserNotifications } from '../../lib/firebaseHelpers/notification';
+import { logoutUser } from '../../app/_services/firebaseAuthService';
 import fetchLogoUrl from '../../src/_services/brandingService';
-import { useUser } from '../_components/UserContext';
+import { getNotificationDisplayText } from '../../lib/notificationText';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isSmallDevice = SCREEN_WIDTH < 375;
 const isLargeDevice = SCREEN_WIDTH >= 414;
 const ICON_SIZE = isSmallDevice ? 18 : (isLargeDevice ? 22 : 20);
 const CHEVRON_SIZE = isSmallDevice ? 18 : 20;
-
 
 // Create a context for tab events
 const TabEventContext = createContext<{ emitHomeTabPress: () => void; subscribeHomeTabPress: (cb: () => void) => () => void } | undefined>(undefined);
@@ -113,9 +117,7 @@ export default function TabsLayout() {
     };
   };
   const router = useRouter();
-  const user = useUser();
-  // const segments = useSegments();
-  // const isProfileScreen = segments[segments.length - 1] === 'profile';
+
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
       <TopMenu />
@@ -127,7 +129,6 @@ export default function TabsLayout() {
           tabBarInactiveTintColor: '#777',
           tabBarShowLabel: true,
           lazy: true,
-          unmountOnBlur: false,
           freezeOnBlur: true,
           tabBarStyle: {
             height: 64,
@@ -166,7 +167,6 @@ export default function TabsLayout() {
             tabBarLabel: '',
             tabBarIcon: ({ color, size }) => (
               <View style={{
-            // Fix: Ensure delayLongPress is only number or undefined, not null
                 width: 40,
                 height: 30,
                 borderRadius: 6,
@@ -184,7 +184,6 @@ export default function TabsLayout() {
               </View>
             ),
             tabBarButton: (props) => {
-              // Only pass valid TouchableOpacityProps
               return (
                 <TouchableOpacity
                   onPress={() => { logAnalyticsEvent('tab_post_press'); router.push('/create-post'); }}
@@ -227,25 +226,53 @@ export default function TabsLayout() {
   );
 }
 
-function TopMenu() {
+function TopMenu(): React.ReactElement {
   const router = useRouter();
-  const user = useUser();
+  const [currentUserId, setCurrentUserId] = useState<string>('');
   const [unreadNotif, setUnreadNotif] = React.useState(0);
   const [unreadMsg, setUnreadMsg] = React.useState(0);
   const [menuVisible, setMenuVisible] = React.useState(false);
+
   const [notificationsModalVisible, setNotificationsModalVisible] = React.useState(false);
+
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [logoLoading, setLogoLoading] = useState(true);
   const segments = useSegments();
   const isProfileScreen = segments[segments.length - 1] === 'profile';
-  
+
   // Get notifications from hook
-  const { notifications, unreadCount, fetchNotifications, markAsRead } = useNotifications(user?.uid || '');
+  const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead } = useNotifications(currentUserId || '');
 
   useEffect(() => {
-    const u = user;
-    if (u?.uid) setAnalyticsUserId(u.uid);
-  }, [user]);
+    let isMounted = true;
+    (async () => {
+      try {
+        const uid = await AsyncStorage.getItem('userId');
+        if (isMounted && uid) setCurrentUserId(String(uid));
+      } catch {}
+    })();
+    return () => { isMounted = false; };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      if (!currentUserId) return;
+      try {
+        const perm = await requestNotificationPermissions();
+        if (!perm?.success) return;
+        const tokenRes = await getPushNotificationToken();
+        if (!tokenRes?.success || !tokenRes?.token) return;
+        await savePushToken(currentUserId, tokenRes.token);
+      } catch {}
+    })();
+    return () => { isMounted = false; };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    const u = currentUserId;
+    if (u) setAnalyticsUserId(u);
+  }, [currentUserId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -262,33 +289,59 @@ function TopMenu() {
   useFocusEffect(
     React.useCallback(() => {
       async function fetchCounts() {
-        const userData = user;
-        if (!userData || !userData.uid) return;
+        const userId = currentUserId;
+        if (!userId) return;
         // Notifications
-          const notifRes = await getUserNotifications(userData.uid);
-          if (Array.isArray(notifRes)) {
-            const unread = notifRes.filter((n: any) => n && typeof n.read === 'boolean' ? n.read === false : false);
-            setUnreadNotif(unread.length);
-          }
+        try {
+          await fetchNotifications();
+        } catch {}
         // Messages
-          const msgRes = await getUserConversations(userData.uid);
-          if (Array.isArray(msgRes)) {
-            const unreadMsgs = msgRes.reduce((sum: number, convo: any) => sum + (convo.unread || 0), 0);
-            setUnreadMsg(unreadMsgs);
-          }
+        const msgRes = await getUserConversations(userId);
+        if (Array.isArray(msgRes)) {
+          const unreadMsgs = msgRes.reduce((sum: number, convo: any) => sum + (convo.unread || 0), 0);
+          setUnreadMsg(unreadMsgs);
+        }
       }
       fetchCounts();
-    }, [])
+    }, [currentUserId])
   );
+
+  const getNotificationNavRoute = (item: any) => {
+    const type = String(item?.type || '');
+    if (type === 'follow' || type === 'follow-request' || type === 'follow-approved' || type === 'new-follower') {
+      if (item?.senderId) return `/user-profile/${item?.senderId}`;
+      return '/(tabs)/home';
+    }
+    if (type === 'like' || type === 'comment' || type === 'mention' || type === 'tag') {
+      if (item?.postId) {
+        if (type === 'comment' && item?.commentId) return `/post-detail?id=${item.postId}&commentId=${item.commentId}`;
+        return `/post-detail?id=${item.postId}`;
+      }
+      return '/(tabs)/home';
+    }
+    if (type === 'message' || type === 'dm') return `/dm?otherUserId=${item?.senderId}`;
+    if (type === 'live') {
+      if (item?.streamId) return `/watch-live?roomId=${encodeURIComponent(String(item.streamId))}`;
+      return '/(tabs)/map';
+    }
+    if (type === 'story' || type === 'story-mention' || type === 'story-reply') {
+      if (item?.storyId) return `/(tabs)/home?storyId=${encodeURIComponent(String(item.storyId))}`;
+      return '/(tabs)/home';
+    }
+    return `/user-profile/${item?.senderId}`;
+  };
 
   const renderNotificationItem = (item: any) => (
     <TouchableOpacity
       style={styles.notificationItem}
-      onPress={() => markAsRead(item._id)}
+      onPress={async () => {
+        try { await markAsRead(item._id); } catch {}
+        try { setNotificationsModalVisible(false); } catch {}
+        try { router.push(getNotificationNavRoute(item) as any); } catch {}
+      }}
     >
       <View style={styles.notificationContent}>
-        <Text style={styles.notificationMessage}>{item.message}</Text>
-        <Text style={styles.notificationType}>{item.type}</Text>
+        <Text style={styles.notificationMessage}>{getNotificationDisplayText(item)}</Text>
         <Text style={styles.notificationTime}>
           {new Date(item.createdAt).toLocaleDateString()}
         </Text>
@@ -315,7 +368,7 @@ function TopMenu() {
       </View>
       {isProfileScreen ? (
         <View style={{ flexDirection: 'row' }}>
-          <TouchableOpacity style={styles.topBtn} onPress={() => { logAnalyticsEvent('open_notifications'); setNotificationsModalVisible(true); }}>
+          <TouchableOpacity style={styles.topBtn} onPress={async () => { logAnalyticsEvent('open_notifications'); setNotificationsModalVisible(true); try { await notificationService.markAllAsRead(); await fetchNotifications(); } catch {} }}>
             <Feather name="bell" size={ICON_SIZE} color="#333" />
             {unreadCount > 0 && (
               <View style={{
@@ -366,7 +419,7 @@ function TopMenu() {
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.topBtn} onPress={() => { logAnalyticsEvent('open_notifications'); setNotificationsModalVisible(true); }}>
+          <TouchableOpacity style={styles.topBtn} onPress={async () => { logAnalyticsEvent('open_notifications'); setNotificationsModalVisible(true); try { await notificationService.markAllAsRead(); await fetchNotifications(); } catch {} }}>
             <Feather name="bell" size={18} color="#333" />
             {unreadCount > 0 && (
               <View style={{
@@ -393,7 +446,7 @@ function TopMenu() {
         visible={notificationsModalVisible}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setNotificationsModalVisible(false)}
+        onRequestClose={async () => { setNotificationsModalVisible(false); try { await fetchNotifications(); } catch {} }}
       >
         <View style={styles.notificationsModal}>
           <View style={styles.notificationsHeader}>
@@ -539,7 +592,7 @@ function TopMenu() {
                         console.log('Logged out successfully');
                         router.replace('/auth/welcome');
                       } else {
-                        Alert.alert('Error', result.error || 'Logout failed');
+                        Alert.alert('Error', 'Logout failed');
                       }
                     } catch (error) {
                       console.error('Logout error:', error);

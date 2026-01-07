@@ -5,14 +5,30 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Dimensions, PermissionsAndroid, Platform, Share, StyleSheet, Text, View } from 'react-native';
 // import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 // Firestore imports removed
-import MapView, { Marker, Region } from 'react-native-maps';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PostLocationModal } from '../components/PostLocationModal';
 import { useUser } from './_components/UserContext';
 // Firebase imports removed - using backend API
 import { getAllPosts } from '../lib/firebaseHelpers';
+import { apiService } from './_services/apiService';
 import { addComment } from '../lib/firebaseHelpers/comments';
 import { getOptimizedImageUrl } from '../lib/imageHelpers';
+
+type Region = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+};
+
+let MapView: any = null;
+let Marker: any = null;
+if (Platform.OS !== 'web') {
+  const RNMaps = require('react-native-maps');
+  MapView = RNMaps.default ?? RNMaps;
+  Marker = RNMaps.Marker;
+}
 
 // Standard Google Maps style (clean, default look)
 const standardMapStyle = [
@@ -87,87 +103,87 @@ export default function MapScreen() {
     // Example: setMapRegion(...) or call geocoding API
     console.log('Search triggered for query:', query);
   }
-      const [modalComment, setModalComment] = useState<{[id:string]:string}>({});
-      const [modalLikes, setModalLikes] = useState<{[id:string]:number}>({});
-      const [modalLiked, setModalLiked] = useState<{[id:string]:boolean}>({});
-      const [modalCommentsCount, setModalCommentsCount] = useState<{[id:string]:number}>({});
+  const [modalComment, setModalComment] = useState<{[id:string]:string}>({});
+  const [modalLikes, setModalLikes] = useState<{[id:string]:number}>({});
+  const [modalLiked, setModalLiked] = useState<{[id:string]:boolean}>({});
+  const [modalCommentsCount, setModalCommentsCount] = useState<{[id:string]:number}>({});
 
-      // Load posts from Firestore on mount (with caching)
-      const postsCache = useRef<PostType[]>([]);
-      const lastFetchTime = useRef<number>(0);
+  // Load posts from Firestore on mount (with caching)
+  const postsCache = useRef<PostType[]>([]);
+  const lastFetchTime = useRef<number>(0);
 
-      useEffect(() => {
-        setLoading(true);
-        // Fetch posts with cache (avoid refetching within 60 seconds)
-        const now = Date.now();
-        if (postsCache.current.length > 0 && (now - lastFetchTime.current) < 60000) {
-          setPosts(postsCache.current);
-          setLoading(false);
-          return;
-        }
+  useEffect(() => {
+    setLoading(true);
+    // Fetch posts with cache (avoid refetching within 60 seconds)
+    const now = Date.now();
+    if (postsCache.current.length > 0 && (now - lastFetchTime.current) < 60000) {
+      setPosts(postsCache.current);
+      setLoading(false);
+      return;
+    }
 
-        // Reduced limit to 50 for much faster loading
-        getAllPosts(50).then(res => {
-          if (res.success) {
-            const postsArray = Array.isArray(res.posts) ? res.posts : [];
-            setPosts(postsArray);
-            postsCache.current = postsArray;
-            lastFetchTime.current = now;
-          } else {
-            setError(res.error || 'Failed to load posts');
-          }
-        }).finally(() => setLoading(false));
-      }, []);
-      async function handleModalLike(post: PostType) {
-        const alreadyLiked = modalLiked[post.id] || false;
-        if (alreadyLiked) return; // Only allow one like per user
-        setModalLiked(l => ({...l, [post.id]: true}));
-        setModalLikes(l => ({...l, [post.id]: (l[post.id] ?? post.likesCount ?? post.likes ?? 0) + 1}));
-        // TODO: Call likePost API here
+    // Reduced limit to 50 for much faster loading
+    getAllPosts(50).then(res => {
+      if (res.success) {
+        const postsArray = Array.isArray(res.posts) ? res.posts : [];
+        setPosts(postsArray);
+        postsCache.current = postsArray;
+        lastFetchTime.current = now;
+      } else {
+        setError(res.error || 'Failed to load posts');
       }
-      async function handleModalShare(post: PostType) {
-        try {
-          await Share.share({
-            message: `Check out this post by ${post.userName}: ${post.caption || ''}`,
-            url: post.imageUrl
-          });
-        } catch (error) {
-          console.error('Share error:', error);
-        }
-      }
-      async function handleModalComment(post: PostType) {
-        if (!modalComment[post.id] || !modalComment[post.id].trim()) return;
+    }).finally(() => setLoading(false));
+  }, []);
+  async function handleModalLike(post: PostType) {
+    const alreadyLiked = modalLiked[post.id] || false;
+    if (alreadyLiked) return; // Only allow one like per user
+    setModalLiked(l => ({...l, [post.id]: true}));
+    setModalLikes(l => ({...l, [post.id]: (l[post.id] ?? post.likesCount ?? post.likes ?? 0) + 1}));
+    // TODO: Call likePost API here
+  }
+  async function handleModalShare(post: PostType) {
+    try {
+      await Share.share({
+        message: `Check out this post by ${post.userName}: ${post.caption || ''}`,
+        url: post.imageUrl
+      });
+    } catch (error) {
+      console.error('Share error:', error);
+    }
+  }
+  async function handleModalComment(post: PostType) {
+    if (!modalComment[post.id] || !modalComment[post.id].trim()) return;
 
-        // const currentUser = getCurrentUser();
-        // if (!currentUser) {
-        //   console.log('❌ User not logged in');
-        //   return;
-        // }
-        // TODO: Use user from context or props
+    // const currentUser = getCurrentUser();
+    // if (!currentUser) {
+    //   console.log('❌ User not logged in');
+    //   return;
+    // }
+    // TODO: Use user from context or props
 
-        const commentText = modalComment[post.id].trim();
+    const commentText = modalComment[post.id].trim();
 
-        // Optimistic UI update
-        setModalCommentsCount(c => ({...c, [post.id]: (c[post.id] ?? post.commentsCount ?? 0) + 1}));
-        setModalComment(c => ({...c, [post.id]: ''}));
+    // Optimistic UI update
+    setModalCommentsCount(c => ({...c, [post.id]: (c[post.id] ?? post.commentsCount ?? 0) + 1}));
+    setModalComment(c => ({...c, [post.id]: ''}));
 
-        // Add comment to Firebase
-        const result = await addComment(
-          post.id,
-          currentUser.uid,
-          currentUser.displayName || 'User',
-          currentUser.photoURL || DEFAULT_AVATAR_URL,
-          commentText
-        );
+    // Add comment to Firebase
+    const result = await addComment(
+      post.id,
+      currentUser.uid,
+      currentUser.displayName || 'User',
+      currentUser.photoURL || DEFAULT_AVATAR_URL,
+      commentText
+    );
 
-        if (!result.success) {
-          console.error('❌ Failed to add comment:', result.error);
-          // Revert optimistic update on error
-          setModalCommentsCount(c => ({...c, [post.id]: Math.max(0, (c[post.id] ?? post.commentsCount ?? 0) - 1)}));
-        }
-      }
-    // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
+    if (!result.success) {
+      console.error('❌ Failed to add comment:', result.error);
+      // Revert optimistic update on error
+      setModalCommentsCount(c => ({...c, [post.id]: Math.max(0, (c[post.id] ?? post.commentsCount ?? 0) - 1)}));
+    }
+  }
+  // Default avatar from Firebase Storage
+  const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   const router = useRouter();
   const params = useLocalSearchParams();
   const initialQuery = (params.q as string) || '';
@@ -186,18 +202,18 @@ export default function MapScreen() {
   // Defensive: always use array
   const safeLiveStreams = Array.isArray(liveStreams) ? liveStreams : [];
   const [mapRegion, setMapRegion] = useState<Region | null>(DEFAULT_REGION);
-    // Ensure mapRegion is always valid after mount
-    useEffect(() => {
-      if (!mapRegion || !isValidLatLon(mapRegion.latitude, mapRegion.longitude)) {
-        setMapRegion(DEFAULT_REGION);
-      }
-    }, []);
+  // Ensure mapRegion is always valid after mount
+  useEffect(() => {
+    if (!mapRegion || !isValidLatLon(mapRegion.latitude, mapRegion.longitude)) {
+      setMapRegion(DEFAULT_REGION);
+    }
+  }, []);
   const [selectedPosts, setSelectedPosts] = useState<PostType[] | null>(null);
   // Defensive: always use array
   const safeSelectedPosts = Array.isArray(selectedPosts) ? selectedPosts : [];
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<any>(null);
   const [error, setError] = useState<string | null>(null);
-    const [locationPermission, setLocationPermission] = useState<'granted'|'denied'|'unknown'>('unknown');
+  const [locationPermission, setLocationPermission] = useState<'granted'|'denied'|'unknown'>('unknown');
   const [showSearch, setShowSearch] = useState(false);
   const [showCommentsModalId, setShowCommentsModal] = useState<string | null>(null);
 
@@ -228,11 +244,8 @@ export default function MapScreen() {
     const fetchLiveStreams = async () => {
       try {
         // Fetch live streams from backend API
-        const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'http://192.168.100.209:5000'}/api/livestreams?isLive=true`);
-        if (!response.ok) throw new Error('Failed to fetch live streams');
-        
-        const data = await response.json();
-        const streams = Array.isArray(data) ? data : data.data || [];
+        const res = await apiService.get('/live-streams');
+        const streams = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
         
         // Sort by viewer count
         streams.sort((a: any, b: any) => (b.viewerCount || 0) - (a.viewerCount || 0));
@@ -332,7 +345,7 @@ export default function MapScreen() {
       lon = p.location.lon;
     }
     // Defensive: must have imageUrl
-    const imageUrl = p.imageUrl || (Array.isArray(p.imageUrls) && p.imageUrls.length > 0 ? p.imageUrls[0] : '') || '';
+    const imageUrl = p.imageUrl || (Array.isArray(p.imageUrls) && p.imageUrls[0]) || DEFAULT_AVATAR_URL;
     // Extra strict: only allow valid numbers
     if (isValidLatLon(lat, lon) && typeof imageUrl === 'string' && imageUrl) {
       const key = `${Number(lat).toFixed(5)},${Number(lon).toFixed(5)}`;
@@ -509,7 +522,7 @@ export default function MapScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={{ flex: 1 }}>
         {/* Main map or error fallback */}
-        {!loading && validRegion ? (
+        {!loading && validRegion && Platform.OS !== 'web' && MapView ? (
           <MapView
             ref={mapRef}
             style={styles.mapView}

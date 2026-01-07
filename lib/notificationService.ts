@@ -1,14 +1,31 @@
-import axios from 'axios';
-import { BACKEND_URL } from '@/lib/api';
-
-const API_URL = `${BACKEND_URL}/api/notifications`;
+import { apiService } from '../app/_services/apiService';
 
 export interface Notification {
   _id: string;
   recipientId: string;
   senderId: string;
-  type: 'like' | 'comment' | 'follow' | 'mention';
+  type:
+    | 'like'
+    | 'comment'
+    | 'follow'
+    | 'follow-request'
+    | 'follow-approved'
+    | 'new-follower'
+    | 'mention'
+    | 'tag'
+    | 'message'
+    | 'dm'
+    | 'story'
+    | 'story-mention'
+    | 'story-reply'
+    | 'live';
   postId?: string;
+  commentId?: string;
+  storyId?: string;
+  streamId?: string;
+  conversationId?: string;
+  senderName?: string;
+  senderAvatar?: string;
   message: string;
   read: boolean;
   createdAt: string;
@@ -19,11 +36,9 @@ export const notificationService = {
   // Get user notifications
   async getNotifications(userId: string, limit = 50, skip = 0): Promise<Notification[]> {
     try {
-      const response = await axios.get(`${API_URL}/${userId}`, {
-        params: { limit, skip }
-      });
-      console.log('[notificationService] Fetched', response.data.data?.length || 0, 'notifications');
-      return response.data.data || [];
+      const response = await apiService.get(`/notifications/${userId}`, { params: { limit, skip } });
+      console.log('[notificationService] Fetched', response?.data?.length || 0, 'notifications');
+      return response?.data || [];
     } catch (err) {
       console.error('[notificationService] Error fetching notifications:', err);
       return [];
@@ -39,15 +54,14 @@ export const notificationService = {
     message?: string
   ): Promise<Notification | null> {
     try {
-      const response = await axios.post(API_URL, {
+      const response = await apiService.post('/notifications', {
         recipientId,
-        senderId,
         type,
         postId,
         message
       });
       console.log('[notificationService] Created', type, 'notification');
-      return response.data.data;
+      return response?.data || null;
     } catch (err) {
       console.error('[notificationService] Error creating notification:', err);
       return null;
@@ -57,11 +71,22 @@ export const notificationService = {
   // Mark notification as read
   async markAsRead(notificationId: string): Promise<boolean> {
     try {
-      await axios.patch(`${API_URL}/${notificationId}/read`);
+      await apiService.patch(`/notifications/${notificationId}/read`);
       console.log('[notificationService] Marked notification as read:', notificationId);
       return true;
     } catch (err) {
       console.error('[notificationService] Error marking as read:', err);
+      return false;
+    }
+  },
+
+  async markAllAsRead(): Promise<boolean> {
+    try {
+      await apiService.patch('/notifications/read-all');
+      console.log('[notificationService] Marked all notifications as read');
+      return true;
+    } catch (err) {
+      console.error('[notificationService] Error marking all as read:', err);
       return false;
     }
   },

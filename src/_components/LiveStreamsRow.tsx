@@ -38,13 +38,25 @@ function LiveStreamsRowComponent() {
 			isFetchingRef.current = true;
 
 			try {
-				const streams = await getActiveLiveStreams();
+				const res: any = await getActiveLiveStreams();
 				if (!isMounted) {
 					isFetchingRef.current = false;
 					return;
 				}
 				
-				streams.sort((a: any, b: any) => (b.viewerCount || 0) - (a.viewerCount || 0));
+				let streams: any[] = [];
+				if (Array.isArray(res)) {
+					streams = res;
+				} else if (res && typeof res === 'object') {
+					const candidate = (res as any).streams ?? (res as any).data;
+					streams = Array.isArray(candidate) ? candidate : [];
+				} else {
+					streams = [];
+				}
+
+				if (streams.length > 0) {
+					streams.sort((a: any, b: any) => (b?.viewerCount || 0) - (a?.viewerCount || 0));
+				}
 				setLiveStreams(streams);
 			} catch (error) {
 				console.error('❌ Error fetching live streams:', error);

@@ -497,9 +497,9 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
   // FIX: Use currentUser prop if user context is not available
   const userIdForLike = user?.uid || user?.id || currentUser?.uid || currentUser?.firebaseUid || currentUser?.id || currentUser;
   const liked = likes.includes(userIdForLike || "");
-  
+
   console.log('[PostCard] userIdForLike:', userIdForLike, 'user:', user, 'currentUser:', currentUser, 'likes:', likes.length);
-  
+
   // OPTIMIZATION: Update local state when post prop changes (no real-time listener)
   useEffect(() => {
     setLikes(Array.isArray(post?.likes) ? post.likes : []);
@@ -507,77 +507,81 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
     setSavedBy(Array.isArray(post?.savedBy) ? post.savedBy : []);
   }, [post?.likes, post?.likesCount, post?.savedBy]);
 
-  // OPTIMIZATION: Use commentCount from post data, no real-time listener
+  // OPTIMIZATION: Use commentCount from post data initially
+  // Event listener will update when comments are added
   const [commentCount, setCommentCount] = useState(post?.commentCount || 0);
-  
-  useEffect(() => {
-    setCommentCount(post?.commentCount || 0);
-  }, [post?.commentCount]);
-  
+
+  // DON'T reset from post.commentCount on every change - event emitter handles updates!
+  // The post prop may have stale data, event emitter has real-time accurate data
+
   // Listen for comment updates via event emitter
   useEffect(() => {
     const handlePostUpdated = (postId: string, data: any) => {
       if (postId === post.id) {
-        if (data?.newCommentCount) {
-          // Increment comment count when a new comment is added
+        // Use actual commentCount from backend if provided, otherwise increment
+        if (data?.commentCount !== undefined && typeof data.commentCount === 'number') {
+          console.log('[PostCard] Setting comment count to actual value from backend:', data.commentCount);
+          setCommentCount(data.commentCount);
+        } else if (data?.newCommentCount || data?.commentAdded) {
+          // Fallback: increment by 1 if we don't have actual count
           setCommentCount(prev => {
             const newCount = prev + 1;
-            console.log('[PostCard] Comment count updated to:', newCount);
+            console.log('[PostCard] Incrementing comment count to:', newCount);
             return newCount;
           });
         }
       }
     };
-    
+
     const subscription = feedEventEmitter.onPostUpdated(post.id, handlePostUpdated);
-    
+
     return () => {
       feedEventEmitter.offPostUpdated(post.id, subscription);
     };
   }, [post.id]);
-  
+
   const [currentAvatar, setCurrentAvatar] = useState<string>("https://via.placeholder.com/200x200.png?text=Profile");
-    useEffect(() => {
-      // Use pre-populated user data from backend if available
-      if (post?.userId && typeof post.userId === 'object') {
-        // Backend populated userId with user object
-        const avatar = post.userId?.avatar || post.userId?.photoURL || post.userId?.profilePicture;
-        console.log('[PostCard] Using populated user avatar:', avatar);
-        if (avatar) {
-          setCurrentAvatar(avatar);
-          return;
-        }
-      }
-      
-      // If userId is a string, try to get avatar from the post object directly
-      if (typeof post?.userId === 'string' && post?.userAvatar) {
-        console.log('[PostCard] Using post.userAvatar:', post.userAvatar);
-        setCurrentAvatar(post.userAvatar);
+  useEffect(() => {
+    // Use pre-populated user data from backend if available
+    if (post?.userId && typeof post.userId === 'object') {
+      // Backend populated userId with user object
+      const avatar = post.userId?.avatar || post.userId?.photoURL || post.userId?.profilePicture;
+      console.log('[PostCard] Using populated user avatar:', avatar);
+      if (avatar) {
+        setCurrentAvatar(avatar);
         return;
       }
-      
-      // Fallback: fetch avatar if userId is just a string
-      async function fetchAvatar() {
-        if (post?.userId && typeof post.userId === 'string') {
-          try {
-            console.log('[PostCard] Fetching avatar for userId:', post.userId);
-            const { getUserProfile } = await import('../../lib/firebaseHelpers/user');
-            const res = await getUserProfile(post.userId);
-            if (res && res.success && res.data && res.data.avatar) {
-              console.log('[PostCard] Fetched avatar:', res.data.avatar);
-              setCurrentAvatar(res.data.avatar);
-            } else {
-              console.warn('[PostCard] No avatar in profile response');
-            }
-          } catch (err) {
-            console.warn('[PostCard] Error fetching avatar:', err);
-            setCurrentAvatar("https://via.placeholder.com/200x200.png?text=Profile");
+    }
+
+    // If userId is a string, try to get avatar from the post object directly
+    if (typeof post?.userId === 'string' && post?.userAvatar) {
+      console.log('[PostCard] Using post.userAvatar:', post.userAvatar);
+      setCurrentAvatar(post.userAvatar);
+      return;
+    }
+
+    // Fallback: fetch avatar if userId is just a string
+    async function fetchAvatar() {
+      if (post?.userId && typeof post.userId === 'string') {
+        try {
+          console.log('[PostCard] Fetching avatar for userId:', post.userId);
+          const { getUserProfile } = await import('../../lib/firebaseHelpers/user');
+          const res = await getUserProfile(post.userId);
+          if (res && res.success && res.data && res.data.avatar) {
+            console.log('[PostCard] Fetched avatar:', res.data.avatar);
+            setCurrentAvatar(res.data.avatar);
+          } else {
+            console.warn('[PostCard] No avatar in profile response');
           }
+        } catch (err) {
+          console.warn('[PostCard] Error fetching avatar:', err);
+          setCurrentAvatar("https://via.placeholder.com/200x200.png?text=Profile");
         }
       }
-      fetchAvatar();
-    }, [post?.userId, post?.userAvatar]);
-  
+    }
+    fetchAvatar();
+  }, [post?.userId, post?.userAvatar]);
+
   // Helper function to check if URL is a video
   const isVideoUrl = (url: string) => {
     if (!url) return false;
@@ -589,7 +593,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
   // Filter out video URLs from images array
   const rawImages: string[] = post?.imageUrls && post.imageUrls.length > 0 ? post.imageUrls.filter(Boolean) : (post?.imageUrl ? [post.imageUrl] : []);
   const images: string[] = rawImages.filter((url: string) => !isVideoUrl(url));
-  
+
   const videos: string[] = post?.videoUrls && post.videoUrls.length > 0 ? post.videoUrls.filter(Boolean) : (post?.videoUrl ? [post.videoUrl] : []);
 
   // If images exist, show only image carousel. If no images, show only first video. If neither, show placeholder.
@@ -608,14 +612,14 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
   const [showControls, setShowControls] = useState(true); // Show video controls
   const videoRef = useRef<VideoType>(null);
   const mediaIndexRef = useRef(0);
-  
+
   // Update ref when state changes
   useEffect(() => {
     mediaIndexRef.current = mediaIndex;
   }, [mediaIndex]);
 
   // Carousel swipe gesture - improved handling
-  const carouselPanResponder = React.useMemo(() => 
+  const carouselPanResponder = React.useMemo(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) => {
@@ -626,7 +630,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
       onPanResponderRelease: (_, gestureState) => {
         const currentIndex = mediaIndexRef.current;
         const totalImages = images.length;
-        
+
         if (gestureState.dx > 40 && currentIndex > 0) {
           // Swipe right - go to previous
           setMediaIndex(currentIndex - 1);
@@ -707,7 +711,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
               // Navigate to location screen with location details
               const locationToUse = post?.locationData?.name || post?.locationName || post?.location;
               const addressToUse = post?.locationData?.address || locationToUse;
-              
+
               if (locationToUse) {
                 // Use placeId if available, otherwise use location name
                 if (post?.locationData?.placeId) {
@@ -801,12 +805,12 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
             {/* Left/Right tap areas for navigation */}
             {images.length > 1 && (
               <>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '30%', zIndex: 5 }}
                   onPress={() => mediaIndex > 0 && setMediaIndex(mediaIndex - 1)}
                   activeOpacity={1}
                 />
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '30%', zIndex: 5 }}
                   onPress={() => mediaIndex < images.length - 1 && setMediaIndex(mediaIndex + 1)}
                   activeOpacity={1}
@@ -834,8 +838,8 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
         )}
         {/* Video if no images and video exists */}
         {showVideo && (
-          <TouchableOpacity 
-            style={styles.imageWrap} 
+          <TouchableOpacity
+            style={styles.imageWrap}
             activeOpacity={1}
             onPress={() => {
               // Toggle play/pause on tap (center area)
@@ -866,8 +870,8 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                   posterSource={{ uri: videos[0] }}
                   posterStyle={{ width: '100%', height: '100%' }}
                   onLoadStart={() => { setVideoLoading(true); setVideoError(null); }}
-                  onLoad={(status: any) => { 
-                    setVideoLoading(false); 
+                  onLoad={(status: any) => {
+                    setVideoLoading(false);
                     if (status.durationMillis) {
                       setVideoDuration(Math.floor(status.durationMillis / 1000));
                     }
@@ -893,10 +897,10 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                     }
                   }}
                 />
-                
+
                 {/* Tap to Unmute Overlay - only on first load when muted */}
                 {showMuteOverlay && isVideoMuted && !videoCompleted && (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.muteOverlay}
                     onPress={() => {
                       setIsVideoMuted(false);
@@ -910,10 +914,10 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                     <Text style={styles.muteText}>Tap to unmute</Text>
                   </TouchableOpacity>
                 )}
-                
+
                 {/* Replay Overlay - when video completed */}
                 {videoCompleted && (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.muteOverlay}
                     onPress={async () => {
                       // Replay from beginning
@@ -932,10 +936,10 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                     <Text style={styles.muteText}>Tap to replay</Text>
                   </TouchableOpacity>
                 )}
-                
+
                 {/* Play/Pause Button (center) - only show when paused and not loading and not completed */}
                 {!isVideoPlaying && !videoLoading && !videoCompleted && !showMuteOverlay && (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.playButtonOverlay}
                     onPress={() => {
                       setIsVideoPlaying(true);
@@ -947,11 +951,11 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                     </View>
                   </TouchableOpacity>
                 )}
-                
+
                 {/* Video Controls Bar (bottom) */}
                 <View style={styles.videoControlsBar}>
                   {/* Play/Pause Button */}
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.videoControlButton}
                     onPress={() => {
                       if (videoCompleted) {
@@ -967,30 +971,30 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                       }
                     }}
                   >
-                    <Feather 
-                      name={videoCompleted ? "rotate-ccw" : (isVideoPlaying ? "pause" : "play")} 
-                      size={18} 
-                      color="#fff" 
+                    <Feather
+                      name={videoCompleted ? "rotate-ccw" : (isVideoPlaying ? "pause" : "play")}
+                      size={18}
+                      color="#fff"
                     />
                   </TouchableOpacity>
-                  
+
                   {/* Current Time */}
                   <Text style={styles.videoTimeText}>
                     {Math.floor(videoCurrentTime / 60)}:{(videoCurrentTime % 60).toString().padStart(2, '0')}
                   </Text>
-                  
+
                   {/* Progress Bar */}
                   <View style={styles.videoProgressBar}>
                     <View style={[styles.videoProgressFill, { width: `${videoProgress * 100}%` }]} />
                   </View>
-                  
+
                   {/* Duration */}
                   <Text style={styles.videoTimeText}>
                     {Math.floor(videoDuration / 60)}:{(videoDuration % 60).toString().padStart(2, '0')}
                   </Text>
-                  
+
                   {/* Mute/Unmute Button */}
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.videoControlButton}
                     onPress={() => {
                       setIsVideoMuted(!isVideoMuted);
@@ -1046,7 +1050,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                   // Broadcast like to update all feed instances
                   feedEventEmitter.emitPostUpdated(post.id, { liked: true, likesCount: (typeof likesCount === 'number' ? likesCount : Number(likesCount) || 0) + 1 });
                 }
-                
+
                 // Then update in background
                 if (wasLiked) {
                   const res = await unlikePost(post.id, userId) as { success: boolean; error?: string };
@@ -1107,7 +1111,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
           >
             <Feather name="message-circle" size={22} color={appColors.icon} />
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={{ marginRight: 24 }}
             onPress={async () => {
               try {
@@ -1153,12 +1157,12 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
             return username ? `${username} ${caption}`.trim() : caption;
           })()}
         </Text>
-        
+
         {/* Hashtags Display */}
         {post?.hashtags && Array.isArray(post.hashtags) && post.hashtags.length > 0 && (
           <View style={styles.hashtags}>
             {post.hashtags.map((hashtag: string, idx: number) => (
-              <TouchableOpacity 
+              <TouchableOpacity
                 key={`${hashtag}-${idx}`}
                 style={styles.hashtag}
                 onPress={() => {
@@ -1174,7 +1178,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
             ))}
           </View>
         )}
-        
+
         {/* Comments Preview */}
         <TouchableOpacity onPress={() => setShowCommentsModal(true)}>
           <Text style={[styles.commentPreview, { color: appColors.muted }]}>{`View all ${commentCount} comments`}</Text>
@@ -1191,9 +1195,9 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
         onRequestClose={() => setShowCommentsModal(false)}
       >
         <KeyboardAvoidingView
-           style={{ flex: 1 }}
-           behavior='padding'
-           keyboardVerticalOffset={0}
+          style={{ flex: 1 }}
+          behavior='padding'
+          keyboardVerticalOffset={0}
         >
           <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <TouchableOpacity
@@ -1279,8 +1283,8 @@ function getTimeAgo(date: any) {
   const now = new Date();
   const diff = Math.floor((now.getTime() - d.getTime()) / 1000);
   if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   const days = Math.floor(diff / 86400);
   if (days < 7) return `${days}d ago`;
   const weeks = Math.floor(days / 7);

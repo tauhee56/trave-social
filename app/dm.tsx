@@ -1,5 +1,4 @@
 import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -12,18 +11,16 @@ import {
     fetchMessages,
     // getCurrentUser,
     getOrCreateConversation,
-    getUserProfile, isApprovedFollower,
+    getUserProfile,
     markConversationAsRead,
     reactToMessage,
     sendMessage,
-    subscribeToMessages
 } from '../lib/firebaseHelpers/index';
 import { getFormattedActiveStatus, subscribeToUserPresence, updateUserOffline, updateUserPresence, UserPresence } from '../lib/userPresence';
 import MessageBubble from '../src/_components/MessageBubble';
 import useUserProfile from '../src/_hooks/useUserProfile';
 import {
   initializeSocket,
-  sendMessage as socketSendMessage,
   subscribeToMessages as socketSubscribeToMessages,
   subscribeToMessageSent,
   subscribeToMessageDelivered,
@@ -40,16 +37,13 @@ export default function DM() {
   const params = useLocalSearchParams();
   const { user: paramUser, conversationId: paramConversationId } = params;
   // Extract otherUserId - could be passed as 'otherUserId' or 'id'
-  let otherUserId = params.otherUserId;
-  if (Array.isArray(otherUserId)) {
-    otherUserId = otherUserId[0];
-  }
-  if (!otherUserId && params.id) {
-    otherUserId = Array.isArray(params.id) ? params.id[0] : params.id;
-  }
+  const otherUserId: string | null = (() => {
+    const raw = (params.otherUserId ?? params.id) as unknown;
+    if (Array.isArray(raw)) return (raw[0] as string) || null;
+    return typeof raw === 'string' ? raw : null;
+  })();
   
   const router = useRouter();
-  const navigation = useNavigation();
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
   console.log('[DM] Received params:', { otherUserId, paramUser, paramConversationId });
@@ -70,11 +64,17 @@ export default function DM() {
   
   // Use the hook to fetch and subscribe to the other user's profile
   const { profile: otherUserProfile, loading: profileLoading } = useUserProfile(
-    typeof otherUserId === 'string' ? otherUserId : null
+    otherUserId
   );
-  
-  const username = otherUserProfile?.username;
-  const avatar = otherUserProfile?.avatar;
+
+  const paramUserName: string | undefined = (() => {
+    const raw = paramUser as unknown;
+    if (Array.isArray(raw)) return raw[0] as string;
+    return typeof raw === 'string' ? raw : undefined;
+  })();
+
+  const displayName = otherUserProfile?.name || paramUserName || otherUserProfile?.username || 'User';
+  const avatarUri = otherUserProfile?.avatar || otherUserProfile?.photoURL || DEFAULT_AVATAR_URL;
   
   const [input, setInput] = useState("");
   const [canMessage, setCanMessage] = useState(false);
@@ -87,6 +87,7 @@ export default function DM() {
   const MESSAGES_PAGE_SIZE = 20;
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   const flatListRef = useRef<FlatList>(null);
   // const currentUser = getCurrentUser();
   // const currentUserTyped = getCurrentUser() as { uid?: string } | null;
@@ -107,6 +108,20 @@ export default function DM() {
   const [isTyping, setIsTyping] = useState(false);
   const [socketReady, setSocketReady] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const dedupeMessagesById = (list: any[]) => {
+    const seen = new Set<string>();
+    const out: any[] = [];
+    for (const msg of list) {
+      const id = msg?.id;
+      if (typeof id === 'string' && id.length > 0) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+      }
+      out.push(msg);
+    }
+    return out;
+  };
 
   // Emoji reactions list (Instagram style)
   const REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
@@ -137,7 +152,7 @@ export default function DM() {
         // Get or create conversation ID
         const result = await getOrCreateConversation(
           String(currentUserId),
-          typeof otherUserId === 'string' ? otherUserId : ''
+          otherUserId || ''
         );
         
         console.log('[DM] getOrCreateConversation result:', result);
@@ -213,7 +228,7 @@ export default function DM() {
         if (isMounted) {
           console.log('[DM] Fetched messages:', res?.messages?.length || 0);
           // Reverse messages so newest are first (for inverted FlatList)
-          const sortedMessages = (res?.messages || []).slice().reverse();
+          const sortedMessages = dedupeMessagesById((res?.messages || []).slice().reverse());
           setMessages(sortedMessages);
         }
       })
@@ -236,15 +251,33 @@ export default function DM() {
       if (isMounted) {
         console.log('[DM] New message received via socket:', newMessage);
 
-        // Prevent duplicate messages - check if message already exists
         setMessages(prev => {
-          const exists = prev.some(msg => msg.id === newMessage.id);
-          if (exists) {
-            console.log('[DM] Message already exists, skipping:', newMessage.id);
+          const incomingId = newMessage?.id;
+
+          if (incomingId && prev.some(msg => msg.id === incomingId)) {
+            console.log('[DM] Message already exists, skipping:', incomingId);
             return prev;
           }
+
+          // If this is our own message, try to replace an existing temp message instead of adding a duplicate.
+          if (currentUserId && newMessage?.senderId === currentUserId) {
+            const tempIndex = prev.findIndex(msg =>
+              typeof msg?.id === 'string' &&
+              msg.id.startsWith('temp_') &&
+              msg.senderId === newMessage.senderId &&
+              msg.recipientId === newMessage.recipientId &&
+              msg.text === newMessage.text
+            );
+
+            if (tempIndex !== -1) {
+              const next = prev.slice();
+              next[tempIndex] = { ...newMessage, sent: true };
+              return dedupeMessagesById(next);
+            }
+          }
+
           // Add new message at the beginning (array is reversed for inverted FlatList)
-          return [newMessage, ...prev];
+          return dedupeMessagesById([newMessage, ...prev]);
         });
 
         // Mark as read if we're the recipient
@@ -327,7 +360,7 @@ export default function DM() {
   };
 
   async function initializeConversation() {
-    if (!currentUserId || !realOtherUserId) {
+    if (!currentUserId || !otherUserId) {
       setLoading(false);
       return;
     }
@@ -340,7 +373,7 @@ export default function DM() {
     // Create or get conversation
     const result = await getOrCreateConversation(
       String(currentUserId),
-      typeof realOtherUserId === 'string' ? realOtherUserId : ''
+      otherUserId || ''
     );
     if (result && result.success && result.conversationId) {
       setConversationId(result.conversationId);
@@ -349,7 +382,9 @@ export default function DM() {
   }
 
   async function handleSend() {
-    if (!input.trim() || !conversationId || !currentUserId || sending || !canMessage) return;
+    if (!input.trim() || !conversationId || !currentUserId || sendingRef.current || sending || !canMessage) return;
+
+    sendingRef.current = true;
 
     const messageText = input.trim();
     const replyData = replyingTo;
@@ -389,26 +424,18 @@ export default function DM() {
       // Update user as active when sending message
       await updateUserPresence(currentUserId, conversationId);
 
-      // Send via Socket.IO for real-time delivery
-      if (otherUserId) {
-        socketSendMessage({
-          conversationId,
-          senderId: currentUserId,
-          recipientId: otherUserId,
-          text: messageText,
-          timestamp: new Date()
-        });
-      }
-
       // Also save via API (fallback) and get real message ID
-      const result = await sendMessage(conversationId, currentUserId, messageText, otherUserId, replyData);
+      const result = await sendMessage(conversationId, currentUserId, messageText, otherUserId || undefined, replyData);
 
       // Replace temp message with real message from backend
       if (result && result.message) {
         console.log('[DM] Replacing temp message with real message:', result.message.id);
-        setMessages(prev => prev.map(msg =>
-          msg.id === tempMessageId ? { ...result.message, sent: true } : msg
-        ));
+        setMessages(prev => {
+          const replaced = prev.map(msg =>
+            msg.id === tempMessageId ? { ...result.message, sent: true } : msg
+          );
+          return dedupeMessagesById(replaced);
+        });
       } else {
         // Mark temp message as sent
         setMessages(prev => prev.map(msg =>
@@ -416,31 +443,7 @@ export default function DM() {
         ));
       }
 
-      // Send notification to recipient
-      if (otherUserId && otherUserId !== currentUserId) {
-        // Fetch sender profile for name and avatar
-        let senderName = 'User';
-        let senderAvatar = DEFAULT_AVATAR_URL;
-
-        try {
-          const senderProfile = await getUserProfile(currentUserId);
-          if (senderProfile) {
-            senderName = senderProfile.displayName || senderProfile.username || 'User';
-            senderAvatar = senderProfile.avatar || DEFAULT_AVATAR_URL;
-          }
-        } catch (err) {
-          console.warn('Could not fetch sender profile for notification:', err);
-        }
-
-        await addNotification({
-          recipientId: String(otherUserId),
-          senderId: currentUserId,
-          senderName,
-          senderAvatar,
-          type: 'dm',
-          message: messageText
-        });
-      }
+      // Notifications are created server-side on message send.
     } catch (error) {
       console.error('[DM] Send message error:', error);
       // Remove temp message on error
@@ -448,6 +451,7 @@ export default function DM() {
       Alert.alert('Error', 'Failed to send message. Please try again.');
     } finally {
       setSending(false);
+      sendingRef.current = false;
       // Try to reload inbox if available
       if (typeof window !== 'undefined' && window.dispatchEvent) {
         window.dispatchEvent(new Event('reloadInbox'));
@@ -477,6 +481,8 @@ export default function DM() {
   async function handleDeleteMessage() {
     if (!selectedMessage || !conversationId || !currentUserId) return;
 
+    const messageIdToDelete = selectedMessage.id;
+
     Alert.alert(
       'Delete Message',
       'Are you sure you want to delete this message?',
@@ -489,14 +495,14 @@ export default function DM() {
             if (!conversationId || !currentUserId) return;
             const result = await deleteMessage(
               conversationId,
-              selectedMessage.id,
+              messageIdToDelete,
               currentUserId
             );
 
             if (result.success) {
+              setMessages(prev => prev.filter(msg => msg?.id !== messageIdToDelete));
               setShowMessageMenu(false);
               setSelectedMessage(null);
-              // Messages will auto-update via real-time listener
             } else {
               Alert.alert('Error', result.error || 'Failed to delete message');
             }
@@ -530,7 +536,7 @@ export default function DM() {
       >
         {!isSelf && (
           <Image
-            source={{ uri: avatar }}
+            source={{ uri: avatarUri }}
             style={styles.msgAvatar}
           />
         )}
@@ -542,8 +548,8 @@ export default function DM() {
           isSelf={isSelf}
           formatTime={formatTime}
           replyTo={item.replyTo}
-          username={username}
-          currentUserId={currentUserId}
+          username={displayName}
+          currentUserId={currentUserId ?? undefined}
         />
         {/* Reactions display */}
         {reactionsList.length > 0 && (
@@ -584,9 +590,9 @@ export default function DM() {
           <TouchableOpacity style={styles.headerUser} onPress={() => {
             if (otherUserId) router.push(`/user-profile?id=${otherUserId}` as any);
           }}>
-            <Image source={{ uri: avatar }} style={styles.avatar} />
+            <Image source={{ uri: avatarUri }} style={styles.avatar} />
             <View>
-              <Text style={styles.title}>{username}</Text>
+              <Text style={styles.title}>{displayName}</Text>
               <Text style={styles.activeText}>{getFormattedActiveStatus(otherUserPresence)}</Text>
             </View>
           </TouchableOpacity>
@@ -611,7 +617,7 @@ export default function DM() {
                 return `msg_${index}`;
               }}
               renderItem={renderMessage}
-              contentContainerStyle={{ paddingVertical: 10 }}
+              contentContainerStyle={{ paddingVertical: 12, paddingHorizontal: 12 }}
               onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
               onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
               inverted
@@ -636,7 +642,7 @@ export default function DM() {
         {/* Typing indicator */}
         {isTyping && (
           <View style={styles.typingIndicator}>
-            <Text style={styles.typingText}>{username} is typing...</Text>
+            <Text style={styles.typingText}>{displayName} is typing...</Text>
           </View>
         )}
 
@@ -647,7 +653,7 @@ export default function DM() {
               <View style={styles.replyBarLine} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.replyBarName}>
-                  Replying to {replyingTo.senderId === currentUserId ? 'yourself' : username}
+                  Replying to {replyingTo.senderId === currentUserId ? 'yourself' : displayName}
                 </Text>
                 <Text style={styles.replyBarText} numberOfLines={1}>
                   {replyingTo.text}

@@ -6,7 +6,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 // Firebase removed - using Backend API
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../lib/api';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
@@ -26,6 +25,14 @@ import StoriesViewer from '../../src/_components/StoriesViewer';
 // Removed Firebase import - using AsyncStorage for auth instead
 import { getTaggedPosts, getUserHighlights as getUserHighlightsAPI, getUserPosts as getUserPostsAPI, getUserProfile as getUserProfileAPI, getUserSections as getUserSectionsAPI, getUserStories as getUserStoriesAPI } from '../../src/_services/firebaseService';
 import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
+
+let MapView: any = null;
+let Marker: any = null;
+if (Platform.OS !== 'web') {
+  const RNMaps = require('react-native-maps');
+  MapView = RNMaps.default ?? RNMaps;
+  Marker = RNMaps.Marker;
+}
 
 // Default avatar URL
 const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
@@ -83,35 +90,37 @@ const ProfilePostMarker: React.FC<{ lat: number; lon: number; imageUrl: string; 
   const markerAvatarUrl = getOptimizedImageUrl(avatarUrl, 'thumbnail');
 
   return (
-    <Marker coordinate={{ latitude: lat, longitude: lon }} tracksViewChanges={tracks} onPress={onPress}>
-      <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={{ backgroundColor: 'transparent' }}>
-        <View style={{ position: 'relative', width: 48, height: 48 }}>
-          <View style={{ width: 48, height: 48, borderRadius: 12, borderWidth: 2, borderColor: '#ffa726', overflow: 'hidden', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 }}>
-            <ExpoImage
-              source={{ uri: markerImageUrl }}
-              style={{ width: 44, height: 44, borderRadius: 10 }}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              priority="high"
-              transition={150}
-              onLoad={() => setImgLoaded(true)}
-              onError={() => setImgLoaded(true)}
-            />
+    Marker ? (
+      <Marker coordinate={{ latitude: lat, longitude: lon }} tracksViewChanges={tracks} onPress={onPress}>
+        <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={{ backgroundColor: 'transparent' }}>
+          <View style={{ position: 'relative', width: 48, height: 48 }}>
+            <View style={{ width: 48, height: 48, borderRadius: 12, borderWidth: 2, borderColor: '#ffa726', overflow: 'hidden', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 }}>
+              <ExpoImage
+                source={{ uri: markerImageUrl }}
+                style={{ width: 44, height: 44, borderRadius: 10 }}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                priority="high"
+                transition={150}
+                onLoad={() => setImgLoaded(true)}
+                onError={() => setImgLoaded(true)}
+              />
+            </View>
+            <View style={{ position: 'absolute', top: -2, right: -2, width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#fff', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 4 }}>
+              <ExpoImage
+                source={{ uri: markerAvatarUrl }}
+                style={{ width: 16, height: 16, borderRadius: 8 }}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                priority="high"
+                onLoad={() => setAvatarLoaded(true)}
+                onError={() => setAvatarLoaded(true)}
+              />
+            </View>
           </View>
-          <View style={{ position: 'absolute', top: -2, right: -2, width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#fff', backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, elevation: 4 }}>
-            <ExpoImage
-              source={{ uri: markerAvatarUrl }}
-              style={{ width: 16, height: 16, borderRadius: 8 }}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              priority="high"
-              onLoad={() => setAvatarLoaded(true)}
-              onError={() => setAvatarLoaded(true)}
-            />
-          </View>
-        </View>
-      </TouchableOpacity>
-    </Marker>
+        </TouchableOpacity>
+      </Marker>
+    ) : null
   );
 };
 
@@ -424,7 +433,7 @@ export default function Profile({ userIdProp }: any) {
           console.log('[Profile] Fetching data for user:', viewedUserId, 'requester:', currentUserId);
 
           // Fetch profile with requester ID for privacy check
-          const profileRes = await getUserProfileAPI(viewedUserId, currentUserId || undefined);
+          const profileRes = await getUserProfileAPI(viewedUserId, currentUserId);
           console.log('[Profile] Profile response:', profileRes);
           console.log('[Profile] Full response structure:', {
             hasSuccess: 'success' in profileRes,
@@ -478,7 +487,7 @@ export default function Profile({ userIdProp }: any) {
           }
           
           // Fetch posts
-          const postsRes = await getUserPostsAPI(viewedUserId, currentUserId);
+          const postsRes = await getUserPostsAPI(viewedUserId, currentUserId || undefined);
           console.log('[Profile] Posts response success:', postsRes.success);
           
           let postsData: any[] = [];
@@ -494,7 +503,7 @@ export default function Profile({ userIdProp }: any) {
           // Fetch sections (sorted by user's preferred order)
           let sectionsData: any[] = [];
           if (viewedUserId) {
-            const sectionsRes = await getUserSectionsAPI(viewedUserId, currentUserId);
+            const sectionsRes = await getUserSectionsAPI(viewedUserId, currentUserId || undefined);
             if (sectionsRes.success) {
               if ('data' in sectionsRes && Array.isArray(sectionsRes.data)) sectionsData = sectionsRes.data;
               else if ('sections' in sectionsRes && Array.isArray(sectionsRes.sections)) sectionsData = sectionsRes.sections;
@@ -507,7 +516,7 @@ export default function Profile({ userIdProp }: any) {
           }
           
           // Fetch highlights
-          const highlightsRes = await getUserHighlightsAPI(viewedUserId, currentUserId);
+          const highlightsRes = await getUserHighlightsAPI(viewedUserId, currentUserId || undefined);
           let highlightsData: any[] = [];
           if (highlightsRes.success) {
             if ('data' in highlightsRes && Array.isArray(highlightsRes.data)) highlightsData = highlightsRes.data;
@@ -518,7 +527,7 @@ export default function Profile({ userIdProp }: any) {
           }
 
           // Fetch sections
-          const sectionsRes2 = await getUserSectionsAPI(viewedUserId, currentUserId);
+          const sectionsRes2 = await getUserSectionsAPI(viewedUserId, currentUserId || undefined);
           let sectionsData2: any[] = [];
           if (sectionsRes2.success) {
             if ('data' in sectionsRes2 && Array.isArray(sectionsRes2.data)) sectionsData2 = sectionsRes2.data;
@@ -531,7 +540,7 @@ export default function Profile({ userIdProp }: any) {
           }
 
           // Fetch stories
-          const storiesRes = await getUserStoriesAPI(viewedUserId, currentUserId);
+          const storiesRes = await getUserStoriesAPI(viewedUserId, currentUserId || undefined);
           let storiesData: any[] = [];
           if (storiesRes.success) {
             if ('data' in storiesRes && Array.isArray(storiesRes.data)) storiesData = storiesRes.data;
@@ -787,10 +796,6 @@ export default function Profile({ userIdProp }: any) {
               <Ionicons name="albums-outline" size={16} color="#000" style={{ marginRight: 4 }} />
               <Text style={styles.pillText}>Sections</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.pillBtn} onPress={() => router.push({pathname: '/saved-posts', params: {userId: viewedUserId}} as any)}>
-              <Ionicons name="bookmark-outline" size={16} color="#000" style={{ marginRight: 4 }} />
-              <Text style={styles.pillText}>Saved</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={styles.pillBtn} onPress={() => router.push('/passport' as any)}>
               <Ionicons name="map-outline" size={16} color="#000" style={{ marginRight: 4 }} />
               <Text style={styles.pillText}>Passport</Text>
@@ -871,49 +876,55 @@ export default function Profile({ userIdProp }: any) {
         {/* Map view - only show if not private or approved */}
         {(!isPrivate || isOwnProfile || approvedFollower) && segmentTab === 'map' && (
           <View style={styles.mapContainer}>
-            <MapView
-              style={styles.map}
-              initialRegion={currentLocation ? {
-                latitude: currentLocation.latitude,
-                longitude: currentLocation.longitude,
-                latitudeDelta: 0.0922,
-                longitudeDelta: 0.0421,
-              } : {
-                latitude: 37.78825,
-                longitude: -122.4324,
-                latitudeDelta: 0.0922,
-                longitudeDelta: 0.0421,
-              }}
-              customMapStyle={standardMapStyle}
-            >
-              {posts.filter(p => {
-                const lat = parseCoord(p.location?.latitude ?? p.location?.lat ?? p.lat ?? p.locationData?.lat);
-                const lon = parseCoord(p.location?.longitude ?? p.location?.lon ?? p.lon ?? p.locationData?.lon);
-                return lat !== null && lon !== null;
-              }).map((post) => {
-                const lat = parseCoord(post.location?.latitude ?? post.location?.lat ?? post.lat ?? post.locationData?.lat);
-                const lon = parseCoord(post.location?.longitude ?? post.location?.lon ?? post.lon ?? post.locationData?.lon);
-                if (lat === null || lon === null) return null;
-                const imageUrl = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls[0] : DEFAULT_IMAGE_URL);
-                const avatarUrl = post.userAvatar || profile?.avatar || DEFAULT_AVATAR_URL;
-                
-                // Marker with tracksViewChanges true until images are loaded
-                return (
-                  <ProfilePostMarker
-                    key={`post-${post.id}`}
-                    lat={lat}
-                    lon={lon}
-                    imageUrl={imageUrl}
-                    avatarUrl={avatarUrl}
-                    onPress={() => {
-                      const postIndex = posts.findIndex(p => p.id === post.id);
-                      setSelectedPostIndex(postIndex);
-                      setPostViewerVisible(true);
-                    }}
-                  />
-                );
-              })}
-            </MapView>
+            {Platform.OS !== 'web' && MapView ? (
+              <MapView
+                style={styles.map}
+                initialRegion={currentLocation ? {
+                  latitude: currentLocation.latitude,
+                  longitude: currentLocation.longitude,
+                  latitudeDelta: 0.0922,
+                  longitudeDelta: 0.0421,
+                } : {
+                  latitude: 37.78825,
+                  longitude: -122.4324,
+                  latitudeDelta: 0.0922,
+                  longitudeDelta: 0.0421,
+                }}
+                customMapStyle={standardMapStyle}
+              >
+                {posts.filter(p => {
+                  const lat = parseCoord(p.location?.latitude ?? p.location?.lat ?? p.lat ?? p.locationData?.lat);
+                  const lon = parseCoord(p.location?.longitude ?? p.location?.lon ?? p.lon ?? p.locationData?.lon);
+                  return lat !== null && lon !== null;
+                }).map((post) => {
+                  const lat = parseCoord(post.location?.latitude ?? post.location?.lat ?? post.lat ?? post.locationData?.lat);
+                  const lon = parseCoord(post.location?.longitude ?? post.location?.lon ?? post.lon ?? post.locationData?.lon);
+                  if (lat === null || lon === null) return null;
+                  const imageUrl = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls[0] : DEFAULT_IMAGE_URL);
+                  const avatarUrl = post.userAvatar || profile?.avatar || DEFAULT_AVATAR_URL;
+                  
+                  // Marker with tracksViewChanges true until images are loaded
+                  return (
+                    <ProfilePostMarker
+                      key={`post-${post.id}`}
+                      lat={lat}
+                      lon={lon}
+                      imageUrl={imageUrl}
+                      avatarUrl={avatarUrl}
+                      onPress={() => {
+                        const postIndex = posts.findIndex(p => p.id === post.id);
+                        setSelectedPostIndex(postIndex);
+                        setPostViewerVisible(true);
+                      }}
+                    />
+                  );
+                })}
+              </MapView>
+            ) : (
+              <View style={[styles.map, { alignItems: 'center', justifyContent: 'center' }]}>
+                <Text style={{ color: '#666' }}>Map is not available on web preview.</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -1056,7 +1067,7 @@ export default function Profile({ userIdProp }: any) {
         onSuccess={async () => {
           // Refresh highlights after creating new one
           if (viewedUserId) {
-            const highlightsRes = await getUserHighlights(viewedUserId, currentUserId);
+            const highlightsRes = await getUserHighlights(viewedUserId, currentUserId || undefined);
             let highlightsData: any[] = [];
             if (highlightsRes.success) {
               if ('data' in highlightsRes && Array.isArray(highlightsRes.data)) highlightsData = highlightsRes.data;

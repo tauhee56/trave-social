@@ -11,3 +11,7 @@ export async function createOrUpdateUserFromSocial({ uid, name, avatar, provider
     updatedAt: new Date().toISOString(),
   });
 }
+
+export default function UserService() {
+  return null;
+}

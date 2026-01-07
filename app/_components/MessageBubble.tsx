@@ -35,12 +35,12 @@ export default function MessageBubble({
     <View style={{ maxWidth: '100%' }}>
       {hasReply && (
         <View style={[styles.replyPreview, isSelf ? styles.replyPreviewSelf : styles.replyPreviewOther]}>
-          <View style={styles.replyLine} />
-          <View style={styles.replyContent}>
-            <Text style={styles.replyName}>
+          <View style={[styles.replyLine, isSelf ? styles.replyLineSelf : styles.replyLineOther]} />
+          <View style={[styles.replyContent, isSelf ? styles.replyContentSelf : styles.replyContentOther]}>
+            <Text style={[styles.replyName, isSelf ? styles.replyNameSelf : styles.replyNameOther]}>
               {isReplyFromSelf ? 'You' : username}
             </Text>
-            <Text style={styles.replyText} numberOfLines={1}>
+            <Text style={[styles.replyText, isSelf ? styles.replyTextSelf : styles.replyTextOther]} numberOfLines={1}>
               {replyTo?.text}
             </Text>
           </View>
@@ -61,10 +61,12 @@ export default function MessageBubble({
           <Text style={isSelf ? styles.msgTextSelf : styles.msgText}>{text}</Text>
         )}
         <View style={styles.msgFooter}>
-          <Text style={isSelf ? styles.msgTimeSelf : styles.msgTime}>{formatTime(createdAt)}</Text>
-          {editedAt && (
-            <Text style={[isSelf ? styles.msgTimeSelf : styles.msgTime, styles.editedLabel]}> · edited</Text>
-          )}
+          <View style={[styles.timePill, isSelf ? styles.timePillSelf : styles.timePillOther]}>
+            <Text style={isSelf ? styles.msgTimeSelf : styles.msgTime}>{formatTime(createdAt)}</Text>
+            {editedAt && (
+              <Text style={[isSelf ? styles.msgTimeSelf : styles.msgTime, styles.editedLabel]}> · edited</Text>
+            )}
+          </View>
         </View>
       </View>
     </View>
@@ -74,17 +76,17 @@ export default function MessageBubble({
 const styles = StyleSheet.create({
   msgBubble: {
     position: 'relative',
-    borderRadius: 18,
+    borderRadius: 22,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    maxWidth: '92%',
+    paddingVertical: 11,
+    maxWidth: '86%',
     minWidth: 60,
     flexShrink: 1,
     shadowColor: '#000',
     shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
   msgBubbleCompact: {
     borderRadius: 14,
@@ -97,9 +99,15 @@ const styles = StyleSheet.create({
   },
   msgBubbleLeft: {
     backgroundColor: '#efefef',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    borderTopLeftRadius: 10,
   },
   msgBubbleRight: {
     backgroundColor: '#3797f0',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    borderTopRightRadius: 10,
   },
   tailLeft: {
     position: 'absolute',
@@ -124,29 +132,43 @@ const styles = StyleSheet.create({
     borderLeftColor: '#3797f0',
   },
   msgText: {
-    color: '#222',
+    color: '#1f2937',
     fontSize: 15,
+    lineHeight: 20,
     flexWrap: 'wrap',
   },
   msgTextSelf: {
     color: '#fff',
     fontSize: 15,
+    lineHeight: 20,
     flexWrap: 'wrap',
   },
   msgFooter: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     marginTop: 2,
   },
+  timePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  timePillOther: {
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  timePillSelf: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
   msgTime: {
-    color: '#999',
+    color: 'rgba(0,0,0,0.55)',
     fontSize: 11,
-    marginTop: 4,
   },
   msgTimeSelf: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 11,
-    marginTop: 4,
   },
   msgImage: {
     width: 200,
@@ -173,25 +195,46 @@ const styles = StyleSheet.create({
   },
   replyLine: {
     width: 3,
-    backgroundColor: '#3797f0',
     borderRadius: 2,
     marginRight: 8,
   },
+  replyLineSelf: {
+    backgroundColor: 'rgba(55,151,240,0.35)',
+  },
+  replyLineOther: {
+    backgroundColor: '#3797f0',
+  },
   replyContent: {
-    backgroundColor: 'rgba(0,0,0,0.05)',
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
     maxWidth: 200,
   },
+  replyContentSelf: {
+    backgroundColor: 'rgba(55,151,240,0.12)',
+  },
+  replyContentOther: {
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
   replyName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#3797f0',
     marginBottom: 2,
+  },
+  replyNameSelf: {
+    color: 'rgba(255,255,255,0.9)',
+  },
+  replyNameOther: {
+    color: '#3797f0',
   },
   replyText: {
     fontSize: 13,
-    color: '#666',
+    color: '#6B7280',
+  },
+  replyTextSelf: {
+    color: 'rgba(255,255,255,0.82)',
+  },
+  replyTextOther: {
+    color: '#6B7280',
   },
 });

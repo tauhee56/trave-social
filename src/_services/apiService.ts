@@ -1,12 +1,47 @@
 import axios from 'axios';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 // Determine API base URL based on platform
 const getAPIBaseURL = () => {
   // Try env variable first
   if (process.env.EXPO_PUBLIC_API_BASE_URL) {
-    console.log('📡 [src/apiService] Using env:', process.env.EXPO_PUBLIC_API_BASE_URL);
-    return process.env.EXPO_PUBLIC_API_BASE_URL;
+    const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+    console.log('📡 [src/apiService] Using env:', envUrl);
+
+    if (__DEV__ && Platform.OS !== 'web') {
+      const isLocalhost = envUrl.includes('localhost') || envUrl.includes('127.0.0.1');
+      if (isLocalhost) {
+        const debuggerHost =
+          (Constants as any)?.expoConfig?.hostUri ||
+          (Constants as any)?.manifest2?.extra?.expoClient?.hostUri ||
+          (Constants as any)?.manifest?.debuggerHost;
+
+        const host = typeof debuggerHost === 'string' ? debuggerHost.split(':')[0] : null;
+        if (host) {
+          const derivedUrl = `http://${host}:5000/api`;
+          console.log('📡 [src/apiService] Dev host derived from debuggerHost:', derivedUrl);
+          return derivedUrl;
+        }
+      }
+    }
+
+    return envUrl;
+  }
+
+  // Dev fallback for native
+  if (__DEV__ && Platform.OS !== 'web') {
+    const debuggerHost =
+      (Constants as any)?.expoConfig?.hostUri ||
+      (Constants as any)?.manifest2?.extra?.expoClient?.hostUri ||
+      (Constants as any)?.manifest?.debuggerHost;
+
+    const host = typeof debuggerHost === 'string' ? debuggerHost.split(':')[0] : null;
+    if (host) {
+      const derivedUrl = `http://${host}:5000/api`;
+      console.log('📡 [src/apiService] Dev host derived from debuggerHost:', derivedUrl);
+      return derivedUrl;
+    }
   }
   
   // Use Render URL (production)

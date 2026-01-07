@@ -1,8 +1,8 @@
 import {
-    SNAPCHAT_CLIENT_ID,
-    SNAPCHAT_CLIENT_SECRET,
-    TIKTOK_CLIENT_KEY,
-    TIKTOK_CLIENT_SECRET,
+  SNAPCHAT_CLIENT_ID,
+  SNAPCHAT_CLIENT_SECRET,
+  TIKTOK_CLIENT_KEY,
+  TIKTOK_CLIENT_SECRET,
 } from '@env';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
@@ -97,13 +97,13 @@ export async function signInWithGoogle() {
         if (!idToken) {
           throw new Error('No ID token received from Google Sign-In');
         }
-        
+
         // Create Firebase credential
         const googleCredential = GoogleAuthProvider.credential(idToken);
-        
+
         // Sign in with Firebase
         const result = await signInWithCredential(auth, googleCredential);
-        
+
         return {
           success: true,
           user: result.user,
@@ -143,14 +143,14 @@ export async function signInWithGoogle() {
       'Google Sign-In package not installed. Please use Email or Phone login for now.',
       [{ text: 'OK' }]
     );
-    
+
     return {
       success: false,
       error: 'Google Sign-In package not configured',
     };
   } catch (error: any) {
     console.error('Google Sign-In Error:', error);
-    
+
     // User canceled
     if (error.code === 'SIGN_IN_CANCELLED' || error.code === '-5') {
       return {
@@ -158,7 +158,7 @@ export async function signInWithGoogle() {
         error: 'Sign-in canceled',
       };
     }
-    
+
     return {
       success: false,
       error: error.message || 'Google Sign-In failed',
@@ -175,7 +175,7 @@ export async function signInWithApple() {
     // Check if Apple Sign-In is available (iOS 13+)
     if (Platform.OS === 'ios') {
       const isAvailable = await AppleAuthentication.isAvailableAsync();
-      
+
       if (!isAvailable) {
         Alert.alert('Apple Sign-In', 'Apple Sign-In is not available on this device');
         return {
@@ -205,7 +205,7 @@ export async function signInWithApple() {
 
       // Sign in with Firebase
       const result = await signInWithCredential(auth, firebaseCredential);
-      
+
       return {
         success: true,
         user: result.user,
@@ -237,7 +237,7 @@ export async function signInWithApple() {
     };
   } catch (error: any) {
     console.error('Apple Sign-In Error:', error);
-    
+
     // User canceled
     if (error.code === 'ERR_REQUEST_CANCELED') {
       return {
@@ -262,24 +262,24 @@ export async function signInWithTikTok() {
     const { makeRedirectUri } = await import('expo-auth-session');
     const ExpoCrypto = await import('expo-crypto');
     // Warm up browser to reduce first-open latency
-    try { await WebBrowser.warmUpAsync(); } catch {}
-    
+    try { await WebBrowser.warmUpAsync(); } catch { }
+
     // TikTok OAuth configuration from developer console (read from env for security)
     const TIKTOK_CLIENT_KEY_VAL = getEnv('TIKTOK_CLIENT_KEY', TIKTOK_CLIENT_KEY) || TIKTOK_CLIENT_KEY || 'awel823341vepyyl';
     const TIKTOK_CLIENT_SECRET_VAL = getEnv('TIKTOK_CLIENT_SECRET', TIKTOK_CLIENT_SECRET) || TIKTOK_CLIENT_SECRET || 'dITpPKfOg4kcQiSjvC5ueaezDnbAMDOP';
 
     console.log('🔑 TikTok credentials:', TIKTOK_CLIENT_KEY_VAL ? '✓ Key loaded' : '✗ Missing');
-    
+
     if (!TIKTOK_CLIENT_KEY_VAL || TIKTOK_CLIENT_KEY_VAL === 'undefined') {
       throw new Error('TikTok credentials not configured');
     }
-    
+
     // TikTok OAuth endpoints
     const discovery = {
       authorizationEndpoint: 'https://www.tiktok.com/v2/auth/authorize/',
       tokenEndpoint: 'https://open.tiktokapis.com/v2/oauth/token/',
     };
-    
+
     // Redirect URI - must match TikTok Developer Console
     const redirectUri = makeRedirectUri({
       scheme: 'trave-social',
@@ -287,33 +287,33 @@ export async function signInWithTikTok() {
       preferLocalhost: false,
       isTripleSlashed: false, // Changed to false for better compatibility
     });
-    
+
     // Generate random state for CSRF protection (required by TikTok)
     const stateBytes = await ExpoCrypto.getRandomBytesAsync(16);
     const state = Array.from(new Uint8Array(stateBytes))
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
-    
+
     console.log('TikTok Redirect URI:', redirectUri);
     console.log('TikTok State:', state);
-    
+
     // Open TikTok authorization URL with required state parameter
     const authUrl = `${discovery.authorizationEndpoint}?client_key=${TIKTOK_CLIENT_KEY_VAL}&scope=user.info.basic&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
-    
+
     console.log('TikTok Auth URL:', authUrl);
-    
+
     // Open browser for authentication with longer timeout
     const result = await WebBrowser.openAuthSessionAsync(
-      authUrl, 
+      authUrl,
       redirectUri,
-      { 
+      {
         showInRecents: true,
         createTask: true // Android only - open in new task
       }
     );
-    
+
     console.log('TikTok OAuth Result:', JSON.stringify(result, null, 2));
-    
+
     // Check if user dismissed
     if (result.type === 'dismiss' || result.type === 'cancel') {
       console.log('TikTok sign-in canceled by user');
@@ -322,24 +322,24 @@ export async function signInWithTikTok() {
         error: 'Sign in cancelled by user',
       };
     }
-    
+
     if (result.type === 'success' && result.url) {
       // Extract authorization code from URL
       const url = new URL(result.url);
       const code = url.searchParams.get('code');
       const error = url.searchParams.get('error');
-      
+
       console.log('TikTok OAuth Code:', code);
       console.log('TikTok OAuth Error:', error);
-      
+
       if (error) {
         throw new Error(`TikTok OAuth error: ${error}`);
       }
-      
+
       if (!code) {
         throw new Error('No authorization code received');
       }
-      
+
       // Exchange code for access token via Cloud Function (secure)
       console.log('🔐 Exchanging code via Cloud Function...');
       const cloudFunctionUrl = 'https://us-central1-travel-app-3da72.cloudfunctions.net/tiktokAuth';
@@ -375,20 +375,20 @@ export async function signInWithTikTok() {
         display_name: tokenData.displayName,
         avatar_url: tokenData.avatarUrl,
       };
-      
+
       // Create custom token in Firebase (you'll need Cloud Function for this)
       // For now, use email/password with TikTok ID
       const { createUserWithEmailAndPassword, signInWithEmailAndPassword } = await import('firebase/auth');
       const { doc, setDoc, getDoc, serverTimestamp } = await import('firebase/firestore');
       const { db } = await import('../config/firebase');
-      
+
       // Use TikTok open_id as unique identifier
       const tiktokEmail = `tiktok_${tiktokUser.open_id}@trave-social.app`;
       // Use a deterministic password based on the user ID (not client secret which might change)
       const tiktokPassword = `TikTok${tiktokUser.open_id.substring(0, 16)}!@#`;
-      
+
       let firebaseUser;
-      
+
       try {
         // Try to sign in first
         console.log('📱 Trying to sign in existing TikTok user:', tiktokEmail);
@@ -403,29 +403,9 @@ export async function signInWithTikTok() {
           const createResult = await createUserWithEmailAndPassword(auth, tiktokEmail, tiktokPassword);
           firebaseUser = createResult.user;
           console.log('✅ New TikTok user created');
-          
-          // Create user document in Firestore
-          const defaultAvatar = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
-          
-          await setDoc(doc(db, 'users', firebaseUser.uid), {
-            uid: firebaseUser.uid,
-            email: tiktokEmail,
-            displayName: tiktokUser.display_name || 'TikTok User',
-            name: tiktokUser.display_name || 'TikTok User',
-            bio: '',
-            website: '',
-            avatar: tiktokUser.avatar_url || defaultAvatar,
-            photoURL: tiktokUser.avatar_url || defaultAvatar,
-            tiktokId: tiktokUser.open_id,
-            tiktokUnionId: tiktokUser.union_id,
-            authProvider: 'tiktok',
-            createdAt: serverTimestamp(),
-            followers: [],
-            following: [],
-            postsCount: 0,
-            followersCount: 0,
-            followingCount: 0
-          });
+
+          // No Firestore write - backend sync handled by handleSocialAuthResult
+          console.log('✅ TikTok user auth ready');
         } else if (signInError.code === 'auth/wrong-password') {
           console.error('❌ TikTok password mismatch detected');
           throw new Error('Password mismatch with stored TikTok credentials');
@@ -434,14 +414,14 @@ export async function signInWithTikTok() {
           throw signInError;
         }
       }
-      
+
       console.log('✅ TikTok authentication successful for user:', firebaseUser?.uid);
       return {
         success: true,
         user: firebaseUser,
       };
     }
-    
+
     // Other result type (locked, etc)
     return {
       success: false,
@@ -449,19 +429,19 @@ export async function signInWithTikTok() {
     };
   } catch (error: any) {
     console.error('TikTok Sign-In Error:', error);
-    
+
     Alert.alert(
       'TikTok Login Error',
       error.message || 'Failed to sign in with TikTok. Please try again.',
       [{ text: 'OK' }]
     );
-    
+
     return {
       success: false,
       error: error.message || 'TikTok Sign-In failed',
     };
   } finally {
-    try { await WebBrowser.coolDownAsync(); } catch {}
+    try { await WebBrowser.coolDownAsync(); } catch { }
   }
 }
 
@@ -473,28 +453,28 @@ export async function signInWithSnapchat() {
   try {
     const { makeRedirectUri } = await import('expo-auth-session');
     // Warm up browser to reduce first-open latency
-    try { await WebBrowser.warmUpAsync(); } catch {}
-    
+    try { await WebBrowser.warmUpAsync(); } catch { }
+
     // Snapchat OAuth configuration
     const discovery = {
       authorizationEndpoint: 'https://accounts.snapchat.com/accounts/oauth2/auth',
       tokenEndpoint: 'https://accounts.snapchat.com/accounts/oauth2/token',
     };
-    
+
     const redirectUri = makeRedirectUri({
       scheme: 'trave-social',
       path: 'auth/callback'
     });
-    
+
     // Snapchat client credentials (read from env for security)
     const SNAPCHAT_CLIENT_ID_VAL = getEnv('SNAPCHAT_CLIENT_ID', SNAPCHAT_CLIENT_ID) || SNAPCHAT_CLIENT_ID || '8369d3b8-e04a-4106-bbb8-2cf0b3b2c3dc';
     const SNAPCHAT_CLIENT_SECRET_VAL = getEnv('SNAPCHAT_CLIENT_SECRET', SNAPCHAT_CLIENT_SECRET) || SNAPCHAT_CLIENT_SECRET || 'YXLnbVtFzJle6i7ffPYNff-qWa1RdqrdhDTy7GWVQLU';
-    
+
     console.log('🔑 Snapchat credentials loaded:', SNAPCHAT_CLIENT_ID_VAL ? '✓' : '✗');
-    
+
     // Build Snapchat OAuth URL
     const snapAuthUrl = `${discovery.authorizationEndpoint}?client_id=${SNAPCHAT_CLIENT_ID_VAL}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=user.display_name%20user.bitmoji.avatar&prompt=consent`;
-    
+
     // Open browser for authentication
     const snapResult = await WebBrowser.openAuthSessionAsync(snapAuthUrl, redirectUri);
     if (snapResult.type === 'success' && snapResult.url) {
@@ -565,24 +545,9 @@ export async function signInWithSnapchat() {
           const createResult = await createUserWithEmailAndPassword(auth, snapchatEmail, snapchatPassword);
           firebaseUser = createResult.user;
           console.log('✅ New Snapchat user created');
-          await setDoc(doc(db, 'users', firebaseUser.uid), {
-            uid: firebaseUser.uid,
-            email: snapchatEmail,
-            displayName: userData.data.me.display_name || 'Snapchat User',
-            name: userData.data.me.display_name || 'Snapchat User',
-            bio: '',
-            website: '',
-            avatar: userData.data.me.bitmoji.avatar || '',
-            photoURL: userData.data.me.bitmoji.avatar || '',
-            snapchatId: userData.data.me.external_id,
-            authProvider: 'snapchat',
-            createdAt: serverTimestamp(),
-            followers: [],
-            following: [],
-            postsCount: 0,
-            followersCount: 0,
-            followingCount: 0
-          });
+
+          // No Firestore write - backend sync handled by handleSocialAuthResult
+          console.log('✅ Snapchat user auth ready');
         } else if (errorAny.code === 'auth/wrong-password') {
           console.error('❌ Snapchat password mismatch detected');
           throw new Error('Password mismatch with stored Snapchat credentials');
@@ -591,7 +556,7 @@ export async function signInWithSnapchat() {
           throw signInError;
         }
       }
-      
+
       console.log('✅ Snapchat authentication successful for user:', firebaseUser?.uid);
       return {
         success: true,
@@ -605,7 +570,7 @@ export async function signInWithSnapchat() {
         error: 'Sign-in canceled',
       };
     }
-    
+
     // Other result type
     return {
       success: false,
@@ -613,13 +578,13 @@ export async function signInWithSnapchat() {
     };
   } catch (error: any) {
     console.error('Snapchat Sign-In Error:', error);
-    
+
     return {
       success: false,
       error: error.message || 'Snapchat Sign-In failed',
     };
   } finally {
-    try { await WebBrowser.coolDownAsync(); } catch {}
+    try { await WebBrowser.coolDownAsync(); } catch { }
   }
 }
 
@@ -628,7 +593,6 @@ export async function signInWithSnapchat() {
  */
 export async function handleSocialAuthResult(result: any, router: any) {
   if (result.success) {
-    // Check if user needs to complete profile
     const user = result.user;
     const defaultAvatar = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
     const userAvatar = user.photoURL || defaultAvatar;
@@ -636,12 +600,10 @@ export async function handleSocialAuthResult(result: any, router: any) {
 
     console.log('handleSocialAuthResult - User:', {
       uid: user.uid,
-      photoURL: user.photoURL,
-      displayName: user.displayName,
-      isNew: user.metadata.creationTime === user.metadata.lastSignInTime
+      email: user.email,
+      displayName: user.displayName
     });
 
-    // Helper to safely navigate (prevents "navigate before mounting" error)
     const safeNavigate = (path: string) => {
       try {
         router.replace(path);
@@ -655,60 +617,44 @@ export async function handleSocialAuthResult(result: any, router: any) {
       }
     };
 
-    // If user is new, create Firestore document
-    if (user.metadata.creationTime === user.metadata.lastSignInTime) {
-      try {
-        const { doc, setDoc, serverTimestamp } = await import('firebase/firestore');
-        const { db } = await import('../config/firebase');
+    try {
+      // Import dependencies dynamically
+      const { apiService } = await import('../app/_services/apiService');
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
 
-        // Create user document in Firestore
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          displayName: userName,
-          name: userName,
-          bio: '',
-          website: '',
-          avatar: userAvatar,
-          photoURL: userAvatar,
-          createdAt: serverTimestamp(),
-          followers: [],
-          following: [],
-          postsCount: 0,
-          followersCount: 0,
-          followingCount: 0
-        });
+      // Sync with backend using the same endpoint as email/password login
+      console.log('🔄 Syncing social user with backend...');
 
-        // Go to home after creating profile
+      const response = await apiService.post('/auth/login-firebase', {
+        firebaseUid: user.uid,
+        email: user.email,
+        displayName: userName,
+        avatar: userAvatar,
+        provider: user.providerData?.[0]?.providerId || 'social'
+      });
+
+      if (response.success) {
+        console.log('✅ Backend sync successful, storing tokens...');
+
+        // Store tokens directly in AsyncStorage
+        await AsyncStorage.setItem('token', response.token);
+        // Use backend ID preferably, fallback to firebase/sync ID
+        const userIdToStore = response.user?.id || response.user?._id || user.uid;
+        await AsyncStorage.setItem('userId', String(userIdToStore));
+        await AsyncStorage.setItem('userEmail', user.email || '');
+
+        // Force a small delay to ensure storage persistence
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Navigate to home
         safeNavigate('/(tabs)/home');
-      } catch (error) {
-        console.error('Error creating user profile:', error);
-        Alert.alert('Error', 'Failed to create user profile');
+      } else {
+        console.error('❌ Backend sync failed:', response.error);
+        Alert.alert('Login Error', 'Failed to sync with server. Please try again.');
       }
-    } else {
-      // Existing user - check if avatar needs updating
-      try {
-        const { doc, getDoc, updateDoc } = await import('firebase/firestore');
-        const { db } = await import('../config/firebase');
-        
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          // Update avatar if it's empty or default, and Google has a photoURL
-          if (user.photoURL && (!userData.avatar || userData.avatar === defaultAvatar || userData.avatar === '')) {
-            await updateDoc(doc(db, 'users', user.uid), {
-              avatar: user.photoURL,
-              photoURL: user.photoURL
-            });
-            console.log('Updated existing user avatar from Google:', user.photoURL);
-          }
-        }
-      } catch (error) {
-        console.error('Error checking/updating user avatar:', error);
-      }
-      
-      // Go to home
-      safeNavigate('/(tabs)/home');
+    } catch (error: any) {
+      console.error('Error in handleSocialAuthResult:', error);
+      Alert.alert('Error', 'Failed to complete login process');
     }
   } else {
     Alert.alert('Authentication Error', result.error);

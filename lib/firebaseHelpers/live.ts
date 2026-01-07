@@ -1,14 +1,12 @@
 // Live streaming helpers
 
+import { apiService } from '../../app/_services/apiService';
+
 export async function getActiveLiveStreams() {
   try {
-    const res = await fetch(`/api/live`);
-    const data = await res.json();
-    if (data.success) {
-      return data.data;
-    } else {
-      return [];
-    }
+    const res = await apiService.get('/live-streams');
+    const streams = res?.data || [];
+    return Array.isArray(streams) ? streams : [];
   } catch (error: any) {
     return [];
   }
@@ -16,13 +14,7 @@ export async function getActiveLiveStreams() {
 
 export async function startLiveStream(userId: string, streamData: any) {
   try {
-    const res = await fetch(`/api/live`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, ...streamData })
-    });
-    const data = await res.json();
-    return data;
+    return await apiService.post('/live-streams', { userId, ...streamData });
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -30,13 +22,7 @@ export async function startLiveStream(userId: string, streamData: any) {
 
 export async function endLiveStream(streamId: string, userId: string) {
   try {
-    const res = await fetch(`/api/live/${streamId}/end`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId })
-    });
-    const data = await res.json();
-    return data;
+    return await apiService.patch(`/live-streams/${streamId}/end`, { userId });
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -44,13 +30,9 @@ export async function endLiveStream(streamId: string, userId: string) {
 
 export async function joinLiveStream(streamId: string, userId: string) {
   try {
-    const res = await fetch(`/api/live/${streamId}/join`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId })
-    });
-    const data = await res.json();
-    return data;
+    // Backend doesn't currently expose a dedicated "join" REST endpoint.
+    // Fetch the stream details as a lightweight "join" operation.
+    return await apiService.get(`/live-streams/${streamId}`);
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -58,13 +40,7 @@ export async function joinLiveStream(streamId: string, userId: string) {
 
 export async function leaveLiveStream(streamId: string, userId: string) {
   try {
-    const res = await fetch(`/api/live/${streamId}/leave`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId })
-    });
-    const data = await res.json();
-    return data;
+    return await apiService.post(`/live-streams/${streamId}/leave`, { userId });
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -74,9 +50,8 @@ export function subscribeToLiveStream(streamId: string, callback: (stream: any) 
   // Use polling for live stream
   const pollInterval = setInterval(async () => {
     try {
-      const res = await fetch(`/api/live/${streamId}`);
-      const data = await res.json();
-      if (data.success && data.data) {
+      const data = await apiService.get(`/live-streams/${streamId}`);
+      if (data?.success !== false && data?.data) {
         callback(data.data);
       }
     } catch (error) {
@@ -91,10 +66,9 @@ export function subscribeToLiveComments(streamId: string, callback: (comments: a
   // Use polling for comments
   const pollInterval = setInterval(async () => {
     try {
-      const res = await fetch(`/api/live/${streamId}/comments`);
-      const data = await res.json();
-      if (data.success) {
-        const comments = data.data || [];
+      const data = await apiService.get(`/live-streams/${streamId}/comments`);
+      if (data?.success !== false) {
+        const comments = data?.data || [];
         callback(comments);
       }
     } catch (error) {

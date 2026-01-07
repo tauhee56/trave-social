@@ -19,8 +19,9 @@ import { useUserProfile } from '../app/_hooks/useUserProfile';
 function ConversationItem({ item, userId, router, formatTime, conversations, setConversations }: any) {
   const otherUserId = item.participants?.find((uid: string) => uid !== userId);
   const { profile, loading } = useUserProfile(otherUserId);
-  const username = profile?.username || profile?.displayName || profile?.name || otherUserId?.substring(0, 12) || 'User';
-  const avatar = profile?.avatar || profile?.photoURL;
+  const profileAny = profile as any;
+  const username = profileAny?.username || profileAny?.displayName || profileAny?.name || otherUserId?.substring(0, 12) || 'User';
+  const avatar = profileAny?.avatar || profileAny?.photoURL;
   const lastMsgPreview = item.lastMessage?.substring(0, 40) || 'No messages yet';
   
   const DEFAULT_AVATAR = 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1/default/default-pic.jpg';
@@ -41,7 +42,7 @@ function ConversationItem({ item, userId, router, formatTime, conversations, set
         router.push({
           pathname: '/dm',
           params: {
-            conversationId: item.id || item._id,
+            conversationId: item.conversationId || item.id || item._id,
             otherUserId: otherUserId,
             user: username
           }
@@ -67,10 +68,17 @@ function ConversationItem({ item, userId, router, formatTime, conversations, set
           {lastMsgPreview}
         </Text>
       </View>
-      
-      <Text style={{ color: '#999', fontSize: 12 }}>
-        {formatTime(item.lastMessageAt)}
-      </Text>
+
+      <View style={{ alignItems: 'flex-end' }}>
+        <Text style={{ color: '#999', fontSize: 12 }}>
+          {formatTime(item.lastMessageAt)}
+        </Text>
+        {typeof item?.unreadCount === 'number' && item.unreadCount > 0 ? (
+          <View style={{ marginTop: 6, backgroundColor: '#e0245e', minWidth: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{item.unreadCount > 9 ? '9+' : item.unreadCount}</Text>
+          </View>
+        ) : null}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -80,6 +88,23 @@ export default function Inbox() {
     const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   const router = useRouter();
   const navigation = useNavigation();
+
+  const handleClose = () => {
+    try {
+      const nav: any = navigation as any;
+      if (nav?.canGoBack?.() && typeof nav.goBack === 'function') {
+        nav.goBack();
+        return;
+      }
+    } catch {}
+
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace('/(tabs)/home');
+  };
   
   // Get userId from AsyncStorage (token-based auth)
   const [userId, setUserId] = useState<string | null>(null);
@@ -209,15 +234,15 @@ export default function Inbox() {
         <View style={styles.headerRow}>
           <TouchableOpacity
             onPress={() => {
-              router.replace('/(tabs)/home');
+              handleClose();
             }}
-            style={[styles.backBtn, { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }]}
+            style={[styles.backBtn, { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center', zIndex: 10, elevation: 10 }]}
             activeOpacity={0.7}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Feather name="x" size={28} color="#000" />
           </TouchableOpacity>
-          <Text style={[styles.title, { textAlign: 'center', flex: 1 }]}>Messages</Text>
+          <Text pointerEvents="none" style={[styles.title, { textAlign: 'center', flex: 1 }]}>Messages</Text>
           <View style={{ width: 40 }} />
         </View>
 
@@ -244,15 +269,15 @@ export default function Inbox() {
       <View style={styles.headerRow}>
         <TouchableOpacity
           onPress={() => {
-            router.replace('/(tabs)/home');
+            handleClose();
           }}
-          style={[styles.backBtn, { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }]}
+          style={[styles.backBtn, { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center', zIndex: 10, elevation: 10 }]}
           activeOpacity={0.7}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
           <Feather name="x" size={28} color="#000" />
         </TouchableOpacity>
-        <Text style={[styles.title, { textAlign: 'center', flex: 1 }]}>Messages</Text>
+        <Text pointerEvents="none" style={[styles.title, { textAlign: 'center', flex: 1 }]}>Messages</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -278,14 +303,40 @@ export default function Inbox() {
           );
         }
         
-        const filteredConvos = conversations.filter(c => !c[`archived_${userId}`]);
+        const filteredConvosRaw = conversations.filter(c => !c[`archived_${userId}`]);
+
+        const getSortTime = (c: any) => {
+          const t = c?.updatedAt || c?.lastMessageAt || c?.lastMessageTime || c?.createdAt;
+          const d = t?.toDate ? t.toDate() : (t ? new Date(t) : null);
+          return d && !Number.isNaN(d.getTime()) ? d.getTime() : 0;
+        };
+
+        // Frontend safety dedupe: 1 row per other participant; keep newest but sum unreadCount
+        const map = new Map<string, any>();
+        for (const c of filteredConvosRaw) {
+          const participants = Array.isArray(c?.participants) ? c.participants.map(String) : [];
+          const otherId = participants.find((p: string) => p !== String(userId));
+          const key = otherId || (c?.conversationId ? String(c.conversationId) : String(c?.id || c?._id));
+
+          const existing = map.get(key);
+          if (!existing) {
+            map.set(key, c);
+          } else {
+            const aggregatedUnread = (existing?.unreadCount || 0) + (c?.unreadCount || 0);
+            const keep = getSortTime(c) >= getSortTime(existing) ? c : existing;
+            keep.unreadCount = aggregatedUnread;
+            map.set(key, keep);
+          }
+        }
+
+        const filteredConvos = Array.from(map.values()).sort((a, b) => getSortTime(b) - getSortTime(a));
         console.log('📋 FLATLIST DATA:', filteredConvos.length, 'items to render');
         
         if (filteredConvos.length > 0) {
           return (
             <FlatList
               data={filteredConvos}
-              keyExtractor={(item, index) => item.id || item._id || `convo-${index}`}
+              keyExtractor={(item, index) => item.conversationId || item.id || item._id || `convo-${index}`}
               style={{ width: '100%', flex: 1 }}
               renderItem={({ item, index }) => (
                 <ConversationItem 

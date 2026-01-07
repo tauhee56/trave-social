@@ -23,7 +23,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import { logger } from '../utils/logger';
@@ -31,6 +30,14 @@ import { logger } from '../utils/logger';
 import { ZEEGOCLOUD_CONFIG } from '../config/zeegocloud';
 import ZeegocloudStreamingService from '../services/implementations/ZeegocloudStreamingService';
 import ZeegocloudLiveViewer from './_components/ZeegocloudLiveViewer';
+
+let MapView: any = null;
+let Marker: any = null;
+if (Platform.OS !== 'web') {
+  const RNMaps = require('react-native-maps');
+  MapView = RNMaps.default ?? RNMaps;
+  Marker = RNMaps.Marker;
+}
 
 const { width, height } = Dimensions.get('window');
 const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
@@ -275,10 +282,10 @@ export default function WatchLiveScreen() {
       {/* ZeegoCloud Video Component */}
       <View style={styles.videoContainer}>
         <ZeegocloudLiveViewer
-          roomId={roomId}
-          userId={currentUser?.uid || 'anonymous'}
+          roomID={roomId}
+          userID={currentUser?.uid || 'anonymous'}
           userName={currentUser?.displayName || 'Anonymous'}
-          onStreamEnd={handleLeaveStream}
+          onLeave={handleLeaveStream}
         />
       </View>
 
@@ -397,18 +404,24 @@ export default function WatchLiveScreen() {
             </TouchableOpacity>
           </View>
 
-          <MapView
-            style={styles.map}
-            initialRegion={{
-              latitude: broadcasterLocation.latitude,
-              longitude: broadcasterLocation.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-          >
-            <Marker coordinate={broadcasterLocation} title="Broadcaster" />
-            {location && <Marker coordinate={location} title="You" pinColor="blue" />}
-          </MapView>
+          {Platform.OS !== 'web' && MapView ? (
+            <MapView
+              style={styles.map}
+              initialRegion={{
+                latitude: broadcasterLocation.latitude,
+                longitude: broadcasterLocation.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              }}
+            >
+              <Marker coordinate={broadcasterLocation} title="Broadcaster" />
+              {location && <Marker coordinate={location} title="You" pinColor="blue" />}
+            </MapView>
+          ) : (
+            <View style={[styles.map, { alignItems: 'center', justifyContent: 'center' }]}>
+              <Text style={{ color: '#666' }}>Map is not available on web preview.</Text>
+            </View>
+          )}
         </View>
       )}
     </SafeAreaView>

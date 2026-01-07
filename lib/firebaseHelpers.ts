@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from '../app/_services/apiService';
 import {
-    sendLiveComment as socketSendLiveComment,
-    subscribeToLiveStream as socketSubscribeToLiveStream,
-    subscribeToMessages as socketSubscribeToMessages
+  sendLiveComment as socketSendLiveComment,
+  subscribeToLiveStream as socketSubscribeToLiveStream,
+  subscribeToMessages as socketSubscribeToMessages
 } from '../app/_services/socketService';
 
 import { initializeApp } from 'firebase/app';
@@ -18,11 +18,11 @@ const auth = getAuth(firebaseApp);
 export async function signInWithEmailPassword(email: string, password: string): Promise<{ success: boolean; user?: any; error?: string }> {
   try {
     console.log('[signInWithEmailPassword] Firebase login:', email);
-    
+
     // Step 1: Firebase authentication
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const firebaseUser = userCredential.user;
-    
+
     // Step 2: Sync with backend (save to MongoDB)
     const response = await apiService.post('/auth/login-firebase', {
       firebaseUid: firebaseUser.uid,
@@ -30,24 +30,30 @@ export async function signInWithEmailPassword(email: string, password: string): 
       displayName: firebaseUser.displayName || email.split('@')[0],
       avatar: firebaseUser.photoURL
     });
-    
+
     if (response.success) {
       // Step 3: Store token
       await AsyncStorage.setItem('token', response.token);
-      await AsyncStorage.setItem('userId', firebaseUser.uid);
+      await AsyncStorage.setItem('userId', String(response.user?.id ?? firebaseUser.uid));
       await AsyncStorage.setItem('userEmail', firebaseUser.email || '');
-      
+
       console.log('[signInWithEmailPassword] ✅ Firebase + MongoDB sync successful');
       return { success: true, user: firebaseUser };
     } else {
       console.error('[signInWithEmailPassword] ❌ MongoDB sync failed:', response.error);
       // Still return success since Firebase auth worked
-      await AsyncStorage.setItem('userId', firebaseUser.uid);
-      await AsyncStorage.setItem('userEmail', firebaseUser.email || '');
-      return { success: true, user: firebaseUser };
+      await AsyncStorage.removeItem('token');
+      await AsyncStorage.removeItem('userId');
+      await AsyncStorage.removeItem('userEmail');
+      try { await signOut(auth); } catch (e) { }
+      return { success: false, error: response.error || 'Login sync failed' };
     }
   } catch (error: any) {
     console.error('[signInWithEmailPassword] Firebase login error:', error.message);
+    await AsyncStorage.removeItem('token');
+    await AsyncStorage.removeItem('userId');
+    await AsyncStorage.removeItem('userEmail');
+    try { await signOut(auth); } catch (e) { }
     return { success: false, error: error.message };
   }
 }
@@ -55,41 +61,56 @@ export async function signInWithEmailPassword(email: string, password: string): 
 export async function registerWithEmailPassword(email: string, password: string, displayName?: string): Promise<{ success: boolean; user?: any; error?: string }> {
   try {
     console.log('[registerWithEmailPassword] Firebase register:', email);
-    
+
     // Step 1: Firebase registration
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const firebaseUser = userCredential.user;
-    
+
     // Update profile
     if (displayName) {
       await updateProfile(firebaseUser, { displayName });
     }
-    
+
     // Step 2: Sync with backend (save to MongoDB)
-    const response = await apiService.post('/auth/register-firebase', {
+    let response = await apiService.post('/auth/register-firebase', {
       firebaseUid: firebaseUser.uid,
       email: firebaseUser.email,
       displayName: displayName || email.split('@')[0],
       avatar: firebaseUser.photoURL
     });
-    
+
+    if (!response.success) {
+      response = await apiService.post('/auth/login-firebase', {
+        firebaseUid: firebaseUser.uid,
+        email: firebaseUser.email,
+        displayName: displayName || email.split('@')[0],
+        avatar: firebaseUser.photoURL
+      });
+    }
+
     if (response.success) {
       // Step 3: Store token
       await AsyncStorage.setItem('token', response.token);
-      await AsyncStorage.setItem('userId', firebaseUser.uid);
+      await AsyncStorage.setItem('userId', String(response.user?.id ?? firebaseUser.uid));
       await AsyncStorage.setItem('userEmail', firebaseUser.email || '');
-      
+
       console.log('[registerWithEmailPassword] ✅ Firebase + MongoDB sync successful');
       return { success: true, user: firebaseUser };
     } else {
       console.error('[registerWithEmailPassword] ❌ MongoDB sync failed:', response.error);
       // Still return success since Firebase auth worked
-      await AsyncStorage.setItem('userId', firebaseUser.uid);
-      await AsyncStorage.setItem('userEmail', firebaseUser.email || '');
-      return { success: true, user: firebaseUser };
+      await AsyncStorage.removeItem('token');
+      await AsyncStorage.removeItem('userId');
+      await AsyncStorage.removeItem('userEmail');
+      try { await signOut(auth); } catch (e) { }
+      return { success: false, error: response.error || 'Signup sync failed' };
     }
   } catch (error: any) {
     console.error('[registerWithEmailPassword] Firebase register error:', error.message);
+    await AsyncStorage.removeItem('token');
+    await AsyncStorage.removeItem('userId');
+    await AsyncStorage.removeItem('userEmail');
+    try { await signOut(auth); } catch (e) { }
     return { success: false, error: error.message };
   }
 }
@@ -98,10 +119,10 @@ export async function verifyToken(): Promise<{ success: boolean; user?: any; err
   try {
     const token = await AsyncStorage.getItem('token');
     if (!token) return { success: false, error: 'No token found' };
-    
+
     // Verify token with backend
     const response = await apiService.post('/auth/verify', {});
-    
+
     if (response.success) {
       return { success: true };
     } else {
@@ -120,26 +141,26 @@ export async function verifyToken(): Promise<{ success: boolean; user?: any; err
 export async function signOutUser(): Promise<{ success: boolean; error?: string }> {
   try {
     console.log('[signOutUser] Logging out');
-    
+
     // Sign out from Firebase
     try {
       await signOut(auth);
     } catch (e) {
       console.warn('[signOutUser] Firebase signOut warning:', e);
     }
-    
+
     // Notify backend about logout
     try {
       await apiService.post('/auth/logout', {});
     } catch (e) {
       console.warn('[signOutUser] Backend logout warning:', e);
     }
-    
+
     // Clear AsyncStorage
     await AsyncStorage.removeItem('token');
     await AsyncStorage.removeItem('userId');
     await AsyncStorage.removeItem('userEmail');
-    
+
     console.log('[signOutUser] ✅ Logout successful');
     return { success: true };
   } catch (error: any) {
@@ -160,10 +181,10 @@ export async function signOutUser(): Promise<{ success: boolean; error?: string 
 export async function signInUser(email: string, password: string) {
   try {
     console.log('[signInUser] Attempting to sign in:', email);
-    
+
     // Use Firebase auth service (which calls backend)
     const result = await signInWithEmailPassword(email, password);
-    
+
     if (result.success) {
       console.log('[signInUser] ✅ Sign in successful');
       return { success: true, user: result.user };
@@ -183,10 +204,10 @@ export async function signInUser(email: string, password: string) {
 export async function signUpUser(email: string, password: string, displayName?: string) {
   try {
     console.log('[signUpUser] Attempting to register:', email);
-    
+
     // Use Firebase auth service (which calls backend)
     const result = await registerWithEmailPassword(email, password, displayName);
-    
+
     if (result.success) {
       console.log('[signUpUser] ✅ Registration successful');
       return { success: true, user: result.user };
@@ -207,15 +228,15 @@ export async function getCurrentUser() {
   try {
     const userId = await AsyncStorage.getItem('userId');
     const token = await AsyncStorage.getItem('token');
-    
+
     if (!userId || !token) {
       console.log('[getCurrentUser] No user found');
       return { success: false, error: 'No current user' };
     }
-    
+
     // Verify token with backend
     const verifyResult = await verifyToken();
-    
+
     if (verifyResult.success) {
       console.log('[getCurrentUser] ✅ User verified');
       return { success: true, user: verifyResult.user };
@@ -238,9 +259,9 @@ export async function getCurrentUser() {
 export async function logoutUser() {
   try {
     console.log('[logoutUser] Signing out');
-    
+
     const result = await signOutUser();
-    
+
     if (result.success) {
       console.log('[logoutUser] ✅ Sign out successful');
       return { success: true };
@@ -316,6 +337,10 @@ export async function getUserSectionsSorted(userId: string, requesterUserId?: st
 // Helper to get passport tickets
 export async function getPassportTickets(userId: string) {
   try {
+    if (!userId) {
+      console.warn('⚠️ getPassportTickets called with no userId');
+      return [];
+    }
     const res = await apiService.get(`/users/${userId}/passport-tickets`);
     return res?.data || {};
   } catch (error) {
@@ -329,9 +354,9 @@ export async function fetchMessages(conversationId: string) {
 }
 
 export async function sendMessage(conversationId: string, sender: string, text: string, recipientId?: string) {
-  return apiService.post(`/conversations/${conversationId}/messages`, { 
-    sender, 
-    senderId: sender, 
+  return apiService.post(`/conversations/${conversationId}/messages`, {
+    sender,
+    senderId: sender,
     text,
     recipientId
   });
@@ -360,13 +385,13 @@ export async function addNotification(payload: any) {
 export async function updateUserProfile(uid: string, data: any) {
   try {
     const res = await apiService.patch(`/users/${uid}`, data);
-    
+
     // Check response structure
     if (!res || !res.success) {
       console.error('[updateUserProfile] ❌ Backend error:', res?.error);
       return { success: false, error: res?.error || 'Failed to update profile' };
     }
-    
+
     console.log('[updateUserProfile] ✅ Profile updated');
     return res;
   } catch (err: any) {
@@ -378,13 +403,13 @@ export async function updateUserProfile(uid: string, data: any) {
 export async function toggleUserPrivacy(uid: string, isPrivate: boolean) {
   try {
     const res = await apiService.patch(`/users/${uid}/privacy`, { isPrivate });
-    
+
     // Check if the backend response was successful
     if (!res || !res.success) {
       console.error('[toggleUserPrivacy] ❌ Backend error:', res?.error);
       return { success: false, error: res?.error || 'Failed to update privacy' };
     }
-    
+
     console.log('[toggleUserPrivacy] ✅ Privacy updated:', isPrivate);
     return { success: true, isPrivate: res.data?.isPrivate ?? isPrivate };
   } catch (err: any) {
@@ -397,9 +422,9 @@ export async function toggleUserPrivacy(uid: string, isPrivate: boolean) {
 export async function uploadImage(uri: string, path?: string): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
     console.log('[uploadImage] 📤 Starting upload from URI:', uri);
-    
+
     let base64Data: string = '';
-    
+
     // Handle file:// URIs (Android/device) - Read as base64
     if (uri.startsWith('file://')) {
       console.log('[uploadImage] 📱 Detected file:// URI, reading as base64...');
@@ -431,7 +456,7 @@ export async function uploadImage(uri: string, path?: string): Promise<{ success
         }
         const blob = await response.blob();
         const reader = new FileReader();
-        
+
         return new Promise((resolve) => {
           reader.onload = () => {
             const result = reader.result as string;
@@ -452,10 +477,10 @@ export async function uploadImage(uri: string, path?: string): Promise<{ success
     } else {
       throw new Error(`Unsupported URI format: ${uri}`);
     }
-    
+
     // Upload with base64
     return uploadWithBase64(base64Data, path);
-    
+
   } catch (err: any) {
     console.error('[uploadImage] ❌ Error:', err.message);
     console.error('[uploadImage] ❌ Full error:', err);
@@ -469,32 +494,32 @@ async function uploadWithBase64(base64Data: string, path?: string): Promise<{ su
     if (!base64Data) {
       throw new Error('No base64 data provided');
     }
-    
+
     console.log('[uploadImage] 📡 Sending base64 to /media/upload endpoint (length:', base64Data.length, ')...');
-    
+
     // Send as base64 string directly (backend supports this)
     const result = await apiService.post('/media/upload', {
       file: base64Data,
       fileName: `image-${Date.now()}.jpg`,
       path: path
     });
-    
+
     console.log('[uploadImage] 📥 Full response received:', JSON.stringify(result).substring(0, 500));
-    
+
     // Check if response has success flag
     if (!result?.success) {
       console.error('[uploadImage] ❌ Backend returned error:', result?.error || 'Unknown error');
       return { success: false, error: result?.error || 'Upload failed' };
     }
-    
+
     // Handle nested response structure
     const url = result?.data?.url || result?.url || result?.secureUrl || result?.location;
-    
+
     if (!url) {
       console.error('[uploadImage] ❌ No URL in response:', result);
       return { success: false, error: 'No URL returned from upload' };
     }
-    
+
     console.log('[uploadImage] ✅ Upload successful:', url);
     return { success: true, url };
   } catch (err: any) {
@@ -560,17 +585,17 @@ export async function getLocationVisitCount(location: string): Promise<number> {
   try {
     // Backend returns aggregated data: { _id: location, count: N }
     const res = await apiService.get('/posts/location-count');
-    
+
     // Find matching location in the aggregated results
     if (res?.data && Array.isArray(res.data)) {
-      const locationData = res.data.find((item: any) => 
+      const locationData = res.data.find((item: any) =>
         item._id?.toLowerCase() === location.toLowerCase()
       );
       if (locationData?.count) {
         return locationData.count;
       }
     }
-    
+
     return 0;
   } catch (err) {
     console.warn('[getLocationVisitCount] Error:', err);
@@ -607,21 +632,21 @@ export async function createPost(
       if (!upload?.url) throw new Error(upload?.error || 'Upload failed');
       mediaUrls.push(upload.url);
     }
-    
+
     const payload = {
       userId,
       content: caption || ' ',  // Backend expects 'content' field (use space if empty)
       caption: caption || ' ',  // Also send caption for compatibility
       location,
       locationData,
-      mediaType, 
-      mediaUrls, 
-      category, 
-      hashtags, 
-      mentions, 
-      taggedUserIds 
+      mediaType,
+      mediaUrls,
+      category,
+      hashtags,
+      mentions,
+      taggedUserIds
     };
-    
+
     console.log('[createPost] Posting to /posts with payload:', payload);
     const res = await apiService.post('/posts', payload);
 
@@ -629,8 +654,8 @@ export async function createPost(
 
     // Handle nested response - check all possible locations
     const postId = res?.data?._id || res?.data?.postId || res?.data?.id ||
-                   res?.postId || res?._id || res?.id ||
-                   res?.data?.data?._id || res?.data?.data?.id;
+      res?.postId || res?._id || res?.id ||
+      res?.data?.data?._id || res?.data?.data?.id;
 
     if (!postId) {
       console.error('[createPost] ❌ No postId in response. Full response:', JSON.stringify(res, null, 2));
@@ -685,7 +710,7 @@ export async function addComment(postId: string, userId: string, userName: strin
   try {
     const res = await apiService.post(`/posts/${postId}/comments`, { userId, userName, userAvatar, text });
     const commentId = res?.data?._id || res?.id || res?._id || res?.commentId;
-    
+
     console.log('[addComment] ✅ Comment added:', commentId);
     return { success: true, id: commentId };
   } catch (err: any) {
@@ -740,7 +765,7 @@ export async function createStory(
 ) {
   const upload = await uploadImage(mediaUri);
   if (!upload?.url) throw new Error(upload?.error || 'Upload failed');
-  
+
   // Get user's actual name
   let userName = 'Anonymous';
   try {
@@ -762,16 +787,16 @@ export async function createStory(
   } catch (err) {
     console.log('[createStory] Could not fetch user profile for name:', err);
   }
-  
+
   console.log('[createStory] Final userName to send:', userName);
-  
+
   const res = await apiService.post('/stories', { userId, userName, mediaUrl: upload.url, mediaType, locationData });
-  
+
   // Unwrap API response
   const storyData = res?.data || res;
-  
-  return { 
-    success: true, 
+
+  return {
+    success: true,
     storyId: storyData?._id || storyData?.id || storyData?.storyId,
     story: storyData
   };
@@ -903,7 +928,7 @@ export async function searchUsers(query: string, limit: number = 20) {
   try {
     const response = await apiService.get('/users/search', { params: { q: query, limit } });
     console.log('[searchUsers] Response:', response);
-    
+
     // Handle nested response structure
     if (response && response.success !== false && Array.isArray(response.data)) {
       return { success: true, data: response.data };
@@ -911,7 +936,7 @@ export async function searchUsers(query: string, limit: number = 20) {
     if (response && Array.isArray(response)) {
       return { success: true, data: response };
     }
-    
+
     console.warn('[searchUsers] Unexpected response format:', response);
     return { success: false, data: [] };
   } catch (error) {

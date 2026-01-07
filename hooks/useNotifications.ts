@@ -37,8 +37,10 @@ export const useNotifications = (userId: string, pollInterval = 15000) => {
   };
 
   const markAllAsRead = async () => {
-    for (const notification of notifications.filter(n => !n.read)) {
-      await markAsRead(notification._id);
+    const success = await notificationService.markAllAsRead();
+    if (success) {
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
     }
   };
 

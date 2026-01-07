@@ -3,46 +3,36 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import React from 'react';
 import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth } from '../config/firebase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNotifications } from '../hooks/useNotifications';
 import AcceptDeclineButtons from '../src/_components/AcceptDeclineButtons';
+import { getNotificationActionText } from '../lib/notificationText';
 
 export default function NotificationsScreen() {
     // Default avatar from Firebase Storage
     const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   const router = useRouter();
-  const [notifications, setNotifications] = React.useState<any[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const [userId, setUserId] = React.useState<string>('');
 
-  // Fetch notifications from backend or return empty
-  const fetchNotifications = async () => {
-    setLoading(true);
-    try {
-      const user = auth.currentUser;
-      if (!user) {
-        setNotifications([]);
-        setLoading(false);
-        return;
-      }
-
-      // For now, return empty notifications as backend endpoint not yet created
-      // TODO: Create /api/users/:uid/notifications endpoint
-      setNotifications([]);
-      setLoading(false);
-    } catch (error) {
-      console.log('Notification fetch error:', error);
-      setNotifications([]);
-      setLoading(false);
-    }
-  };
+  const { notifications, unreadCount, loading, fetchNotifications, markAllAsRead } = useNotifications(userId || '');
 
   React.useEffect(() => {
-    fetchNotifications();
+    let isMounted = true;
+    (async () => {
+      try {
+        const uid = await AsyncStorage.getItem('userId');
+        if (isMounted && uid) setUserId(String(uid));
+      } catch {}
+    })();
+    return () => { isMounted = false; };
   }, []);
 
   // Refresh notifications when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
       fetchNotifications();
+      // Screen open = treat as read
+      markAllAsRead();
     }, [])
   );
 
@@ -103,24 +93,34 @@ export default function NotificationsScreen() {
 
   function handleNotificationClick(item: any) {
     let navRoute = '';
-    if (item.type === 'follow' || item.type === 'follow-request' || item.type === 'new-follower') {
+    if (item.type === 'follow' || item.type === 'follow-request' || item.type === 'follow-approved' || item.type === 'new-follower') {
       navRoute = `/user-profile/${item.senderId}`;
-    } else if (item.type === 'like' || item.type === 'tag') {
+    } else if (item.type === 'like' || item.type === 'tag' || item.type === 'mention') {
       if (!item.postId || typeof item.postId !== 'string' || item.postId.trim() === '') {
         alert('Notification missing postId. Cannot open post.');
         return;
       }
-      navRoute = `/post/${item.postId}`;
+      navRoute = `/post-detail?id=${item.postId}`;
     } else if (item.type === 'comment') {
       if (!item.postId || typeof item.postId !== 'string' || item.postId.trim() === '') {
         alert('Notification missing postId. Cannot open post.');
         return;
       }
-      navRoute = `/post/${item.postId}?commentId=${item.commentId}`;
+      navRoute = `/post-detail?id=${item.postId}&commentId=${item.commentId || ''}`;
     } else if (item.type === 'dm' || item.type === 'message') {
       navRoute = `/dm?otherUserId=${item.senderId}`;
-    } else if (item.type === 'story-mention' || item.type === 'story-reply') {
-      navRoute = '/stories';
+    } else if (item.type === 'live') {
+      if (item?.streamId && String(item.streamId).trim()) {
+        navRoute = `/watch-live?roomId=${encodeURIComponent(String(item.streamId))}`;
+      } else {
+        navRoute = '/(tabs)/map';
+      }
+    } else if (item.type === 'story' || item.type === 'story-mention' || item.type === 'story-reply') {
+      if (item?.storyId && String(item.storyId).trim()) {
+        navRoute = `/(tabs)/home?storyId=${encodeURIComponent(String(item.storyId))}`;
+      } else {
+        navRoute = '/(tabs)/home';
+      }
     } else {
       navRoute = `/user-profile/${item.senderId}`;
     }
@@ -163,7 +163,7 @@ export default function NotificationsScreen() {
           onPress={async () => {
             try {
               // TODO: Implement backend API call to mark all notifications as read
-              alert('Feature coming soon - backend API needed');
+              await markAllAsRead();
             } catch (err) {
               alert('Error marking all as read');
             }
@@ -194,7 +194,7 @@ export default function NotificationsScreen() {
       ) : (
         <FlatList
           data={notifications}
-          keyExtractor={n => n.id}
+          keyExtractor={(n: any) => String(n?._id || n?.id || Math.random())}
           initialNumToRender={15}
           maxToRenderPerBatch={10}
           windowSize={7}
@@ -211,8 +211,8 @@ export default function NotificationsScreen() {
                 <Image source={{ uri: item.senderAvatar && item.senderAvatar.trim() !== "" ? item.senderAvatar : DEFAULT_AVATAR_URL }} style={styles.nAvatar} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.nTitle}>
-                    <Text style={{ fontWeight: '700', color: '#FF6B00' }}>{item.senderName}</Text>
-                    <Text style={{ fontWeight: '400', color: '#444' }}> {item.message}</Text>
+                    <Text style={{ fontWeight: '700', color: '#FF6B00' }}>{String(item?.senderName || 'Someone')}</Text>
+                    <Text style={{ fontWeight: '400', color: '#444' }}> {getNotificationActionText(item)}</Text>
                   </Text>
                   <Text style={styles.nBody}>{formatTime(item.createdAt)}</Text>
                 </View>
@@ -222,7 +222,7 @@ export default function NotificationsScreen() {
               {item.type === 'follow-request' && (
                 <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginRight: 24, marginBottom: 8 }}>
                   <AcceptDeclineButtons item={item} onActionTaken={(id) => {
-                    setNotifications((prev) => prev.filter(n => n.id !== id));
+                    fetchNotifications();
                   }} />
                 </View>
               )}

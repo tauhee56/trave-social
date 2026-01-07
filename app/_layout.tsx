@@ -20,6 +20,19 @@ LogBox.ignoreLogs([
   'Native part of Reanimated doesn\'t seem to be initialized', // Suppress in Expo Go
 ]);
 
+if (typeof globalThis !== 'undefined' && !(globalThis as any).__traveUnhandledRejectionGuardInstalled) {
+  (globalThis as any).__traveUnhandledRejectionGuardInstalled = true;
+  (globalThis as any).onunhandledrejection = (event: any) => {
+    try {
+      const msg = String(event?.reason?.message ?? event?.reason ?? '');
+      if (msg.toLowerCase().includes('unable to activate keep awake')) {
+        if (typeof event?.preventDefault === 'function') event.preventDefault();
+        return;
+      }
+    } catch {}
+  };
+}
+
 // Silence noisy logs in production for performance
 if (!__DEV__) {
   const noop = () => {};
@@ -92,12 +105,31 @@ export default function RootLayout() {
     console.log('🔐 RootLayout AUTH EFFECT RUNNING');
     checkAuth();
 
-    // Listen for storage changes (logout events)
-    const checkInterval = setInterval(() => {
-      checkAuth();
-    }, 2000); // Check every 2 seconds for logout
+    // ✅ OPTIMIZED: Use event listener instead of polling
+    let unsubscribe: (() => void) | null = null;
+    
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      
+      // Listen for storage changes (more efficient than polling)
+      if (AsyncStorage.addEventListener) {
+        unsubscribe = AsyncStorage.addEventListener('auth-state-changed', checkAuth);
+      }
+    } catch (error) {
+      console.log('Storage event listener not available, using fallback timer');
+      // Fallback to less frequent polling if event listener not available
+      const checkInterval = setInterval(() => {
+        checkAuth();
+      }, 10000); // Reduced to 10 seconds from 2 seconds
+      
+      unsubscribe = () => clearInterval(checkInterval);
+    }
 
-    return () => clearInterval(checkInterval);
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   useEffect(() => {

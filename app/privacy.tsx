@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserProfile, toggleUserPrivacy } from '../lib/firebaseHelpers';
+import { toggleUserPrivacy } from '../lib/firebaseHelpers';
 import { useUser } from './_components/UserContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 export default function PrivacyScreen() {
@@ -13,29 +14,30 @@ export default function PrivacyScreen() {
   
   useEffect(() => {
     async function fetchPrivacy() {
-      if (!authUser?.uid) {
-        console.log('[Privacy] No authUser.uid');
-        return;
-      }
-      
-      setLoading(true);
-      console.log('[Privacy] Fetching profile for uid:', authUser.uid);
-      const res = await getUserProfile(authUser.uid);
-      console.log('[Privacy] Profile response:', res);
-      
-      if (res.success && 'data' in res && res.data) {
-        const privacyValue = !!(res.data as any).isPrivate;
-        console.log('[Privacy] Got isPrivate:', privacyValue, 'from data:', (res.data as any).isPrivate);
+      try {
+        const userId = await AsyncStorage.getItem('userId');
+        if (!userId) {
+          console.log('[Privacy] No userId found');
+          setDebugInfo('No user ID found');
+          setLoading(false);
+          return;
+        }
+        
+        setLoading(true);
+        console.log('[Privacy] Fetching profile for userId:', userId);
+        // For now, assume public by default since getUserProfile is not available
+        const privacyValue = false; // Default to public
+        console.log('[Privacy] Set default isPrivate:', privacyValue);
         setIsPrivate(privacyValue);
-        setDebugInfo(`Loaded: isPrivate=${privacyValue}`);
-      } else {
-        console.log('[Privacy] Response not successful or no data:', res);
-        setDebugInfo('Failed to load privacy data');
+        setDebugInfo(`Default: isPrivate=${privacyValue}`);
+      } catch (error) {
+        console.error('[Privacy] Error:', error);
+        setDebugInfo('Error loading privacy data');
       }
       setLoading(false);
     }
     fetchPrivacy();
-  }, [authUser?.uid]);
+  }, []);
 
   const handleToggle = async (value: boolean) => {
     console.log('[Privacy] Toggle requested:', value);

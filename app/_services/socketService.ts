@@ -309,3 +309,7 @@ export function subscribeToLiveStream(streamId: string, onUserJoined: (data: any
 export function sendLiveComment(streamId: string, comment: any) {
   socket.emit('sendLiveComment', { streamId, comment });
 }
+
+export default function SocketService() {
+  return null;
+}

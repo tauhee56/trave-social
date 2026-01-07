@@ -1,5 +1,8 @@
 import React from 'react';
-import { StyleSheet, Text, View, Image } from 'react-native';
+import { Dimensions, StyleSheet, Text, View, Image } from 'react-native';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const MAX_BUBBLE_WIDTH = Math.min(340, Math.floor(SCREEN_WIDTH * 0.74));
 
 type Props = {
   text?: string;
@@ -32,7 +35,7 @@ export default function MessageBubble({
   const isReplyFromSelf = replyTo?.senderId === currentUserId;
 
   return (
-    <View style={{ maxWidth: '100%' }}>
+    <View style={styles.outerWrap}>
       {hasReply && (
         <View style={[styles.replyPreview, isSelf ? styles.replyPreviewSelf : styles.replyPreviewOther]}>
           <View style={styles.replyLine} />
@@ -50,10 +53,12 @@ export default function MessageBubble({
         {imageUrl && <Image source={{ uri: imageUrl }} style={styles.msgImage} />}
         {text && <Text style={isSelf ? styles.msgTextSelf : styles.msgText}>{text}</Text>}
         <View style={styles.msgFooter}>
-          <Text style={isSelf ? styles.msgTimeSelf : styles.msgTime}>
-            {formatTime(createdAt)}
-            {editedAt && ' (edited)'}
-          </Text>
+          <View style={[styles.timePill, isSelf ? styles.timePillSelf : styles.timePillOther]}>
+            <Text style={isSelf ? styles.msgTimeSelf : styles.msgTime}>
+              {formatTime(createdAt)}
+              {editedAt && ' · edited'}
+            </Text>
+          </View>
         </View>
         {showTail && (isSelf ? <View style={styles.tailRight} /> : <View style={styles.tailLeft} />)}
       </View>
@@ -62,19 +67,23 @@ export default function MessageBubble({
 }
 
 const styles = StyleSheet.create({
+  outerWrap: {
+    maxWidth: MAX_BUBBLE_WIDTH,
+    flexShrink: 1,
+  },
   msgBubble: {
     position: 'relative',
-    borderRadius: 18,
+    borderRadius: 22,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    maxWidth: '92%',
+    paddingVertical: 11,
+    maxWidth: MAX_BUBBLE_WIDTH,
     minWidth: 60,
     flexShrink: 1,
     shadowColor: '#000',
     shadowOpacity: 0.08,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
   },
   msgBubbleCompact: {
     borderRadius: 14,
@@ -87,9 +96,15 @@ const styles = StyleSheet.create({
   },
   msgBubbleLeft: {
     backgroundColor: '#efefef',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    borderTopLeftRadius: 10,
   },
   msgBubbleRight: {
     backgroundColor: '#3797f0',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    borderTopRightRadius: 10,
   },
   tailLeft: {
     position: 'absolute',
@@ -114,29 +129,41 @@ const styles = StyleSheet.create({
     borderLeftColor: '#3797f0',
   },
   msgText: {
-    color: '#222',
+    color: '#1f2937',
     fontSize: 15,
+    lineHeight: 20,
     flexWrap: 'wrap',
   },
   msgTextSelf: {
     color: '#fff',
     fontSize: 15,
+    lineHeight: 20,
     flexWrap: 'wrap',
   },
   msgFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
+    justifyContent: 'flex-end',
+    marginTop: 6,
+  },
+  timePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  timePillOther: {
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  timePillSelf: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   msgTime: {
-    color: '#999',
+    color: 'rgba(0,0,0,0.55)',
     fontSize: 11,
-    marginTop: 4,
   },
   msgTimeSelf: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 11,
-    marginTop: 4,
   },
   msgImage: {
     width: 200,

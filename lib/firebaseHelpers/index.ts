@@ -55,7 +55,6 @@ export const editComment = firebaseHelpersDefault?.editComment;
 export const addCommentReply = firebaseHelpersDefault?.addCommentReply;
 export const createStory = firebaseHelpersDefault?.createStory;
 export const getActiveStories = firebaseHelpersDefault?.getActiveStories;
-export const getActiveLiveStreams = firebaseHelpersDefault?.getActiveLiveStreams;
 export const joinLiveStream = firebaseHelpersDefault?.joinLiveStream;
 export const leaveLiveStream = firebaseHelpersDefault?.leaveLiveStream;
 export const subscribeToLiveStream = firebaseHelpersDefault?.subscribeToLiveStream;
