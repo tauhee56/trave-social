@@ -34,7 +34,7 @@ export const FIREBASE_CONFIG = {
 
 // Google Maps Configuration
 export const GOOGLE_MAPS_CONFIG = {
-  apiKey: getEnvVar('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'),
+  apiKey: getEnvVar('EXPO_PUBLIC_GOOGLE_MAPS_API_KEY', getEnvVar('GOOGLE_MAP_API_KEY', '')),
   provider: 'google' as const,
 } as const;
 

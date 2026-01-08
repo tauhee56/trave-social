@@ -134,6 +134,7 @@
       "analyticsEnabled": true,
       "dailyCounterSampleRate": 0.05,
       "GOOGLE_MAP_API_KEY": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c",
+      "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c",
       "FIREBASE_API_KEY": "AIzaSyC_0pHFGAK5YySB--8hL3Ctz-u1cx4vaCk",
       "FIREBASE_AUTH_DOMAIN": "travel-app-3da72.firebaseapp.com",
       "FIREBASE_PROJECT_ID": "travel-app-3da72",
