@@ -54,10 +54,17 @@ export function useInboxPolling(
         userId,
         (data) => {
           console.log('🟢 CALLBACK FIRED: received', data.length, 'conversations');
-          if (!isMounted || loadingEnded) return;
-          loadingEnded = true;
+          if (!isMounted) return;
+
+          // Always update conversations on every poll so inbox stays fresh.
           setConversations(data);
-          setLoading(false);
+
+          // Only use loadingEnded to stop the initial loading spinner.
+          if (!loadingEnded) {
+            loadingEnded = true;
+            setLoading(false);
+          }
+
           setError(null);
         },
         pollingInterval

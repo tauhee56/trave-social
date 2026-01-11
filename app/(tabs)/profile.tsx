@@ -5,7 +5,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 // Firebase removed - using Backend API
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../lib/api';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
@@ -35,8 +35,36 @@ if (Platform.OS !== 'web') {
 }
 
 // Default avatar URL
-const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
+const DEFAULT_AVATAR_URL = 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d';
 const DEFAULT_IMAGE_URL = DEFAULT_AVATAR_URL;
+
+function normalizeAvatarUri(uri: any): string | null {
+  if (typeof uri !== 'string') return null;
+  const trimmed = uri.trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  if (lower === 'null' || lower === 'undefined' || lower === 'n/a' || lower === 'na') return null;
+  return trimmed;
+}
+
+function getInitials(nameOrUsername: any): string {
+  if (typeof nameOrUsername !== 'string') return 'U';
+  const cleaned = nameOrUsername.trim();
+  if (!cleaned) return 'U';
+
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0].slice(0, 1) + parts[1].slice(0, 1)).toUpperCase();
+}
+
+function normalizeExternalUrl(input: any): string | null {
+  if (typeof input !== 'string') return null;
+  const raw = input.trim();
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+  if (lower.startsWith('http://') || lower.startsWith('https://')) return raw;
+  return `https://${raw}`;
+}
 
 // Utility to parse/sanitize coordinates
 function parseCoord(val: any): number | null {
@@ -243,6 +271,13 @@ export default function Profile({ userIdProp }: any) {
           if (res.success) {
             // Update local state immediately
             setIsFollowing(false);
+            setProfile(prev => {
+              if (!prev) return prev;
+              const base = typeof prev.followersCount === 'number'
+                ? prev.followersCount
+                : (Array.isArray(prev.followers) ? prev.followers.length : 0);
+              return { ...prev, followersCount: Math.max(0, base - 1) };
+            });
             // Refresh profile data from backend to get updated counts
             const profileRes = await getUserProfileAPI(viewedUserId, currentUserId || undefined);
             if (profileRes.success && profileRes.data) {
@@ -257,6 +292,13 @@ export default function Profile({ userIdProp }: any) {
           if (res.success) {
             // Update local state immediately
             setIsFollowing(true);
+            setProfile(prev => {
+              if (!prev) return prev;
+              const base = typeof prev.followersCount === 'number'
+                ? prev.followersCount
+                : (Array.isArray(prev.followers) ? prev.followers.length : 0);
+              return { ...prev, followersCount: base + 1 };
+            });
             // Refresh profile data from backend to get updated counts
             const profileRes = await getUserProfileAPI(viewedUserId, currentUserId || undefined);
             if (profileRes.success && profileRes.data) {
@@ -433,7 +475,7 @@ export default function Profile({ userIdProp }: any) {
           console.log('[Profile] Fetching data for user:', viewedUserId, 'requester:', currentUserId);
 
           // Fetch profile with requester ID for privacy check
-          const profileRes = await getUserProfileAPI(viewedUserId, currentUserId);
+          const profileRes = await getUserProfileAPI(viewedUserId, currentUserId || undefined);
           console.log('[Profile] Profile response:', profileRes);
           console.log('[Profile] Full response structure:', {
             hasSuccess: 'success' in profileRes,
@@ -643,13 +685,33 @@ export default function Profile({ userIdProp }: any) {
                 }
               }}
             >
-              <ExpoImage
-                source={{ uri: profile?.avatar || (profile as any)?.photoURL || DEFAULT_AVATAR_URL }}
-                style={[styles.avatar, isPrivate && !isOwnProfile && !approvedFollower && { opacity: 0.3 }]}
-                contentFit="cover"
-                transition={200}
-                cachePolicy="memory-disk"
-              />
+              {(() => {
+                const avatarUri =
+                  normalizeAvatarUri(profile?.avatar) ||
+                  normalizeAvatarUri((profile as any)?.photoURL) ||
+                  null;
+
+                const dimmed = isPrivate && !isOwnProfile && !approvedFollower;
+
+                if (avatarUri) {
+                  return (
+                    <ExpoImage
+                      source={{ uri: avatarUri }}
+                      style={[styles.avatar, dimmed && { opacity: 0.3 }]}
+                      contentFit="cover"
+                      transition={200}
+                      cachePolicy="memory-disk"
+                    />
+                  );
+                }
+
+                const initials = getInitials(profile?.name || (profile as any)?.displayName || profile?.username || 'User');
+                return (
+                  <View style={[styles.avatar, styles.avatarFallback, dimmed && { opacity: 0.3 }]}>
+                    <Text style={styles.avatarInitials}>{initials}</Text>
+                  </View>
+                );
+              })()}
               {isPrivate && !isOwnProfile && !approvedFollower && (
                 <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 60 }}>
                   <Ionicons name="lock-closed" size={40} color="#fff" />
@@ -779,7 +841,27 @@ export default function Profile({ userIdProp }: any) {
           <Text style={styles.displayName}>{profile?.name || (profile as any)?.displayName || profile?.username || 'User'}</Text>
             {!!profile?.username && <Text style={styles.username}>@{profile.username}</Text>}
           {!!profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
-          {!!profile?.website && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.website}>🔗 {profile.website}</Text>}
+          {!!profile?.website && (!isPrivate || isOwnProfile || approvedFollower) && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={async () => {
+                const url = normalizeExternalUrl(profile.website);
+                if (!url) return;
+                try {
+                  const canOpen = await Linking.canOpenURL(url);
+                  if (!canOpen) {
+                    Alert.alert('Invalid Link', 'Could not open this website link.');
+                    return;
+                  }
+                  await Linking.openURL(url);
+                } catch {
+                  Alert.alert('Error', 'Failed to open website link.');
+                }
+              }}
+            >
+              <Text style={styles.website}>🔗 {profile.website}</Text>
+            </TouchableOpacity>
+          )}
           {!!(profile as any)?.location && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.location}>📍 {(profile as any).location}</Text>}
           {!!(profile as any)?.phone && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.phone}>📱 {(profile as any).phone}</Text>}
           {!!(profile as any)?.interests && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.interests}>✨ {(profile as any).interests}</Text>}
@@ -1130,8 +1212,9 @@ export default function Profile({ userIdProp }: any) {
                   setUserMenuVisible(false);
                   // Share profile
                   import('react-native').then(({ Share }) => {
+                    const deepLink = `trave-social://user-profile/${viewedUserId}`;
                     Share.share({
-                      message: `Check out ${profile?.name || 'this user'}'s profile on Trave Social!`,
+                      message: `Check out ${profile?.name || 'this user'}'s profile on Trave Social!\n${deepLink}`,
                       title: 'Share Profile'
                     });
                   });
@@ -1151,7 +1234,7 @@ export default function Profile({ userIdProp }: any) {
                   setUserMenuVisible(false);
                   // Copy profile URL
                   import('expo-clipboard').then(async (Clipboard) => {
-                    await Clipboard.setStringAsync(`trave-social://user/${viewedUserId}`);
+                    await Clipboard.setStringAsync(`trave-social://user-profile/${viewedUserId}`);
                     Alert.alert('Copied', 'Profile link copied to clipboard');
                   }).catch(() => {
                     Alert.alert('Error', 'Could not copy link');
@@ -1197,13 +1280,15 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 0, paddingBottom: 0 },
   avatarContainer: { alignItems: 'center', paddingVertical: 12, marginTop: 4 },
   avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#eee', borderWidth: 2, borderColor: '#f39c12' },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF2FF' },
+  avatarInitials: { fontSize: 26, fontWeight: '800', color: '#667085' },
   statsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16, gap: 24 },
   statItem: { alignItems: 'center', minWidth: 50 },
   statNum: { fontWeight: '700', fontSize: 16, color: '#222' },
   statLbl: { fontSize: 11, color: '#666', marginTop: 2 },
   infoBlock: { alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16 },
   displayName: { fontSize: 15, fontWeight: '600', color: '#222' },
-    username: { fontSize: 13, color: '#667eea', marginTop: 2, fontWeight: '500' },
+  username: { fontSize: 13, color: '#667eea', marginTop: 2, fontWeight: '500' },
   bio: { fontSize: 13, color: '#555', marginTop: 4, textAlign: 'center', lineHeight: 18 },
   website: { fontSize: 12, color: '#007aff', marginTop: 4 },
   location: { fontSize: 12, color: '#666', marginTop: 3 },

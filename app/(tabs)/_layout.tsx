@@ -33,6 +33,10 @@ const isLargeDevice = SCREEN_WIDTH >= 414;
 const ICON_SIZE = isSmallDevice ? 18 : (isLargeDevice ? 22 : 20);
 const CHEVRON_SIZE = isSmallDevice ? 18 : 20;
 
+const TAB_ACTIVE_COLOR = '#f39c12';
+const TAB_INACTIVE_COLOR = '#777';
+const TAB_LABEL_SIZE = 10;
+
 // Create a context for tab events
 const TabEventContext = createContext<{ emitHomeTabPress: () => void; subscribeHomeTabPress: (cb: () => void) => () => void } | undefined>(undefined);
 
@@ -42,6 +46,7 @@ export const useTabEvent = () => useContext(TabEventContext);
 const HomeTabButton = (props: any) => {
   const router = useRouter();
   const tabEvent = useTabEvent();
+  const selected = props.accessibilityState?.selected === true;
   return (
     <TouchableOpacity
       {...props}
@@ -53,29 +58,31 @@ const HomeTabButton = (props: any) => {
       style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
       activeOpacity={0.7}
     >
-      <Ionicons name={props.accessibilityState?.selected ? 'home' : 'home-outline'} size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
-      <Text style={{ fontSize: 10, color: props.accessibilityState?.selected ? '#f39c12' : '#777', marginTop: 2 }}>Home</Text>
+      <Ionicons name={selected ? 'home' : 'home-outline'} size={ICON_SIZE} color={selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR} />
+      <Text style={{ fontSize: TAB_LABEL_SIZE, color: selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR, marginTop: 2, fontWeight: selected ? '700' : '500' }}>Home</Text>
     </TouchableOpacity>
   );
 };
 
 const SearchTabButton = (props: any) => {
   const router = useRouter();
+  const selected = props.accessibilityState?.selected === true;
   return (
     <TouchableOpacity
       {...props}
-      onPress={() => { logAnalyticsEvent('tab_search_press'); router.push('/search-modal'); }}
+      onPress={() => { logAnalyticsEvent('tab_search_press', { selected }); router.push('/(tabs)/search'); }}
       style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
       activeOpacity={0.7}
     >
-      <Ionicons name="search-outline" size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
-      <Text style={{ fontSize: 10, color: '#777', marginTop: 2 }}>Search</Text>
+      <Ionicons name={selected ? 'search' : 'search-outline'} size={ICON_SIZE} color={selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR} />
+      <Text style={{ fontSize: TAB_LABEL_SIZE, color: selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR, marginTop: 2, fontWeight: selected ? '700' : '500' }}>Search</Text>
     </TouchableOpacity>
   );
 };
 
 const MapTabButton = (props: any) => {
   const router = useRouter();
+  const selected = props.accessibilityState?.selected === true;
   return (
     <TouchableOpacity
       {...props}
@@ -83,14 +90,15 @@ const MapTabButton = (props: any) => {
       style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
       activeOpacity={0.7}
     >
-      <Ionicons name={props.accessibilityState?.selected ? 'map' : 'map-outline'} size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
-      <Text style={{ fontSize: 10, color: props.accessibilityState?.selected ? '#f39c12' : '#777', marginTop: 2 }}>Map</Text>
+      <Ionicons name={selected ? 'map' : 'map-outline'} size={ICON_SIZE} color={selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR} />
+      <Text style={{ fontSize: TAB_LABEL_SIZE, color: selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR, marginTop: 2, fontWeight: selected ? '700' : '500' }}>Map</Text>
     </TouchableOpacity>
   );
 };
 
 const ProfileTabButton = (props: any) => {
   const router = useRouter();
+  const selected = props.accessibilityState?.selected === true;
   return (
     <TouchableOpacity
       {...props}
@@ -98,8 +106,8 @@ const ProfileTabButton = (props: any) => {
       style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
       activeOpacity={0.7}
     >
-      <Ionicons name={props.accessibilityState?.selected ? 'person' : 'person-outline'} size={24} color={props.accessibilityState?.selected ? '#f39c12' : '#777'} />
-      <Text style={{ fontSize: 10, color: props.accessibilityState?.selected ? '#f39c12' : '#777', marginTop: 2 }}>Profile</Text>
+      <Ionicons name={selected ? 'person' : 'person-outline'} size={ICON_SIZE} color={selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR} />
+      <Text style={{ fontSize: TAB_LABEL_SIZE, color: selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR, marginTop: 2, fontWeight: selected ? '700' : '500' }}>Profile</Text>
     </TouchableOpacity>
   );
 };
@@ -125,8 +133,8 @@ export default function TabsLayout() {
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: '#f39c12',
-          tabBarInactiveTintColor: '#777',
+          tabBarActiveTintColor: TAB_ACTIVE_COLOR,
+          tabBarInactiveTintColor: TAB_INACTIVE_COLOR,
           tabBarShowLabel: true,
           lazy: true,
           freezeOnBlur: true,
@@ -190,8 +198,8 @@ export default function TabsLayout() {
                   style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="add" size={28} color="#777" />
-                  <Text style={{ fontSize: 10, color: '#777', marginTop: 2 }}>Post</Text>
+                  <Ionicons name="add" size={28} color={TAB_INACTIVE_COLOR} />
+                  <Text style={{ fontSize: TAB_LABEL_SIZE, color: TAB_INACTIVE_COLOR, marginTop: 2, fontWeight: '500' }}>Post</Text>
                 </TouchableOpacity>
               );
             },
@@ -205,7 +213,7 @@ export default function TabsLayout() {
               <Ionicons name={focused ? "map" : "map-outline"} size={24} color={color} />
             ),
             tabBarLabel: ({ focused }) => (
-              <Text style={{ fontSize: 10, color: focused ? '#f39c12' : '#777', marginTop: 2 }}>Map</Text>
+              <Text style={{ fontSize: TAB_LABEL_SIZE, color: focused ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR, marginTop: 2 }}>Map</Text>
             ),
             tabBarButton: (props) => <MapTabButton {...props} />,
           }}

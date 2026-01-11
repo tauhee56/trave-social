@@ -444,7 +444,7 @@ export default function EditProfile() {
                             }
                           }, 100);
                         } else {
-                          console.error('❌ [Logout] Failed:', result.error);
+                          console.error('❌ [Logout] Failed:', result);
                           Alert.alert('Error', 'Failed to log out');
                         }
                       } catch (err: any) {
@@ -460,11 +460,11 @@ export default function EditProfile() {
             <Text style={styles.logoutText}>Log out</Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={[styles.shareBtn, saving && { opacity: 0.7 }]} 
+            style={[styles.shareBtn, saving && { opacity: 0.7 }]}
             onPress={handleSave} 
             disabled={saving}
           >
-            <Text style={styles.shareText}>{saving ? 'Saving...' : 'Share'}</Text>
+            <Text style={styles.shareText}>{saving ? 'Saving...' : 'Save'}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

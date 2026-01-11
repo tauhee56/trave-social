@@ -25,7 +25,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { logger } from '../utils/logger';
@@ -35,6 +35,7 @@ import { Audio } from 'expo-av';
 import { ZEEGOCLOUD_CONFIG, generateRoomId } from '../config/zeegocloud';
 import ZeegocloudStreamingService from '../services/implementations/ZeegocloudStreamingService';
 import ZeegocloudLiveHost from './_components/ZeegocloudLiveHost';
+import { endLiveStream, startLiveStream } from '../lib/firebaseHelpers/live';
 
 let MapView: any = null;
 let Marker: any = null;
@@ -91,11 +92,14 @@ interface Viewer {
 
 export default function GoLiveScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const zeegocloudServiceRef = useRef<ZeegocloudStreamingService | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [roomId, setRoomId] = useState('');
   const [streamTitle, setStreamTitle] = useState('');
+
+  const backendStreamIdRef = useRef<string | null>(null);
 
   // Refs
   const isStreamingRef = useRef(isStreaming);
@@ -259,6 +263,28 @@ export default function GoLiveScreen() {
         // Save stream to backend
         // TODO: Call your backend API to save stream info
 
+        try {
+          const userId = currentUser?.uid || 'anonymous';
+          const userName = currentUser?.displayName || 'Anonymous';
+          const userAvatar = currentUser?.photoURL || DEFAULT_AVATAR_URL;
+          const effectiveRoomId = typeof zeegocloudServiceRef.current.getRoomId === 'function'
+            ? zeegocloudServiceRef.current.getRoomId()
+            : roomId;
+
+          const resp: any = await startLiveStream(userId, {
+            title: streamTitle,
+            roomId: effectiveRoomId,
+            channelName: effectiveRoomId,
+            userName,
+            userAvatar,
+          });
+
+          const newId = resp?.id ? String(resp.id) : (resp?.data?.id ? String(resp.data.id) : null);
+          if (newId) backendStreamIdRef.current = newId;
+        } catch (e: any) {
+          logger.error('Start live stream (backend) failed:', e);
+        }
+
         logger.info('Stream started:', roomId);
       } else {
         Alert.alert('Error', 'Failed to initialize streaming');
@@ -294,6 +320,18 @@ export default function GoLiveScreen() {
               isStreamingRef.current = false;
 
               // TODO: Update backend that stream ended
+
+              try {
+                const streamId = backendStreamIdRef.current;
+                const userId = currentUser?.uid;
+                if (streamId && userId) {
+                  await endLiveStream(String(streamId), String(userId));
+                }
+              } catch (e: any) {
+                logger.error('End live stream (backend) failed:', e);
+              }
+
+              backendStreamIdRef.current = null;
 
               router.back();
             } catch (error) {
@@ -502,7 +540,7 @@ export default function GoLiveScreen() {
         )}
 
         {/* Bottom Controls */}
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { paddingBottom: 16 + (insets?.bottom || 0) }]}>
           <TouchableOpacity style={styles.controlButton} onPress={toggleMute}>
             <Ionicons name={isMuted ? "mic-off" : "mic"} size={24} color="#fff" />
           </TouchableOpacity>
@@ -651,8 +689,8 @@ const styles = StyleSheet.create({
   statsPanel: { position: 'absolute', top: 70, right: 16, backgroundColor: 'rgba(0,0,0,0.8)', padding: 16, borderRadius: 12, minWidth: 200 },
   statsTitle: { fontSize: 16, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
   statsText: { fontSize: 14, color: '#fff', marginTop: 4 },
-  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', padding: 16, backgroundColor: 'rgba(0,0,0,0.5)' },
-  controlButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
+  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16, backgroundColor: 'transparent' },
+  controlButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   endButton: { backgroundColor: '#e74c3c' },
   badge: { position: 'absolute', top: -4, right: -4, backgroundColor: '#e74c3c', borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   badgeText: { fontSize: 10, color: '#fff', fontWeight: 'bold' },

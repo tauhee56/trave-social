@@ -21,6 +21,7 @@ import StoriesViewer from '../../app/_components/StoriesViewer';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_CATEGORIES, getAllStoriesForFeed, getUserProfile } from '../../lib/firebaseHelpers/index';
+import { getCategoryImageSource } from '../../lib/categoryImages';
 import { apiService } from '../_services/apiService';
 
 const { width } = Dimensions.get("window");
@@ -29,7 +30,7 @@ export default function Home() {
     const defaultCategoryObjects = Array.isArray(DEFAULT_CATEGORIES)
       ? DEFAULT_CATEGORIES.map((cat: any) =>
           typeof cat === 'string'
-            ? { name: cat, image: 'https://via.placeholder.com/40x40.png?text=' + encodeURIComponent(cat) }
+            ? { name: cat, image: '' }
             : cat
         )
       : [];
@@ -267,12 +268,12 @@ export default function Home() {
             const cats = await apiService.getCategories();
             const mappedCats = Array.isArray(cats?.data) 
                 ? cats.data.map((c: any) => {
-                    if (typeof c === 'string') return { name: c, image: 'https://via.placeholder.com/40x40.png?text=' + encodeURIComponent(c) };
+                    if (typeof c === 'string') return { name: c, image: '' };
                     return {
                         name: typeof c.name === 'string' ? c.name : '',
-                        image: typeof c.image === 'string' ? c.image : 'https://via.placeholder.com/40x40.png?text=' + encodeURIComponent(c.name || 'Category')
+                        image: typeof c.image === 'string' ? c.image : ''
                     };
-                }).filter((c: any) => c.name && c.image)
+                }).filter((c: any) => c.name)
                 : [];
             setCategories(mappedCats.length > 0 ? mappedCats : defaultCategoryObjects);
         } catch (error) {
@@ -471,7 +472,7 @@ export default function Home() {
                                         }}
                                     >
                                         <View style={[styles.chipIconWrap, filter === cat.name && styles.chipIconWrapActive]}>
-                                            <ExpoImage source={{ uri: cat.image }} style={styles.categoryImage} />
+                                            <ExpoImage source={getCategoryImageSource(cat.name, cat.image)} style={styles.categoryImage} />
                                         </View>
                                         <Text style={[styles.chipText, filter === cat.name && styles.chipTextActive]}>{cat.name}</Text>
                                     </TouchableOpacity>

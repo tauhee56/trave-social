@@ -1,6 +1,5 @@
+import SearchModal from '../search-modal';
 
-
-export default function SearchRedirect() {
-  // Blank screen for tab, navigation handled by tabBarButton in _layout
-  return null;
+export default function SearchScreen() {
+  return <SearchModal />;
 }

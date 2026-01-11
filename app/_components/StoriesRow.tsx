@@ -44,6 +44,16 @@ interface StoryUser {
   stories: any[];
 }
 
+function getStoryBubbleThumbnail(storyUser: StoryUser, defaultAvatarUrl: string): string {
+  const first = Array.isArray(storyUser?.stories) ? storyUser.stories[0] : undefined;
+  const mediaType = first?.mediaType;
+  if (mediaType === 'video') {
+    return first?.thumbnailUrl || first?.thumbnail || storyUser?.userAvatar || defaultAvatarUrl;
+  }
+  // image
+  return first?.imageUrl || first?.image || storyUser?.userAvatar || defaultAvatarUrl;
+}
+
 function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger, resetTrigger }: { onStoryPress?: (stories: any[], initialIndex: number) => void; onStoryViewerClose?: () => void; refreshTrigger?: number; resetTrigger?: number }): React.ReactElement {
   const [storyUsers, setStoryUsers] = useState<StoryUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -220,6 +230,7 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
             id: story._id || story.id,
             imageUrl: story.image || story.imageUrl || story.mediaUrl,
             videoUrl: story.video || story.videoUrl,
+            thumbnailUrl: story.thumbnail || story.thumbnailUrl,
             mediaType: story.video ? 'video' : 'image'
           }));
           
@@ -271,50 +282,26 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
   }
 
   // Check if current user has a story
-  const hasMyStory = authUser && authUser.uid ? storyUsers.some(u => u.userId === authUser.uid) : false;
+  const myUser = authUser && authUser.uid ? storyUsers.find(u => u.userId === authUser.uid) : undefined;
+  const hasMyStory = !!(myUser && myUser.stories && myUser.stories.length > 0);
   return (
     <View style={styles.container}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12 }}>
         {/* Current user story: avatar only if exists, plus if not */}
         <View style={styles.storyWrapper}>
-          {hasMyStory ? (
-            <View>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  const myUser = storyUsers.find(u => u.userId === authUser?.uid);
-                  if (myUser && onStoryPress) onStoryPress(myUser.stories, 0);
-                }}
-              >
-                <LinearGradient colors={['#f39c12', '#e0245e', '#007aff']} style={styles.gradientBorder}>
-                  <View style={styles.storyAvatarWrapper}>
-                    <ExpoImage
-                      source={{ uri: currentUserAvatar || DEFAULT_AVATAR_URL }}
-                      style={styles.storyAvatar}
-                      contentFit="cover"
-                      cachePolicy="memory-disk"
-                    />
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-              {/* Add story button overlay - positioned at bottom-right corner */}
-              <TouchableOpacity
-                pointerEvents={showUploadModal ? 'none' : 'auto'}
-                hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
-                style={[styles.addButton, { position: 'absolute', bottom: -8, right: -8, zIndex: 10 }]}
-                onPress={handleAddStory}
-              >
-                <Feather name="plus" size={18} color="#fff" />
-              </TouchableOpacity>
-            </View>
-          ) : (
+          <View style={styles.currentUserTile}>
             <TouchableOpacity
-              pointerEvents={showUploadModal ? 'none' : 'auto'}
               style={styles.storyButton}
               activeOpacity={0.8}
-              onPress={handleAddStory}
+              disabled={showUploadModal}
+              onPress={() => {
+                handleAddStory();
+              }}
             >
-              <LinearGradient colors={['#ddd', '#ddd']} style={styles.gradientBorder}>
+              <LinearGradient
+                colors={['#F2F4F7', '#EDEFF3']}
+                style={[styles.gradientBorder, styles.ctaGradientBorder]}
+              >
                 <View style={styles.storyAvatarWrapper}>
                   <ExpoImage
                     source={{ uri: currentUserAvatar || DEFAULT_AVATAR_URL }}
@@ -322,15 +309,49 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
                     contentFit="cover"
                     cachePolicy="memory-disk"
                   />
-                  <View style={styles.addButton}>
-                    <Feather name="plus" size={18} color="#fff" />
-                  </View>
                 </View>
               </LinearGradient>
             </TouchableOpacity>
-          )}
-          <Text style={styles.userName} numberOfLines={1}>{hasMyStory ? 'Your Story' : 'Add Story'}</Text>
+
+            <TouchableOpacity
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={styles.addButton}
+              onPress={handleAddStory}
+              activeOpacity={0.9}
+              disabled={showUploadModal}
+            >
+              <Feather name="plus" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.userName, !hasMyStory && styles.userNameCta]} numberOfLines={1}>
+            {'Create'}
+          </Text>
         </View>
+
+        {hasMyStory && myUser ? (
+          <View style={styles.storyWrapper} key="my-story">
+            <TouchableOpacity
+              style={styles.storyButton}
+              activeOpacity={0.8}
+              onPress={() => {
+                if (onStoryPress) onStoryPress(myUser.stories, 0);
+              }}
+            >
+              <LinearGradient colors={['#f39c12', '#e0245e', '#007aff']} style={styles.gradientBorder}>
+                <View style={styles.storyAvatarWrapper}>
+                  <ExpoImage
+                    source={{ uri: getStoryBubbleThumbnail(myUser, DEFAULT_AVATAR_URL) }}
+                    style={styles.storyAvatar}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+            <Text style={styles.userName} numberOfLines={1}>{'Your Story'}</Text>
+          </View>
+        ) : null}
+
         {/* Other users' stories */}
         {authUser && authUser.uid ? storyUsers.filter(u => u.userId !== authUser.uid).map((user, idx) => (
           <View style={styles.storyWrapper} key={user.userId}>
@@ -342,7 +363,7 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
               <LinearGradient colors={['#f39c12', '#e0245e', '#007aff']} style={styles.gradientBorder}>
                 <View style={styles.storyAvatarWrapper}>
                   <ExpoImage
-                    source={{ uri: user.userAvatar || DEFAULT_AVATAR_URL }}
+                    source={{ uri: getStoryBubbleThumbnail(user, DEFAULT_AVATAR_URL) }}
                     style={styles.storyAvatar}
                     contentFit="cover"
                     cachePolicy="memory-disk"
@@ -606,46 +627,53 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
                 onPress={async () => {
                   if (!selectedMedia || !authUser || uploading) return;
                   setUploading(true);
-                  setUploadProgress(10);
-                  let uploadUri = selectedMedia.uri;
-                  const mediaType = selectedMedia.type === 'video' ? 'video' : 'image';
-                  
-                  // Compress image before upload (handle errors gracefully)
-                  if (mediaType === 'image') {
-                    try {
-                      console.log('[StoriesRow] Attempting to compress image:', selectedMedia.uri);
-                      const manipResult = await ImageManipulator.manipulateAsync(
-                        selectedMedia.uri,
-                        [{ resize: { width: 1080 } }],
-                        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-                      );
-                      uploadUri = manipResult.uri;
-                      console.log('[StoriesRow] ✅ Image compressed successfully');
-                    } catch (err) {
-                      // Fallback to original if compression fails
-                      console.warn('[StoriesRow] ⚠️ Image compression failed, using original:', err);
-                      uploadUri = selectedMedia.uri;
+                  setUploadProgress(0);
+
+                  let didSucceed = false;
+                  try {
+                    let uploadUri = selectedMedia.uri;
+                    const mediaType = selectedMedia.type === 'video' ? 'video' : 'image';
+
+                    // Compress image before upload (handle errors gracefully)
+                    if (mediaType === 'image') {
+                      try {
+                        console.log('[StoriesRow] Attempting to compress image:', selectedMedia.uri);
+                        const manipResult = await ImageManipulator.manipulateAsync(
+                          selectedMedia.uri,
+                          [{ resize: { width: 1080 } }],
+                          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+                        );
+                        uploadUri = manipResult.uri;
+                        console.log('[StoriesRow] ✅ Image compressed successfully');
+                      } catch (err) {
+                        // Fallback to original if compression fails
+                        console.warn('[StoriesRow] ⚠️ Image compression failed, using original:', err);
+                        uploadUri = selectedMedia.uri;
+                      }
                     }
-                  }
-                  
-                  let progress = 10;
-                  const interval = setInterval(() => {
-                    progress += 20;
-                    setUploadProgress(progress);
-                  }, 400);
 
-                  // Pass location data to createStory
-                  const storyRes = await createStory(
-                    typeof authUser?.uid === 'string' ? authUser.uid : '',
-                    uploadUri,
-                    mediaType,
-                    selectedMedia.locationData // Pass location data
-                  );
+                    // Pass location data + real progress callback to createStory
+                    const storyRes = await createStory(
+                      typeof authUser?.uid === 'string' ? authUser.uid : '',
+                      uploadUri,
+                      mediaType,
+                      selectedMedia.locationData,
+                      (percent: number) => {
+                        setUploadProgress((prev) => {
+                          const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+                          const next = Math.min(99, Math.max(prev, clamped));
+                          return next;
+                        });
+                      }
+                    );
 
-                  clearInterval(interval);
-                  setUploadProgress(100);
-                  
-                  if (storyRes.success) {
+                    if (!storyRes?.success) {
+                      throw new Error('Failed to upload story');
+                    }
+
+                    didSucceed = true;
+                    setUploadProgress(100);
+
                     await loadStories();
                     setTimeout(() => {
                       setUploading(false);
@@ -653,10 +681,16 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
                       setSelectedMedia(null);
                       setLocationQuery('');
                       setLocationSuggestions([]);
+                      setUploadProgress(0);
                     }, 600);
-                  } else {
-                    setUploading(false);
-                    Alert.alert('Error', 'Failed to upload story');
+                  } catch (error: any) {
+                    console.error('[StoriesRow] ❌ Story upload failed:', error);
+                    setUploadProgress(0);
+                    Alert.alert('Error', error?.message || 'Failed to upload story');
+                  } finally {
+                    if (!didSucceed) {
+                      setUploading(false);
+                    }
                   }
                 }}
               >
@@ -701,16 +735,28 @@ const styles = StyleSheet.create({
   },
   addButton: {
     position: 'absolute',
-    bottom: -16,
-    right: -16,
+    bottom: -6,
+    right: -6,
     backgroundColor: '#007aff',
-    borderRadius: 12,
-    width: 26,
-    height: 26,
+    borderRadius: 14,
+    width: 28,
+    height: 28,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  currentUserTile: {
+    position: 'relative',
+  },
+  ctaGradientBorder: {
+    borderWidth: 1,
+    borderColor: '#E6EAF0',
   },
   storyWrapper: {
     alignItems: 'center',
@@ -743,11 +789,14 @@ const styles = StyleSheet.create({
     borderRadius: 11,
   },
   userName: {
-    fontSize: 10,
-    fontWeight: '500',
+    fontSize: 11,
+    fontWeight: '600',
     width: 72,
     textAlign: 'center',
     color: '#222',
+  },
+  userNameCta: {
+    color: '#111',
   },
   uploadModalCard: {
     flex: 1,

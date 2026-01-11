@@ -1,35 +1,106 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from "react";
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from './_components/UserContext';
 
 export default function Archive() {
   const router = useRouter();
   const user = useUser();
+  const [uid, setUid] = useState<string | null>(null);
   const [archived, setArchived] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // const user = getCurrentUser();
-    // if (!user) {
-    //   setLoading(false);
-    //   return;
-    // }
-    // TODO: Use user from context or props
+  const fetchArchived = useCallback(async (activeUid: string) => {
     setLoading(true);
-    // @ts-ignore
-    import('../lib/firebaseHelpers/archive').then((mod: { getArchivedConversations: (uid: string) => Promise<{ success: boolean; data?: any[] }> }) => {
-      mod.getArchivedConversations(user.uid).then((result: { success: boolean; data?: any[] }) => {
-        if (result.success) {
-          setArchived(result.data || []);
+    try {
+      const mod: { getArchivedConversations: (id: string) => Promise<{ success: boolean; data?: any[] }> } = await import('../lib/firebaseHelpers/archive');
+      const result = await mod.getArchivedConversations(activeUid);
+      if (result?.success) {
+        const raw = Array.isArray(result.data) ? result.data : [];
+
+        const getSortTime = (c: any) => {
+          const t = c?.updatedAt || c?.lastMessageAt || c?.lastMessageTime || c?.createdAt;
+          const d = t?.toDate ? t.toDate() : (t ? new Date(t) : null);
+          return d && !Number.isNaN(d.getTime()) ? d.getTime() : 0;
+        };
+
+        const resolveOtherUserId = (c: any) => {
+          const otherFromObj = c?.otherUser?.id;
+          if (typeof otherFromObj === 'string' && otherFromObj.trim() !== '') return otherFromObj;
+          const participants = Array.isArray(c?.participants) ? c.participants.map(String) : [];
+          const otherFromParticipants = participants.find((p: string) => p !== String(activeUid));
+          return typeof otherFromParticipants === 'string' ? otherFromParticipants : null;
+        };
+
+        const map = new Map<string, any>();
+        for (const c of raw) {
+          const otherId = resolveOtherUserId(c);
+          const key = otherId || String(c?.conversationId || c?.id || c?._id);
+          const existing = map.get(key);
+          if (!existing) {
+            map.set(key, c);
+          } else {
+            const keep = getSortTime(c) >= getSortTime(existing) ? c : existing;
+            map.set(key, keep);
+          }
         }
-        setLoading(false);
-      });
-    });
+
+        const deduped = Array.from(map.values()).sort((a, b) => getSortTime(b) - getSortTime(a));
+        setArchived(deduped);
+      } else {
+        setArchived([]);
+      }
+    } catch {
+      setArchived([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    (async () => {
+      const contextUid = (user as any)?.uid;
+      if (typeof contextUid === 'string' && contextUid.trim() !== '') {
+        if (isMounted) setUid(contextUid);
+        return;
+      }
+
+      try {
+        const stored = await AsyncStorage.getItem('userId');
+        if (isMounted) setUid(typeof stored === 'string' && stored.trim() !== '' ? stored : null);
+      } catch {
+        if (isMounted) setUid(null);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!uid) {
+      setLoading(false);
+      setArchived([]);
+      return;
+    }
+
+    fetchArchived(uid);
+  }, [uid]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!uid) return;
+      fetchArchived(uid);
+    }, [fetchArchived, uid])
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -44,6 +115,10 @@ export default function Archive() {
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator size="large" color="#FF8800" />
         </View>
+      ) : !uid ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <Text style={{ color: '#999', fontSize: 16, textAlign: 'center' }}>Please sign in to view archived chats</Text>
+        </View>
       ) : archived.length === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
           <Text style={{ color: '#999', fontSize: 16, textAlign: 'center' }}>No archived chats yet</Text>
@@ -51,7 +126,7 @@ export default function Archive() {
       ) : (
         <FlatList
           data={archived}
-          keyExtractor={t => t.id}
+          keyExtractor={(t) => t?.otherUser?.id || t?.conversationId || t?.id}
           style={{ width: '100%' }}
           renderItem={({ item }) => (
             <Swipeable
@@ -59,13 +134,11 @@ export default function Archive() {
                 <TouchableOpacity
                   style={{ backgroundColor: '#FF8800', justifyContent: 'center', alignItems: 'center', width: 100, height: '100%', borderRadius: 12 }}
                   onPress={async () => {
-                    // const user = getCurrentUser();
-                    // if (!user) return;
-                    // TODO: Use user from context or props
+                    if (!uid) return;
                     // @ts-ignore
                     const mod: { unarchiveConversation: (id: string, uid: string) => Promise<any> } = await import('../lib/firebaseHelpers/archive');
-                    await mod.unarchiveConversation(item.id, user.uid);
-                    setArchived(archived.filter(c => c.id !== item.id));
+                    await mod.unarchiveConversation(item.id, uid);
+                    setArchived((prev) => prev.filter(c => c.id !== item.id));
                   }}
                 >
                   <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Unarchive</Text>
@@ -74,7 +147,30 @@ export default function Archive() {
             >
               <TouchableOpacity
                 style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#eee' }}
-                onPress={() => router.push({ pathname: '/dm', params: { id: item.id } })}
+                onPress={() => {
+                  const otherId = typeof item?.otherUser?.id === 'string'
+                    ? item.otherUser.id
+                    : (Array.isArray(item?.participants)
+                      ? item.participants.map(String).find((p: string) => p !== String(uid))
+                      : null);
+
+                  const name = item?.otherUser?.displayName || item?.otherUser?.name;
+                  const convoId = item?.conversationId || item?.id || item?._id;
+
+                  if (otherId) {
+                    router.push({
+                      pathname: '/dm',
+                      params: {
+                        otherUserId: otherId,
+                        conversationId: convoId,
+                        user: name
+                      }
+                    });
+                    return;
+                  }
+
+                  router.push({ pathname: '/dm', params: { conversationId: convoId, user: name } });
+                }}
               >
                 <View style={{ width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
                   <Image source={{ uri: (item.otherUser && item.otherUser.avatar) ? item.otherUser.avatar : 'https://via.placeholder.com/200x200.png?text=Profile' }} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#eee' }} />

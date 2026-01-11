@@ -4,9 +4,9 @@
  */
 
 export const ZEEGOCLOUD_CONFIG = {
-  appID: 1897376207,
-  appSign: 'e3929da123bac9483ed6e6962753a55cff74996a3b0f1acecae54fbed4b02b0e',
-  serverSecret: 'e3929da123bac9483ed6e6962753a55cff74996a3b0f1acecae54fbed4b02b0e',
+  appID: Number(process.env.EXPO_PUBLIC_ZEGO_APP_ID || process.env.EXPO_PUBLIC_ZEEGOCLOUD_APP_ID || 0),
+  appSign: String(process.env.EXPO_PUBLIC_ZEGO_APP_SIGN || process.env.EXPO_PUBLIC_ZEEGOCLOUD_APP_SIGN || ''),
+  serverSecret: '',
   // Ensure config has proper defaults
   get settings() {
     return {

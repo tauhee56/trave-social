@@ -1,8 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,12 +11,13 @@ import { Image } from 'react-native';
 // import {} from '../lib/firebaseHelpers';
 // @ts-ignore
 import { useInboxPolling } from '../hooks/useInboxPolling';
-import { archiveConversation } from '../lib/firebaseHelpers/archive';
+import { archiveConversation, deleteConversation } from '../lib/firebaseHelpers/archive';
 import InboxRow from '../src/_components/InboxRow';
 import { useUserProfile } from '../app/_hooks/useUserProfile';
+import { apiService } from './_services/apiService';
 
 // Helper component to show conversation with user profile
-function ConversationItem({ item, userId, router, formatTime, conversations, setConversations }: any) {
+function ConversationItem({ item, userId, router, formatTime, conversations, setConversations, setOptimisticReadByOtherId, onOpenActions }: any) {
   const otherUserId = item.participants?.find((uid: string) => uid !== userId);
   const { profile, loading } = useUserProfile(otherUserId);
   const profileAny = profile as any;
@@ -37,8 +38,36 @@ function ConversationItem({ item, userId, router, formatTime, conversations, set
         flexDirection: 'row',
         alignItems: 'center'
       }}
+      onLongPress={() => {
+        if (typeof onOpenActions === 'function') {
+          onOpenActions(item, otherUserId, username);
+        }
+      }}
+      delayLongPress={350}
       onPress={() => {
         if (!otherUserId) return;
+
+        if (typeof setConversations === 'function') {
+          setConversations((prev: any[]) => {
+            if (!Array.isArray(prev)) return prev;
+            return prev.map((c: any) => {
+              const participants = Array.isArray(c?.participants) ? c.participants.map(String) : [];
+              const otherId = participants.find((p: string) => p !== String(userId));
+              if (otherId && otherId === String(otherUserId)) {
+                return { ...c, unreadCount: 0 };
+              }
+              return c;
+            });
+          });
+        }
+
+        if (typeof setOptimisticReadByOtherId === 'function') {
+          setOptimisticReadByOtherId((prev: any) => ({
+            ...(prev || {}),
+            [String(otherUserId)]: Date.now()
+          }));
+        }
+
         router.push({
           pathname: '/dm',
           params: {
@@ -136,6 +165,108 @@ export default function Inbox() {
   const [conversations, setConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(polledLoading || userLoading);
   const [forceLoadTimeout, setForceLoadTimeout] = useState(false);
+  const [optimisticReadByOtherId, setOptimisticReadByOtherId] = useState<Record<string, number>>({});
+
+  const [actionsVisible, setActionsVisible] = useState(false);
+  const [confirmDeleteVisible, setConfirmDeleteVisible] = useState(false);
+  const [actionItem, setActionItem] = useState<any | null>(null);
+  const [actionOtherUserId, setActionOtherUserId] = useState<string | null>(null);
+  const [actionTitle, setActionTitle] = useState<string>('');
+
+  const normalizeConversations = useCallback((raw: any[]) => {
+    if (!Array.isArray(raw)) return [];
+
+    return raw.map((convo: any) => {
+      const participants = Array.isArray(convo?.participants) ? convo.participants.map(String) : [];
+      const otherId = participants.find((p: string) => p !== String(userId));
+      const optimisticTs = otherId ? optimisticReadByOtherId[String(otherId)] : undefined;
+      const suppressUnread = typeof optimisticTs === 'number' && (Date.now() - optimisticTs) < 30000;
+
+      return {
+        ...convo,
+        id: convo.id || convo._id,
+        unreadCount: suppressUnread ? 0 : convo?.unreadCount
+      };
+    });
+  }, [optimisticReadByOtherId, userId]);
+
+  const refreshInbox = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const response = await apiService.get(`/conversations?userId=${userId}`);
+      let convos = response?.data;
+      if (!response?.success) convos = [];
+      if (!Array.isArray(convos)) convos = [];
+      setConversations(normalizeConversations(convos));
+    } catch (err: any) {
+      console.error('❌ Inbox refresh failed:', err?.message || err);
+    }
+  }, [normalizeConversations, userId]);
+
+  const openActions = useCallback((item: any, otherId: string | null, title: string) => {
+    setActionItem(item);
+    setActionOtherUserId(otherId);
+    setActionTitle(typeof title === 'string' ? title : 'Conversation');
+    setConfirmDeleteVisible(false);
+    setActionsVisible(true);
+  }, []);
+
+  const closeActions = useCallback(() => {
+    setActionsVisible(false);
+    setConfirmDeleteVisible(false);
+  }, []);
+
+  const handleArchive = useCallback(async () => {
+    const conversationId = actionItem?.conversationId || actionItem?.id || actionItem?._id;
+    if (!conversationId || !userId) return;
+
+    closeActions();
+    try {
+      setConversations((prev: any[]) => {
+        if (!Array.isArray(prev)) return prev;
+        return prev.map((c: any) => {
+          const cid = c?.conversationId || c?.id || c?._id;
+          if (String(cid) === String(conversationId)) {
+            return { ...c, isArchived: true, [`archived_${String(userId)}`]: true };
+          }
+          return c;
+        });
+      });
+
+      const result = await archiveConversation(String(conversationId), String(userId));
+      if (!result?.success) {
+        await refreshInbox();
+      }
+    } catch {
+      await refreshInbox();
+    }
+  }, [actionItem, closeActions, refreshInbox, userId]);
+
+  const handleDelete = useCallback(async () => {
+    const conversationId = actionItem?.conversationId || actionItem?.id || actionItem?._id;
+    if (!conversationId || !userId) return;
+
+    closeActions();
+    try {
+      setConversations((prev: any[]) => {
+        if (!Array.isArray(prev)) return prev;
+        return prev.filter((c: any) => {
+          const participants = Array.isArray(c?.participants) ? c.participants.map(String) : [];
+          const otherId = participants.find((p: string) => p !== String(userId));
+          const cid = c?.conversationId || c?.id || c?._id;
+          if (actionOtherUserId && otherId && String(otherId) === String(actionOtherUserId)) return false;
+          return String(cid) !== String(conversationId);
+        });
+      });
+
+      const result = await deleteConversation(String(conversationId), String(userId));
+      if (!result?.success) {
+        await refreshInbox();
+      }
+    } catch {
+      await refreshInbox();
+    }
+  }, [actionItem, actionOtherUserId, closeActions, refreshInbox, userId]);
 
   useEffect(() => {
     // Only set loading if actually loading
@@ -173,16 +304,30 @@ export default function Inbox() {
       return;
     }
 
-    // Normalize IDs and pass through - private account filtering happens in InboxRow
-    const normalizedConvos = polledConversations.map((convo: any) => ({
-      ...convo,
-      id: convo.id || convo._id  // Ensure id field exists for FlatList key
-    }));
+    // Normalize IDs and apply optimistic unread suppression
+    const normalizedConvos = normalizeConversations(polledConversations);
     
     console.log('🟢 SETTING CONVERSATIONS:', normalizedConvos?.length, 'convos');
     console.log('📋 First convo sample:', normalizedConvos?.[0]);
     setConversations(normalizedConvos);
-  }, [polledConversations, userId]);
+  }, [polledConversations, userId, optimisticReadByOtherId]);
+
+  // Immediate refresh when returning to Inbox (do not wait for next polling tick)
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return;
+
+      let isActive = true;
+
+      (async () => {
+        await refreshInbox();
+      })();
+
+      return () => {
+        isActive = false;
+      };
+    }, [refreshInbox, userId])
+  );
 
   function formatTime(timestamp: any) {
     if (!timestamp) return '';
@@ -304,6 +449,10 @@ export default function Inbox() {
         }
         
         const filteredConvosRaw = conversations.filter(c => !c[`archived_${userId}`]);
+        const filteredConvosRawStable = filteredConvosRaw.filter((c: any) => {
+          const archived = typeof c?.isArchived === 'boolean' ? c.isArchived : c?.[`archived_${userId}`];
+          return !archived;
+        });
 
         const getSortTime = (c: any) => {
           const t = c?.updatedAt || c?.lastMessageAt || c?.lastMessageTime || c?.createdAt;
@@ -313,7 +462,7 @@ export default function Inbox() {
 
         // Frontend safety dedupe: 1 row per other participant; keep newest but sum unreadCount
         const map = new Map<string, any>();
-        for (const c of filteredConvosRaw) {
+        for (const c of filteredConvosRawStable) {
           const participants = Array.isArray(c?.participants) ? c.participants.map(String) : [];
           const otherId = participants.find((p: string) => p !== String(userId));
           const key = otherId || (c?.conversationId ? String(c.conversationId) : String(c?.id || c?._id));
@@ -346,6 +495,8 @@ export default function Inbox() {
                   formatTime={formatTime}
                   conversations={conversations}
                   setConversations={setConversations}
+                  setOptimisticReadByOtherId={setOptimisticReadByOtherId}
+                  onOpenActions={openActions}
                 />
               )}
               contentContainerStyle={{ paddingBottom: 16 }}
@@ -361,6 +512,62 @@ export default function Inbox() {
           </View>
         );
       })()}
+
+      <Modal
+        visible={actionsVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeActions}
+      >
+        <Pressable style={styles.actionSheetBackdrop} onPress={closeActions}>
+          <Pressable style={styles.actionSheetContainer} onPress={() => {}}>
+            <Text style={styles.actionSheetTitle} numberOfLines={1}>{actionTitle || 'Conversation'}</Text>
+
+            <TouchableOpacity style={styles.actionSheetButton} activeOpacity={0.8} onPress={handleArchive}>
+              <Feather name="archive" size={18} color="#007aff" />
+              <Text style={styles.actionSheetButtonText}>Archive</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionSheetButton, styles.actionSheetDeleteButton]}
+              activeOpacity={0.8}
+              onPress={() => {
+                setActionsVisible(false);
+                setConfirmDeleteVisible(true);
+              }}
+            >
+              <Feather name="trash-2" size={18} color="#ff3b30" />
+              <Text style={[styles.actionSheetButtonText, styles.actionSheetDeleteText]}>Delete</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.actionSheetButton, styles.actionSheetCancelButton]} activeOpacity={0.8} onPress={closeActions}>
+              <Text style={styles.actionSheetCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={confirmDeleteVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmDeleteVisible(false)}
+      >
+        <Pressable style={styles.actionSheetBackdrop} onPress={() => setConfirmDeleteVisible(false)}>
+          <Pressable style={styles.confirmContainer} onPress={() => {}}>
+            <Text style={styles.confirmTitle}>Delete conversation?</Text>
+            <Text style={styles.confirmSubtitle}>This will remove the conversation from your inbox.</Text>
+            <View style={styles.confirmRow}>
+              <TouchableOpacity style={[styles.confirmBtn, styles.confirmCancelBtn]} onPress={() => setConfirmDeleteVisible(false)}>
+                <Text style={styles.confirmCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.confirmBtn, styles.confirmDeleteBtn]} onPress={handleDelete}>
+                <Text style={styles.confirmDeleteText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -416,6 +623,95 @@ const styles = StyleSheet.create({
     color: '#007aff',
     fontWeight: '600',
     fontSize: 14,
+  },
+  actionSheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-end',
+  },
+  actionSheetContainer: {
+    backgroundColor: '#fff',
+    paddingTop: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 18,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  actionSheetTitle: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  actionSheetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  actionSheetButtonText: {
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#111',
+    fontWeight: '600',
+  },
+  actionSheetDeleteButton: {
+    marginTop: 2,
+  },
+  actionSheetDeleteText: {
+    color: '#ff3b30',
+  },
+  actionSheetCancelButton: {
+    marginTop: 10,
+    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  actionSheetCancelText: {
+    fontSize: 16,
+    color: '#111',
+    fontWeight: '700',
+  },
+  confirmContainer: {
+    marginHorizontal: 22,
+    marginBottom: 24,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+  },
+  confirmTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111',
+    marginBottom: 6,
+  },
+  confirmSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 14,
+  },
+  confirmRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  confirmBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    marginLeft: 10,
+  },
+  confirmCancelBtn: {
+    backgroundColor: '#f5f5f5',
+  },
+  confirmCancelText: {
+    fontWeight: '700',
+    color: '#111',
+  },
+  confirmDeleteBtn: {
+    backgroundColor: '#ff3b30',
+  },
+  confirmDeleteText: {
+    fontWeight: '800',
+    color: '#fff',
   },
   row: {
     flexDirection: 'row',

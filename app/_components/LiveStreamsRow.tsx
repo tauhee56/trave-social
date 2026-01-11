@@ -13,6 +13,8 @@ interface LiveStream {
   userName: string;
   userAvatar: string;
   channelName: string;
+  roomId?: string;
+  title?: string;
   viewerCount: number;
   isLive: boolean;
   startedAt: any;
@@ -63,11 +65,14 @@ function LiveStreamsRowComponent() {
   }
 
   const handleStreamPress = (stream: LiveStream) => {
+    const resolvedRoomId = (stream as any)?.roomId || stream.channelName || stream.id;
     router.push({
       pathname: '/watch-live',
       params: {
         streamId: stream.id,
-        channelName: stream.channelName,
+        roomId: resolvedRoomId,
+        channelName: resolvedRoomId,
+        title: (stream as any)?.title || 'Live Stream',
         hostName: stream.userName,
         hostAvatar: stream.userAvatar
       }

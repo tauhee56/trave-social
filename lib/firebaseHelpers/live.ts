@@ -5,7 +5,7 @@ import { apiService } from '../../app/_services/apiService';
 export async function getActiveLiveStreams() {
   try {
     const res = await apiService.get('/live-streams');
-    const streams = res?.data || [];
+    const streams = (res as any)?.streams ?? (res as any)?.data ?? [];
     return Array.isArray(streams) ? streams : [];
   } catch (error: any) {
     return [];
@@ -30,9 +30,21 @@ export async function endLiveStream(streamId: string, userId: string) {
 
 export async function joinLiveStream(streamId: string, userId: string) {
   try {
-    // Backend doesn't currently expose a dedicated "join" REST endpoint.
-    // Fetch the stream details as a lightweight "join" operation.
+    const joined = await apiService.post(`/live-streams/${streamId}/join`, { userId });
+    if (joined?.success !== false) return joined;
     return await apiService.get(`/live-streams/${streamId}`);
+  } catch (error: any) {
+    try {
+      return await apiService.get(`/live-streams/${streamId}`);
+    } catch (e: any) {
+      return { success: false, error: e?.message || error?.message };
+    }
+  }
+}
+
+export async function addLiveComment(streamId: string, payload: { userId: string; text: string; userName?: string; userAvatar?: string }) {
+  try {
+    return await apiService.post(`/live-streams/${streamId}/comments`, payload);
   } catch (error: any) {
     return { success: false, error: error.message };
   }

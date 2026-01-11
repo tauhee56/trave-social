@@ -11,6 +11,7 @@ import VerifiedBadge from '../src/_components/VerifiedBadge';
 // import {} from '../lib/firebaseHelpers';
 import { GOOGLE_MAPS_CONFIG } from '../config/environment';
 import { createPost, DEFAULT_CATEGORIES, ensureDefaultCategories, getCategories, getPassportTickets, searchUsers } from '../lib/firebaseHelpers/index';
+import { getCategoryImageSource } from '../lib/categoryImages';
 import { compressImage } from '../lib/imageCompressor';
 import { extractHashtags, trackHashtag } from '../lib/mentions';
 import { startTrace } from '../lib/perf';
@@ -142,7 +143,7 @@ export default function CreatePostScreen() {
       }}
     >
       <Image 
-        source={{ uri: item.image }} 
+        source={getCategoryImageSource(item.name, item.image)} 
         style={{ width: 60, height: 60, borderRadius: 10, marginRight: 12, backgroundColor: '#f0f0f0' }}
       />
       <Text style={{ fontSize: 16, flex: 1 }}>{item.name}</Text>

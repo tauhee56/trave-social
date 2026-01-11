@@ -44,6 +44,24 @@ export default function FriendsScreen() {
   
   const isOwnProfile = userId === authUser?.uid;
 
+  const normalizeAvatarUri = (uri?: string | null) => {
+    const raw = (uri ?? '').toString().trim();
+    if (!raw) return null;
+    const lower = raw.toLowerCase();
+    if (lower === 'null' || lower === 'undefined' || lower === 'none') return null;
+    return raw;
+  };
+
+  const getInitials = (name?: string) => {
+    const safe = (name || '').trim();
+    if (!safe) return '?';
+    const parts = safe.split(/\s+/).filter(Boolean);
+    const first = parts[0]?.[0] || '';
+    const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] || '') : '';
+    const initials = (first + last).toUpperCase();
+    return initials || '?';
+  };
+
   useEffect(() => {
     fetchAllData();
   }, [userId, authUser?.uid]);
@@ -89,7 +107,7 @@ export default function FriendsScreen() {
       const userRes = await fetch(`${API_URL}/users/${userId}`);
       const userData = await userRes.json();
       if (userData.success) {
-        setProfileName(userData.data?.name || 'User');
+        setProfileName(userData.data?.displayName || userData.data?.name || 'User');
       }
 
     } catch (error) {
@@ -225,14 +243,16 @@ export default function FriendsScreen() {
     
     const query = searchQuery.toLowerCase();
     return data.filter(u => 
-      u.name.toLowerCase().includes(query) || 
-      (u.username && u.username.toLowerCase().includes(query))
+      (u.name || '').toLowerCase().includes(query) || 
+      ((u.username || '').toLowerCase().includes(query))
     );
   };
 
   const renderUserItem = ({ item }: { item: UserItem }) => {
     const isMe = item.uid === authUser?.uid;
     const isFollowLoading = followLoadingIds.has(item.uid);
+    const avatarUri = normalizeAvatarUri(item.avatar);
+    const displayName = (item.name || '').trim() || (item.username ? `@${item.username}` : 'User');
     
     return (
       <TouchableOpacity 
@@ -240,15 +260,21 @@ export default function FriendsScreen() {
         onPress={() => router.push(`/user-profile?id=${item.uid}`)}
         activeOpacity={0.7}
       >
-        <ExpoImage
-          source={{ uri: item.avatar }}
-          style={styles.avatar}
-          contentFit="cover"
-          transition={200}
-        />
+        {avatarUri ? (
+          <ExpoImage
+            source={{ uri: avatarUri }}
+            style={styles.avatar}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : (
+          <View style={styles.avatarFallback}>
+            <Text style={styles.avatarInitials}>{getInitials(item.name)}</Text>
+          </View>
+        )}
         
         <View style={styles.userInfo}>
-          <Text style={styles.userName} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.userName} numberOfLines={1}>{displayName}</Text>
           {item.username && (
             <Text style={styles.userHandle} numberOfLines={1}>@{item.username}</Text>
           )}
@@ -514,6 +540,19 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 27,
     backgroundColor: '#f0f0f0',
+  },
+  avatarFallback: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#E8EDFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#2F3A8F',
   },
   userInfo: {
     flex: 1,

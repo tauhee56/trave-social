@@ -23,13 +23,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import { logger } from '../utils/logger';
 // ZeegoCloud imports
 import { ZEEGOCLOUD_CONFIG } from '../config/zeegocloud';
 import ZeegocloudStreamingService from '../services/implementations/ZeegocloudStreamingService';
 import ZeegocloudLiveViewer from './_components/ZeegocloudLiveViewer';
+import { addLiveComment, joinLiveStream, leaveLiveStream, subscribeToLiveComments } from '../lib/firebaseHelpers/live';
 
 let MapView: any = null;
 let Marker: any = null;
@@ -84,11 +85,20 @@ interface Viewer {
 
 export default function WatchLiveScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
-  const roomId = params.roomId as string;
-  const streamTitle = params.title as string || 'Live Stream';
+
+  const streamIdParam = typeof params.streamId === 'string' ? params.streamId : undefined;
+  const roomIdParam = typeof params.roomId === 'string'
+    ? params.roomId
+    : (typeof params.channelName === 'string' ? params.channelName : '');
+  const titleParam = typeof params.title === 'string' ? params.title : 'Live Stream';
+
+  const [effectiveRoomId, setEffectiveRoomId] = useState<string>(roomIdParam || '');
+  const [effectiveTitle, setEffectiveTitle] = useState<string>(titleParam);
   
   const zeegocloudServiceRef = useRef<ZeegocloudStreamingService | null>(null);
+  const commentsUnsubRef = useRef<null | (() => void)>(null);
   const [isJoined, setIsJoined] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   
@@ -142,14 +152,53 @@ export default function WatchLiveScreen() {
 
   // Auto-join stream
   useEffect(() => {
-    if (roomId && currentUser && !isJoined && !isJoining) {
+    if (effectiveRoomId && currentUser && !isJoined && !isJoining) {
       handleJoinStream();
     }
-  }, [roomId, currentUser]);
+  }, [effectiveRoomId, currentUser]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        if (commentsUnsubRef.current) {
+          commentsUnsubRef.current();
+          commentsUnsubRef.current = null;
+        }
+      } catch {}
+    };
+  }, []);
+
+  // Resolve roomId/title if only streamId is provided
+  useEffect(() => {
+    const resolve = async () => {
+      try {
+        if ((!effectiveRoomId || effectiveRoomId.length === 0) && streamIdParam) {
+          const mod: { subscribeToLiveStream: (id: string, cb: (s: any) => void) => () => void } = await import('../lib/firebaseHelpers/live');
+          const unsubscribe = mod.subscribeToLiveStream(streamIdParam, (s: any) => {
+            const rid = typeof s?.roomId === 'string' && s.roomId
+              ? s.roomId
+              : (typeof s?.channelName === 'string' ? s.channelName : '');
+            if (rid) setEffectiveRoomId(rid);
+            if (typeof s?.title === 'string' && s.title) setEffectiveTitle(s.title);
+          });
+          // Give it a moment to fetch once, then cleanup.
+          setTimeout(() => {
+            try { unsubscribe(); } catch {}
+          }, 6000);
+        }
+      } catch (e: any) {
+        logger.error('Resolve live stream roomId failed:', e);
+      }
+    };
+    resolve();
+    // Only run once for initial params.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Join stream
   const handleJoinStream = async () => {
-    if (!roomId) {
+    if (!effectiveRoomId) {
       Alert.alert('Error', 'Invalid room ID');
       router.back();
       return;
@@ -161,15 +210,55 @@ export default function WatchLiveScreen() {
       const userId = currentUser?.uid || 'anonymous';
       const userName = currentUser?.displayName || 'Anonymous';
       
-      const success = await service.initialize(userId, roomId, userName, false);
+      const success = await service.initialize(userId, effectiveRoomId, userName, false);
 
       if (success) {
         zeegocloudServiceRef.current = service;
         setIsJoined(true);
 
-        // TODO: Notify backend that user joined
+        // Notify backend that user joined (best-effort)
+        try {
+          if (streamIdParam && userId) {
+            const joined: any = await joinLiveStream(String(streamIdParam), String(userId));
+            const vc = joined?.data?.viewerCount;
+            if (typeof vc === 'number') setViewerCount(vc);
+          }
+        } catch (e: any) {
+          logger.error('Join live stream (backend) failed:', e);
+        }
 
-        logger.info('Joined stream:', roomId);
+        // Subscribe to comments (best-effort polling)
+        try {
+          if (streamIdParam) {
+            if (commentsUnsubRef.current) {
+              try { commentsUnsubRef.current(); } catch {}
+              commentsUnsubRef.current = null;
+            }
+
+            const unsub = subscribeToLiveComments(String(streamIdParam), (raw: any[]) => {
+              const items = Array.isArray(raw) ? raw : [];
+              const mapped: Comment[] = items
+                .map((c: any) => ({
+                  id: c?._id ? String(c._id) : String(c?.id || c?.createdAt || Date.now()),
+                  userId: String(c?.userId || ''),
+                  userName: c?.userName || 'Anonymous',
+                  userAvatar: c?.userAvatar || DEFAULT_AVATAR_URL,
+                  text: c?.text || '',
+                  timestamp: c?.createdAt ? new Date(c.createdAt).getTime() : Date.now(),
+                }))
+                .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+              setComments(mapped);
+            });
+
+            commentsUnsubRef.current = () => {
+              try { unsub(); } catch {}
+            };
+          }
+        } catch (e: any) {
+          logger.error('Subscribe to live comments failed:', e);
+        }
+
+        logger.info('Joined stream:', effectiveRoomId);
       } else {
         Alert.alert('Error', 'Failed to join stream');
         router.back();
@@ -186,11 +275,28 @@ export default function WatchLiveScreen() {
   // Leave stream
   const handleLeaveStream = async () => {
     try {
+      try {
+        if (commentsUnsubRef.current) {
+          commentsUnsubRef.current();
+          commentsUnsubRef.current = null;
+        }
+      } catch {}
+
       if (zeegocloudServiceRef.current) {
         await zeegocloudServiceRef.current.disconnect();
       }
 
-      // TODO: Notify backend that user left
+      // Notify backend that user left (best-effort)
+      try {
+        const userId = currentUser?.uid;
+        if (streamIdParam && userId) {
+          const left: any = await leaveLiveStream(String(streamIdParam), String(userId));
+          const vc = left?.data?.viewerCount;
+          if (typeof vc === 'number') setViewerCount(vc);
+        }
+      } catch (e: any) {
+        logger.error('Leave live stream (backend) failed:', e);
+      }
 
       router.back();
     } catch (error) {
@@ -205,9 +311,9 @@ export default function WatchLiveScreen() {
   // Share stream
   const handleShare = async () => {
     try {
-      const shareUrl = `https://yourapp.com/watch-live?roomId=${roomId}`;
+      const shareUrl = `https://yourapp.com/watch-live?roomId=${encodeURIComponent(effectiveRoomId)}`;
       await Share.share({
-        message: `Watch this live stream: ${streamTitle}\n${shareUrl}`,
+        message: `Watch this live stream: ${effectiveTitle}\n${shareUrl}`,
         url: shareUrl,
       });
     } catch (error) {
@@ -216,7 +322,7 @@ export default function WatchLiveScreen() {
   };
 
   // Send comment
-  const handleSendComment = () => {
+  const handleSendComment = async () => {
     if (!newComment.trim()) return;
 
     const comment: Comment = {
@@ -231,7 +337,19 @@ export default function WatchLiveScreen() {
     setComments([...comments, comment]);
     setNewComment('');
 
-    // TODO: Send to backend/Firebase
+    // Send to backend (best-effort). Polling will refresh canonical list.
+    try {
+      if (streamIdParam) {
+        await addLiveComment(String(streamIdParam), {
+          userId: String(currentUser?.uid || 'anonymous'),
+          text: comment.text,
+          userName: comment.userName,
+          userAvatar: comment.userAvatar,
+        });
+      }
+    } catch (e: any) {
+      logger.error('Add live comment failed:', e);
+    }
   };
 
   // Render comment item
@@ -282,7 +400,7 @@ export default function WatchLiveScreen() {
       {/* ZeegoCloud Video Component */}
       <View style={styles.videoContainer}>
         <ZeegocloudLiveViewer
-          roomID={roomId}
+          roomID={effectiveRoomId}
           userID={currentUser?.uid || 'anonymous'}
           userName={currentUser?.displayName || 'Anonymous'}
           onLeave={handleLeaveStream}
@@ -302,7 +420,7 @@ export default function WatchLiveScreen() {
               <View style={styles.liveDot} />
               <Text style={styles.liveText}>LIVE</Text>
             </View>
-            <Text style={styles.streamTitle} numberOfLines={1}>{streamTitle}</Text>
+            <Text style={styles.streamTitle} numberOfLines={1}>{effectiveTitle}</Text>
           </View>
 
           <View style={styles.topRight}>
@@ -318,7 +436,7 @@ export default function WatchLiveScreen() {
         </View>
 
         {/* Bottom Controls */}
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { paddingBottom: 16 + (insets?.bottom || 0) }]}>
           <TouchableOpacity style={styles.controlButton} onPress={toggleMute}>
             <Ionicons name={isMuted ? "volume-mute" : "volume-high"} size={24} color="#fff" />
           </TouchableOpacity>
@@ -444,8 +562,8 @@ const styles = StyleSheet.create({
   topRight: { flexDirection: 'row', gap: 8 },
   iconButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   iconButtonText: { fontSize: 14, color: '#fff', marginLeft: 4, fontWeight: 'bold' },
-  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', padding: 16, backgroundColor: 'rgba(0,0,0,0.5)' },
-  controlButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' },
+  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16, backgroundColor: 'transparent' },
+  controlButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   badge: { position: 'absolute', top: -4, right: -4, backgroundColor: '#e74c3c', borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   badgeText: { fontSize: 10, color: '#fff', fontWeight: 'bold' },
   commentsPanel: { position: 'absolute', bottom: 0, left: 0, right: 0, height: height * 0.5, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20 },

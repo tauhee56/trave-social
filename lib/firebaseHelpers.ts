@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from '../app/_services/apiService';
+import { API_BASE_URL } from './api';
 import {
   sendLiveComment as socketSendLiveComment,
   subscribeToLiveStream as socketSubscribeToLiveStream,
@@ -46,6 +47,7 @@ export async function signInWithEmailPassword(email: string, password: string): 
       await AsyncStorage.removeItem('userId');
       await AsyncStorage.removeItem('userEmail');
       try { await signOut(auth); } catch (e) { }
+
       return { success: false, error: response.error || 'Login sync failed' };
     }
   } catch (error: any) {
@@ -528,6 +530,68 @@ async function uploadWithBase64(base64Data: string, path?: string): Promise<{ su
   }
 }
 
+async function uploadStoryMedia(uri: string, userId: string, mediaType: 'image' | 'video', onProgress?: (percent: number) => void): Promise<{ success: boolean; url?: string; error?: string; mediaType?: string; thumbnailUrl?: string }> {
+  try {
+    const endpointUrl = `${API_BASE_URL}/upload/story`;
+    const token = await AsyncStorage.getItem('token');
+
+    const safeType = mediaType === 'video' ? 'video' : 'image';
+    const contentType = safeType === 'video' ? 'video/mp4' : 'image/jpeg';
+    const fileName = safeType === 'video' ? `story-${Date.now()}.mp4` : `story-${Date.now()}.jpg`;
+
+    const formData = new FormData();
+    formData.append('userId', userId);
+    formData.append('mediaType', safeType);
+    formData.append('file', { uri, name: fileName, type: contentType } as any);
+
+    return await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', endpointUrl);
+
+      xhr.setRequestHeader('Accept', 'application/json');
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
+
+      xhr.upload.onprogress = (event) => {
+        if (!onProgress) return;
+        if (event.lengthComputable && event.total > 0) {
+          const percent = Math.round((event.loaded * 100) / event.total);
+          onProgress(percent);
+        }
+      };
+
+      xhr.onload = () => {
+        try {
+          const raw = xhr.responseText || '';
+          const json = raw ? JSON.parse(raw) : null;
+
+          if (xhr.status < 200 || xhr.status >= 300) {
+            resolve({ success: false, error: json?.error || `Upload failed (${xhr.status})` });
+            return;
+          }
+
+          resolve(json);
+        } catch (e: any) {
+          if (xhr.status < 200 || xhr.status >= 300) {
+            resolve({ success: false, error: `Upload failed (${xhr.status})` });
+            return;
+          }
+          reject(new Error('Invalid upload response'));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error('Upload failed'));
+      };
+
+      xhr.send(formData as any);
+    });
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
 export async function deleteImage(path: string) {
   await apiService.delete('/media', { path });
   return { success: true };
@@ -761,10 +825,30 @@ export async function createStory(
   userId: string,
   mediaUri: string,
   mediaType: 'image' | 'video' = 'image',
-  locationData?: { name?: string; address?: string; placeId?: string }
+  locationData?: { name?: string; address?: string; placeId?: string },
+  onProgress?: (percent: number) => void
 ) {
-  const upload = await uploadImage(mediaUri);
-  if (!upload?.url) throw new Error(upload?.error || 'Upload failed');
+  let mediaUrl: string | undefined;
+  let thumbnailUrl: string | undefined;
+
+  if (typeof mediaUri === 'string' && (mediaUri.startsWith('http://') || mediaUri.startsWith('https://'))) {
+    mediaUrl = mediaUri;
+  } else if (mediaType === 'video' || typeof onProgress === 'function') {
+    const uploadRes = await uploadStoryMedia(mediaUri, userId, mediaType, (p) => {
+      if (!onProgress) return;
+      const clamped = Math.max(0, Math.min(100, p));
+      onProgress(Math.min(95, clamped));
+    });
+    if (!uploadRes?.success || !uploadRes?.url) {
+      throw new Error(uploadRes?.error || 'Upload failed');
+    }
+    mediaUrl = uploadRes.url;
+    thumbnailUrl = uploadRes.thumbnailUrl;
+  } else {
+    const upload = await uploadImage(mediaUri);
+    if (!upload?.url) throw new Error(upload?.error || 'Upload failed');
+    mediaUrl = upload.url;
+  }
 
   // Get user's actual name
   let userName = 'Anonymous';
@@ -790,7 +874,11 @@ export async function createStory(
 
   console.log('[createStory] Final userName to send:', userName);
 
-  const res = await apiService.post('/stories', { userId, userName, mediaUrl: upload.url, mediaType, locationData });
+  if (typeof onProgress === 'function') {
+    onProgress(97);
+  }
+
+  const res = await apiService.post('/stories', { userId, userName, mediaUrl: mediaUrl, mediaType, locationData, thumbnailUrl });
 
   // Unwrap API response
   const storyData = res?.data || res;

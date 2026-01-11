@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Image, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -82,16 +82,33 @@ export default function DM() {
   const [conversationId, setConversationId] = useState<string | null>(
     typeof paramConversationId === 'string' ? paramConversationId : null
   );
-  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [lastMessageDoc, setLastMessageDoc] = useState<any>(null);
   const MESSAGES_PAGE_SIZE = 20;
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
   const flatListRef = useRef<FlatList>(null);
+  const isNearBottomRef = useRef(true);
+  const autoScrollRequestRef = useRef<{ force: boolean; animated: boolean } | null>(null);
   // const currentUser = getCurrentUser();
   // const currentUserTyped = getCurrentUser() as { uid?: string } | null;
   // TODO: Use user from context or props
+
+  const requestAutoScroll = (force: boolean, animated: boolean) => {
+    autoScrollRequestRef.current = { force, animated };
+  };
+
+  const maybeAutoScroll = () => {
+    const req = autoScrollRequestRef.current;
+    if (!req) return;
+
+    if (req.force || isNearBottomRef.current) {
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: req.animated });
+    }
+
+    autoScrollRequestRef.current = null;
+  };
 
   // Message edit/delete states
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
@@ -121,6 +138,14 @@ export default function DM() {
       out.push(msg);
     }
     return out;
+  };
+
+  const normalizeMessageTime = (msg: any) => {
+    if (!msg || typeof msg !== 'object') return msg;
+    const createdAt = msg.createdAt ?? msg.timestamp;
+    if (!createdAt) return msg;
+    // Ensure the UI always has a stable time field for rendering.
+    return { ...msg, createdAt };
   };
 
   // Emoji reactions list (Instagram style)
@@ -208,7 +233,7 @@ export default function DM() {
     console.log('[DM] Setting up conversation:', conversationId, 'Socket ready:', socketReady);
 
     setMessages([]);
-    setHasMoreMessages(true);
+    setHasMoreMessages(false);
     setLoading(true);
 
     let loadingTimeout: NodeJS.Timeout | null = null;
@@ -228,7 +253,10 @@ export default function DM() {
         if (isMounted) {
           console.log('[DM] Fetched messages:', res?.messages?.length || 0);
           // Reverse messages so newest are first (for inverted FlatList)
-          const sortedMessages = dedupeMessagesById((res?.messages || []).slice().reverse());
+          const sortedMessages = dedupeMessagesById((res?.messages || []).slice().reverse().map(normalizeMessageTime));
+          if (sortedMessages.length > 0) {
+            requestAutoScroll(true, false);
+          }
           setMessages(sortedMessages);
         }
       })
@@ -249,10 +277,11 @@ export default function DM() {
     // Subscribe to real-time messages via socket (only if socket is ready)
     const unsubMessages = socketSubscribeToMessages(conversationId, (newMessage: any) => {
       if (isMounted) {
-        console.log('[DM] New message received via socket:', newMessage);
+        const normalized = normalizeMessageTime(newMessage);
+        console.log('[DM] New message received via socket:', normalized);
 
         setMessages(prev => {
-          const incomingId = newMessage?.id;
+          const incomingId = normalized?.id;
 
           if (incomingId && prev.some(msg => msg.id === incomingId)) {
             console.log('[DM] Message already exists, skipping:', incomingId);
@@ -260,31 +289,33 @@ export default function DM() {
           }
 
           // If this is our own message, try to replace an existing temp message instead of adding a duplicate.
-          if (currentUserId && newMessage?.senderId === currentUserId) {
+          if (currentUserId && normalized?.senderId === currentUserId) {
             const tempIndex = prev.findIndex(msg =>
               typeof msg?.id === 'string' &&
               msg.id.startsWith('temp_') &&
-              msg.senderId === newMessage.senderId &&
-              msg.recipientId === newMessage.recipientId &&
-              msg.text === newMessage.text
+              msg.senderId === normalized.senderId &&
+              msg.recipientId === normalized.recipientId &&
+              msg.text === normalized.text
             );
 
             if (tempIndex !== -1) {
               const next = prev.slice();
-              next[tempIndex] = { ...newMessage, sent: true };
+              next[tempIndex] = { ...normalized, sent: true };
               return dedupeMessagesById(next);
             }
           }
 
           // Add new message at the beginning (array is reversed for inverted FlatList)
-          return dedupeMessagesById([newMessage, ...prev]);
+          return dedupeMessagesById([normalized, ...prev]);
         });
 
+        requestAutoScroll(Boolean(currentUserId && normalized?.senderId === currentUserId), true);
+
         // Mark as read if we're the recipient
-        if (currentUserId && newMessage.recipientId === currentUserId) {
+        if (currentUserId && normalized?.recipientId === currentUserId) {
           markMessageAsRead({
             conversationId,
-            messageId: newMessage.id,
+            messageId: normalized.id,
             userId: currentUserId
           });
         }
@@ -410,6 +441,7 @@ export default function DM() {
     // Immediately add to local state for instant UI update
     console.log('[DM] Adding temp message to local state:', tempMessageId);
     setMessages(prev => [tempMessage, ...prev]);
+    requestAutoScroll(true, true);
 
     // Stop typing indicator
     if (otherUserId) {
@@ -429,10 +461,11 @@ export default function DM() {
 
       // Replace temp message with real message from backend
       if (result && result.message) {
-        console.log('[DM] Replacing temp message with real message:', result.message.id);
+        const normalized = normalizeMessageTime(result.message);
+        console.log('[DM] Replacing temp message with real message:', normalized?.id);
         setMessages(prev => {
           const replaced = prev.map(msg =>
-            msg.id === tempMessageId ? { ...result.message, sent: true } : msg
+            msg.id === tempMessageId ? { ...normalized, sent: true } : msg
           );
           return dedupeMessagesById(replaced);
         });
@@ -512,11 +545,69 @@ export default function DM() {
     );
   }
 
+  function renderChatItem({ item }: { item: any }) {
+    if (item?.type === 'separator') {
+      return (
+        <View style={styles.dateSeparatorWrap}>
+          <View style={styles.dateSeparatorPill}>
+            <Text style={styles.dateSeparatorText}>{item.label}</Text>
+          </View>
+        </View>
+      );
+    }
+
+    return renderMessage({ item });
+  }
+
   function formatTime(timestamp: any) {
     if (!timestamp) return '';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   }
+
+  const getDateKey = (timestamp: any) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '';
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const formatDateLabel = (dateKey: string) => {
+    if (!dateKey) return '';
+    const [y, m, d] = dateKey.split('-').map(Number);
+    if (!y || !m || !d) return '';
+    const date = new Date(y, m - 1, d);
+    const today = new Date();
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    if (dateKey === todayKey) return 'Today';
+    if (dateKey === yesterdayKey) return 'Yesterday';
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const messagesWithSeparators = useMemo(() => {
+    const out: any[] = [];
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      const currentKey = getDateKey(msg?.createdAt ?? msg?.timestamp);
+      const next = messages[i + 1];
+      const nextKey = next ? getDateKey(next?.createdAt ?? next?.timestamp) : '';
+
+      out.push({ type: 'message', ...msg });
+
+      if (currentKey && currentKey !== nextKey) {
+        out.push({ type: 'separator', id: `sep_${currentKey}`, dateKey: currentKey, label: formatDateLabel(currentKey) });
+      }
+    }
+
+    return out;
+  }, [messages]);
 
   function renderMessage({ item }: { item: any }) {
     const isSelf = item.senderId === currentUserId;
@@ -543,9 +634,12 @@ export default function DM() {
         <MessageBubble
           text={item.text}
           imageUrl={item.imageUrl}
-          createdAt={item.createdAt}
+          createdAt={item.createdAt ?? item.timestamp}
           editedAt={item.editedAt}
           isSelf={isSelf}
+          sent={item.sent}
+          delivered={item.delivered}
+          read={item.read}
           formatTime={formatTime}
           replyTo={item.replyTo}
           username={displayName}
@@ -608,33 +702,33 @@ export default function DM() {
           ) : (
             <FlatList
               ref={flatListRef}
-              data={messages}
+              data={messagesWithSeparators}
               keyExtractor={(item, index) => {
                 // Use message ID if available, otherwise use senderId + timestamp
                 if (item.id) return item.id;
-                if (item.senderId && item.createdAt) return `${item.senderId}_${item.createdAt}_${index}`;
+                const timeKey = item.createdAt ?? item.timestamp;
+                if (item.senderId && timeKey) return `${item.senderId}_${timeKey}_${index}`;
                 // Fallback to index (less ideal but prevents warnings)
                 return `msg_${index}`;
               }}
-              renderItem={renderMessage}
+              renderItem={renderChatItem}
               contentContainerStyle={{ paddingVertical: 12, paddingHorizontal: 12 }}
-              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-              onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
-              inverted
-              onEndReached={() => {
-                if (hasMoreMessages && !loading) loadMessagesPage();
+              onContentSizeChange={maybeAutoScroll}
+              onLayout={() => {
+                requestAutoScroll(true, false);
+                maybeAutoScroll();
               }}
-              onEndReachedThreshold={0.2}
+              inverted
+              onScroll={(e) => {
+                const y = e.nativeEvent.contentOffset.y;
+                isNearBottomRef.current = y < 80;
+              }}
+              scrollEventThrottle={16}
               removeClippedSubviews={true}
               maxToRenderPerBatch={12}
               windowSize={7}
-              extraData={messages.length}
+              extraData={messagesWithSeparators.length}
               initialNumToRender={12}
-              ListFooterComponent={hasMoreMessages ? (
-                <TouchableOpacity style={{ alignSelf: 'center', marginVertical: 10 }} onPress={loadMessagesPage}>
-                  <Text style={{ color: '#007aff', fontSize: 15 }}>Load more messages</Text>
-                </TouchableOpacity>
-              ) : null}
             />
           )}
         </View>
@@ -1070,6 +1164,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlign: 'center',
     marginTop: 20,
+  },
+  dateSeparatorWrap: {
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  dateSeparatorPill: {
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  dateSeparatorText: {
+    color: 'rgba(0,0,0,0.6)',
+    fontSize: 12,
+    fontWeight: '600',
   },
   msgFooter: {
     flexDirection: 'row',

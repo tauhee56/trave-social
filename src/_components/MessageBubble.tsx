@@ -10,6 +10,9 @@ type Props = {
   createdAt: any;
   editedAt?: any;
   isSelf: boolean;
+  sent?: boolean;
+  delivered?: boolean;
+  read?: boolean;
   formatTime: (ts: any) => string;
   replyTo?: { id: string; text: string; senderId: string } | null;
   username?: string;
@@ -24,6 +27,9 @@ export default function MessageBubble({
   createdAt,
   editedAt,
   isSelf,
+  sent,
+  delivered,
+  read,
   formatTime,
   replyTo,
   username,
@@ -33,6 +39,16 @@ export default function MessageBubble({
 }: Props) {
   const hasReply = !!(replyTo && replyTo.text);
   const isReplyFromSelf = replyTo?.senderId === currentUserId;
+
+  const hasAnyStatus = sent !== undefined || delivered !== undefined || read !== undefined;
+  const statusLabel = (() => {
+    if (!isSelf || !hasAnyStatus) return '';
+    if (sent === false) return 'Sending...';
+    if (read === true) return 'Seen';
+    if (delivered === true) return 'Delivered';
+    if (sent === true) return 'Sent';
+    return '';
+  })();
 
   return (
     <View style={styles.outerWrap}>
@@ -58,6 +74,12 @@ export default function MessageBubble({
               {formatTime(createdAt)}
               {editedAt && ' · edited'}
             </Text>
+            {!!statusLabel && (
+              <Text style={isSelf ? styles.msgTimeSelf : styles.msgTime}>
+                {' · '}
+                {statusLabel}
+              </Text>
+            )}
           </View>
         </View>
         {showTail && (isSelf ? <View style={styles.tailRight} /> : <View style={styles.tailLeft} />)}
@@ -147,6 +169,8 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   timePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 999,
