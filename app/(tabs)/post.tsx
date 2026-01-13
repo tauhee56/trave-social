@@ -151,140 +151,145 @@ export default function PostScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Feather name="x" size={24} color="#000" />
-        </TouchableOpacity>
-        <Text style={styles.title}>New post</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
-      <ScrollView style={{ flex: 1 }}>
-        {/* Live Stream Button */}
-        <View style={{ alignItems: 'center', marginVertical: 16 }}>
-          <TouchableOpacity
-            style={{ backgroundColor: '#e0245e', paddingVertical: 12, paddingHorizontal: 32, borderRadius: 24, flexDirection: 'row', alignItems: 'center' }}
-            onPress={() => router.push('/go-live')}
-          >
-            <Feather name="video" size={20} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Go Live Stream</Text>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Feather name="x" size={24} color="#000" />
           </TouchableOpacity>
+          <Text style={styles.title}>New post</Text>
+          <View style={{ width: 24 }} />
         </View>
-        {/* Main Image Preview */}
-        {selectedImages.length > 0 ? (
-          <View>
-            <Image source={{ uri: selectedImages[0] }} style={styles.mainImage} />
-            
-            {/* Small Image Grid */}
-            <View style={styles.gridContainer}>
-              {selectedImages.map((uri, index) => (
-                <TouchableOpacity 
-                  key={index} 
-                  style={[styles.gridItem, index === 0 && styles.gridItemActive]}
-                  onPress={() => {
-                    const newImages = [...selectedImages];
-                    [newImages[0], newImages[index]] = [newImages[index], newImages[0]];
-                    setSelectedImages(newImages);
-                  }}
-                >
-                  <Image source={{ uri }} style={styles.gridImage} />
-                  {index === 0 && <View style={styles.activeIndicator} />}
-                </TouchableOpacity>
-              ))}
-              {selectedImages.length < 4 && (
-                <TouchableOpacity style={styles.gridItem} onPress={() => setShowImagePicker(true)}>
-                  <View style={styles.addMore}>
-                    <Feather name="plus" size={20} color="#999" />
-                  </View>
-                </TouchableOpacity>
-              )}
-            </View>
+
+        <ScrollView style={{ flex: 1 }}>
+          {/* Live Stream Button */}
+          <View style={{ alignItems: 'center', marginVertical: 16 }}>
+            <TouchableOpacity
+              style={{ backgroundColor: '#e0245e', paddingVertical: 12, paddingHorizontal: 32, borderRadius: 24, flexDirection: 'row', alignItems: 'center' }}
+              onPress={() => router.push('/go-live')}
+            >
+              <Feather name="video" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>Go Live Stream</Text>
+            </TouchableOpacity>
           </View>
-        ) : (
-          <TouchableOpacity style={styles.imagePlaceholder} onPress={() => setShowImagePicker(true)}>
-            <Feather name="image" size={48} color="#ccc" />
-            <Text style={styles.placeholderText}>Tap to select image</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Post Options */}
-        <View style={styles.options}>
-          {/* Caption */}
-          <TouchableOpacity style={styles.optionRow} onPress={() => {}}>
-            <MaterialIcons name="notes" size={20} color="#000" style={{ marginRight: 12 }} />
-            <TextInput
-              placeholder="Add a caption"
-              value={caption}
-              onChangeText={setCaption}
-              style={styles.captionInput}
-              multiline={false}
-              placeholderTextColor="#999"
-            />
-          </TouchableOpacity>
-
-          {/* Location */}
-          <TouchableOpacity style={styles.optionRow} onPress={() => setShowLocationModal(true)}>
-            <Feather name="map-pin" size={20} color="#000" style={{ marginRight: 12 }} />
-            <Text style={styles.optionText}>
-              {location ? location.name : "Add a location"}
-            </Text>
-            <Feather name="chevron-right" size={20} color="#999" style={{ marginLeft: "auto" }} />
-          </TouchableOpacity>
-
-          {/* Verified Location */}
-          <TouchableOpacity style={styles.optionRow} onPress={() => setShowVerifiedModal(true)}>
-            <View style={{ marginRight: 12 }}><VerifiedBadge size={20} color="#000" /></View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.optionText}>
-                {verifiedLocation ? "Verified location added" : "Add a verified location"}
-              </Text>
-              {verifiedLocation && (
-                <View style={styles.verifiedInfo}>
-                  <Text style={styles.verifiedName}>{verifiedLocation.name}</Text>
-                  <Text style={styles.verifiedAddress}>{verifiedLocation.address}</Text>
-                </View>
-              )}
+          {/* Main Image Preview */}
+          {selectedImages.length > 0 ? (
+            <View>
+              <Image source={{ uri: selectedImages[0] }} style={styles.mainImage} />
+              
+              {/* Small Image Grid */}
+              <View style={styles.gridContainer}>
+                {selectedImages.map((uri, index) => (
+                  <TouchableOpacity 
+                    key={index} 
+                    style={[styles.gridItem, index === 0 && styles.gridItemActive]}
+                    onPress={() => {
+                      const newImages = [...selectedImages];
+                      [newImages[0], newImages[index]] = [newImages[index], newImages[0]];
+                      setSelectedImages(newImages);
+                    }}
+                  >
+                    <Image source={{ uri }} style={styles.gridImage} />
+                    {index === 0 && <View style={styles.activeIndicator} />}
+                  </TouchableOpacity>
+                ))}
+                {selectedImages.length < 4 && (
+                  <TouchableOpacity style={styles.gridItem} onPress={() => setShowImagePicker(true)}>
+                    <View style={styles.addMore}>
+                      <Feather name="plus" size={20} color="#999" />
+                    </View>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
-            {verifiedLocation ? (
-              <TouchableOpacity onPress={() => setVerifiedLocation(null)}>
-                <Feather name="x" size={20} color="#000" />
-              </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.imagePlaceholder} onPress={() => setShowImagePicker(true)}>
+              <Feather name="image" size={48} color="#ccc" />
+              <Text style={styles.placeholderText}>Tap to select image</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Post Options */}
+          <View style={styles.options}>
+            {/* Caption */}
+            <TouchableOpacity style={styles.optionRow} onPress={() => {}}>
+              <MaterialIcons name="notes" size={20} color="#000" style={{ marginRight: 12 }} />
+              <TextInput
+                placeholder="Add a caption"
+                value={caption}
+                onChangeText={setCaption}
+                style={styles.captionInput}
+                multiline={false}
+                placeholderTextColor="#999"
+              />
+            </TouchableOpacity>
+
+            {/* Location */}
+            <TouchableOpacity style={styles.optionRow} onPress={() => setShowLocationModal(true)}>
+              <Feather name="map-pin" size={20} color="#000" style={{ marginRight: 12 }} />
+              <Text style={styles.optionText}>
+                {location ? location.name : "Add a location"}
+              </Text>
+              <Feather name="chevron-right" size={20} color="#999" style={{ marginLeft: "auto" }} />
+            </TouchableOpacity>
+
+            {/* Verified Location */}
+            <TouchableOpacity style={styles.optionRow} onPress={() => setShowVerifiedModal(true)}>
+              <View style={{ marginRight: 12 }}><VerifiedBadge size={20} color="#000" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.optionText}>
+                  {verifiedLocation ? "Verified location added" : "Add a verified location"}
+                </Text>
+                {verifiedLocation && (
+                  <View style={styles.verifiedInfo}>
+                    <Text style={styles.verifiedName}>{verifiedLocation.name}</Text>
+                    <Text style={styles.verifiedAddress}>{verifiedLocation.address}</Text>
+                  </View>
+                )}
+              </View>
+              {verifiedLocation ? (
+                <TouchableOpacity onPress={() => setVerifiedLocation(null)}>
+                  <Feather name="x" size={20} color="#000" />
+                </TouchableOpacity>
+              ) : (
+                <Feather name="chevron-right" size={20} color="#999" />
+              )}
+            </TouchableOpacity>
+
+            {/* Tag People */}
+            <TouchableOpacity style={styles.optionRow} onPress={() => setShowTagModal(true)}>
+              <Feather name="user" size={20} color="#000" style={{ marginRight: 12 }} />
+              <Text style={styles.optionText}>Tag people</Text>
+              <Feather name="chevron-right" size={20} color="#999" style={{ marginLeft: "auto" }} />
+            </TouchableOpacity>
+
+            {/* Clear All */}
+            <TouchableOpacity style={styles.clearAllBtn} onPress={() => {
+              setCaption(""); setLocation(null); setVerifiedLocation(null); setTaggedUsers([]);
+            }}>
+              <Text style={styles.clearAllText}>Clear all</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+
+        {/* Share Button */}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity 
+            style={[styles.nextBtn, (loading || selectedImages.length === 0) && styles.nextBtnDisabled]} 
+            onPress={handleShare}
+            disabled={loading || selectedImages.length === 0}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
             ) : (
-              <Feather name="chevron-right" size={20} color="#999" />
+              <Text style={styles.nextBtnText}>Next</Text>
             )}
           </TouchableOpacity>
-
-          {/* Tag People */}
-          <TouchableOpacity style={styles.optionRow} onPress={() => setShowTagModal(true)}>
-            <Feather name="user" size={20} color="#000" style={{ marginRight: 12 }} />
-            <Text style={styles.optionText}>Tag people</Text>
-            <Feather name="chevron-right" size={20} color="#999" style={{ marginLeft: "auto" }} />
-          </TouchableOpacity>
-
-          {/* Clear All */}
-          <TouchableOpacity style={styles.clearAllBtn} onPress={() => {
-            setCaption(""); setLocation(null); setVerifiedLocation(null); setTaggedUsers([]);
-          }}>
-            <Text style={styles.clearAllText}>Clear all</Text>
-          </TouchableOpacity>
         </View>
-      </ScrollView>
-
-      {/* Share Button */}
-      <View style={styles.bottomBar}>
-        <TouchableOpacity 
-          style={[styles.nextBtn, (loading || selectedImages.length === 0) && styles.nextBtnDisabled]} 
-          onPress={handleShare}
-          disabled={loading || selectedImages.length === 0}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.nextBtnText}>Next</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      </KeyboardAvoidingView>
 
       {/* Image Picker Modal */}
       <Modal visible={showImagePicker} animationType="slide">

@@ -1,7 +1,7 @@
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { AVPlaybackStatus, ResizeMode, Video } from 'expo-av';
 // Firebase removed - using Backend API
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -26,6 +26,7 @@ import { deleteStory } from '../../lib/firebaseHelpers/deleteStory';
 import { addCommentReply, addStoryToHighlight, getUserHighlights } from '../../lib/firebaseHelpers/index';
 import { getKeyboardOffset } from '../../utils/responsive';
 import { useUser } from './UserContext';
+import { formatDistanceToNow } from 'date-fns';
 
 const { width, height } = Dimensions.get('window');
 
@@ -96,6 +97,44 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
   const [showHighlightModal, setShowHighlightModal] = useState(false);
   const [userHighlights, setUserHighlights] = useState<any[]>([]);
   const [loadingHighlights, setLoadingHighlights] = useState(false);
+
+  // Robust date parsing for createdAt coming as number | string | Date | Firestore-like
+  const toDate = (input: any): Date | null => {
+    try {
+      if (!input) return null;
+      if (input instanceof Date) return isNaN(input.getTime()) ? null : input;
+      if (typeof input === 'number') {
+        const d = new Date(input);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      if (typeof input === 'string') {
+        const d = new Date(input);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      if (input?.toDate && typeof input.toDate === 'function') {
+        const d = input.toDate();
+        return d instanceof Date && !isNaN(d.getTime()) ? d : null;
+      }
+      if (input?._seconds != null) {
+        const ms = Number(input._seconds) * 1000 + Math.floor(Number(input._nanoseconds || 0) / 1e6);
+        const d = new Date(ms);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      if (input?.$date != null) {
+        const d = new Date(input.$date);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      const d = new Date(input);
+      return isNaN(d.getTime()) ? null : d;
+    } catch {
+      return null;
+    }
+  };
+
+  const relativeTime = useMemo(() => {
+    const d = toDate(localStories[currentIndex]?.createdAt);
+    return d ? formatDistanceToNow(d, { addSuffix: true }) : 'Just now';
+  }, [localStories, currentIndex]);
 
   // Load current user from AsyncStorage on mount
   useEffect(() => {
@@ -534,7 +573,7 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
           />
           <View style={{ flex: 1 }}>
             <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>{currentStory.userName}</Text>
-            <Text style={{ color: '#ddd', fontSize: 12 }}>Just now</Text>
+            <Text style={{ color: '#ddd', fontSize: 12 }}>{relativeTime}</Text>
           </View>
           {(currentStory.videoUrl || currentStory.mediaType === 'video') && (
             <TouchableOpacity onPress={() => setIsMuted(m => !m)} style={{ marginRight: 12 }}>
@@ -698,7 +737,7 @@ export default function StoriesViewer({ stories, onClose, initialIndex = 0 }: { 
 
         {/* Comments Section as Modal */}
         <Modal visible={showComments} animationType="slide" transparent={true} onRequestClose={() => setShowComments(false)}>
-          <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <View style={{ flex: 1, justifyContent: 'flex-end' }}>
               <TouchableOpacity
                 style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.18)' }}

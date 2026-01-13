@@ -4,10 +4,11 @@ import { ResizeMode, Video } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, PanResponder, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { feedEventEmitter } from '../../lib/feedEventEmitter';
 import { getLocationVisitCount, likePost, unlikePost } from "../../lib/firebaseHelpers";
 import { getOptimizedImageUrl } from "../../lib/imageHelpers";
+import { sharePost } from '../../lib/postShare';
 import { notificationService } from '../../lib/notificationService';
 import { CommentSection } from "./CommentSection";
 import SaveButton from "./SaveButton";
@@ -524,7 +525,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
           setCommentCount(data.commentCount);
         } else if (data?.newCommentCount || data?.commentAdded) {
           // Fallback: increment by 1 if we don't have actual count
-          setCommentCount(prev => {
+          setCommentCount((prev: number) => {
             const newCount = prev + 1;
             console.log('[PostCard] Incrementing comment count to:', newCount);
             return newCount;
@@ -1115,20 +1116,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
             style={{ marginRight: 24 }}
             onPress={async () => {
               try {
-                const { Share } = await import('react-native');
-                let shareMessage = `Check out this post`;
-                if (post?.userName) {
-                  shareMessage += ` by ${post.userName}`;
-                }
-                if (post?.location) {
-                  shareMessage += ` at ${post.location}`;
-                }
-                if (post?.caption) {
-                  shareMessage += `\n\n${post.caption}`;
-                }
-                await Share.share({
-                  message: shareMessage,
-                });
+                await sharePost(post);
               } catch (error) {
                 console.log('Share error:', error);
               }
@@ -1196,7 +1184,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
       >
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior='padding'
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={0}
         >
           <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>

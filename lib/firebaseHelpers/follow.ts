@@ -4,7 +4,7 @@ import { apiService } from '../../app/_services/apiService';
 export async function checkFollowStatus(followerId: string, followingId: string) {
   try {
     console.log('[checkFollowStatus] Checking follow status:', { followerId, followingId });
-    const res = await apiService.get('/follow/status', { followerId, followingId });
+    const res = await apiService.get('/follow/status', { params: { followerId, followingId } });
     console.log('[checkFollowStatus] Response:', res);
     return res;
   } catch (error: any) {

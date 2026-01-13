@@ -16,6 +16,7 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   Share,
@@ -120,6 +121,79 @@ export default function GoLiveScreen() {
   
   // Location state
   const [location, setLocation] = useState<{latitude: number; longitude: number} | null>(null);
+  const [manualLocation, setManualLocation] = useState<{latitude: number; longitude: number} | null>(null);
+  const [manualLocationLabel, setManualLocationLabel] = useState<string>('');
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [pickerLocation, setPickerLocation] = useState<{latitude: number; longitude: number}>(getSafeCoordinate(null));
+  const [pickerLocationLabel, setPickerLocationLabel] = useState<string>('');
+  const [isResolvingPickerLabel, setIsResolvingPickerLabel] = useState(false);
+
+  const getLiveLocation = useCallback(async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        logger.warn('Live location permission denied');
+        return null;
+      }
+
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        logger.warn('Location services disabled');
+        return null;
+      }
+
+      let best: { latitude: number; longitude: number } | null = null;
+
+      try {
+        const last = await Location.getLastKnownPositionAsync({});
+        if (last?.coords && isFinite(last.coords.latitude) && isFinite(last.coords.longitude)) {
+          best = { latitude: last.coords.latitude, longitude: last.coords.longitude };
+          setLocation(best);
+        }
+      } catch {}
+
+      try {
+        const timeoutMs = 4500;
+        const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs));
+        const current = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const loc: any = await Promise.race([current, timeout]);
+        if (loc?.coords && isFinite(loc.coords.latitude) && isFinite(loc.coords.longitude)) {
+          best = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+          setLocation(best);
+        }
+      } catch (e) {
+        logger.error('Error getting current location:', e);
+      }
+
+      return best;
+    } catch (error) {
+      logger.error('Error getting location:', error);
+      return null;
+    }
+  }, []);
+
+  const resolvePickerLabel = useCallback(async (coord: { latitude: number; longitude: number }) => {
+    try {
+      setIsResolvingPickerLabel(true);
+      const results = await Location.reverseGeocodeAsync({ latitude: coord.latitude, longitude: coord.longitude });
+      const first = Array.isArray(results) && results.length > 0 ? results[0] : null;
+      const city = (first as any)?.city || (first as any)?.subregion || (first as any)?.region || '';
+      const country = (first as any)?.country || '';
+      const label = [city, country].filter(Boolean).join(', ');
+      setPickerLocationLabel(label || `${coord.latitude.toFixed(4)}, ${coord.longitude.toFixed(4)}`);
+    } catch (e) {
+      setPickerLocationLabel(`${coord.latitude.toFixed(4)}, ${coord.longitude.toFixed(4)}`);
+    } finally {
+      setIsResolvingPickerLabel(false);
+    }
+  }, []);
+
+  const openLocationPicker = useCallback(() => {
+    const base = location || manualLocation || getSafeCoordinate(null);
+    setPickerLocation({ latitude: base.latitude, longitude: base.longitude });
+    setShowLocationPicker(true);
+    resolvePickerLabel({ latitude: base.latitude, longitude: base.longitude });
+  }, [location, manualLocation, resolvePickerLabel]);
   
   // Comments state
   const [comments, setComments] = useState<Comment[]>([]);
@@ -143,17 +217,13 @@ export default function GoLiveScreen() {
   useEffect(() => {
     const getLocation = async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({});
-          setLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-        }
+        await getLiveLocation();
       } catch (error) {
         logger.error('Error getting location:', error);
       }
     };
     getLocation();
-  }, []);
+  }, [getLiveLocation]);
 
   // Load user data
   useEffect(() => {
@@ -246,6 +316,9 @@ export default function GoLiveScreen() {
     try {
       setIsInitializing(true);
 
+      const liveLoc = await getLiveLocation();
+      const effectiveLoc = liveLoc || manualLocation;
+
       // Request permissions first
       const hasPermissions = await requestPermissions();
       if (!hasPermissions) {
@@ -277,6 +350,9 @@ export default function GoLiveScreen() {
             channelName: effectiveRoomId,
             userName,
             userAvatar,
+            location: effectiveLoc ? { latitude: effectiveLoc.latitude, longitude: effectiveLoc.longitude } : undefined,
+            latitude: effectiveLoc?.latitude,
+            longitude: effectiveLoc?.longitude,
           });
 
           const newId = resp?.id ? String(resp.id) : (resp?.data?.id ? String(resp.data.id) : null);
@@ -431,6 +507,7 @@ export default function GoLiveScreen() {
 
   // If not streaming, show setup screen
   if (!isStreaming) {
+    const effectiveLocation = location || manualLocation;
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -460,8 +537,34 @@ export default function GoLiveScreen() {
           <View style={styles.setupCard}>
             <Text style={styles.setupLabel}>📍 Location</Text>
             <Text style={styles.setupValue}>
-              {location ? `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}` : 'Getting location...'}
+              {effectiveLocation
+                ? (manualLocation ? (manualLocationLabel || `${effectiveLocation.latitude.toFixed(4)}, ${effectiveLocation.longitude.toFixed(4)}`) : `${effectiveLocation.latitude.toFixed(4)}, ${effectiveLocation.longitude.toFixed(4)}`)
+                : 'Location not detected yet'}
             </Text>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+              <TouchableOpacity
+                style={[styles.locationActionBtn, styles.locationActionPrimary]}
+                onPress={openLocationPicker}
+              >
+                <Ionicons name="map" size={16} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.locationActionTextPrimary}>Open Map</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.locationActionBtn, styles.locationActionSecondary]}
+                onPress={async () => {
+                  try {
+                    await getLiveLocation();
+                  } catch (e) {
+                    logger.error('Retry live location failed:', e);
+                  }
+                }}
+              >
+                <Ionicons name="locate" size={16} color="#667eea" style={{ marginRight: 6 }} />
+                <Text style={styles.locationActionTextSecondary}>Try Again</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.setupCard}>
@@ -486,6 +589,79 @@ export default function GoLiveScreen() {
             )}
           </TouchableOpacity>
         </ScrollView>
+
+        <Modal
+          visible={showLocationPicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowLocationPicker(false)}
+        >
+          <View style={styles.pickerOverlay}>
+            <View style={styles.pickerSheet}>
+              <View style={styles.pickerHeader}>
+                <Text style={styles.pickerTitle}>Pick Location</Text>
+                <TouchableOpacity onPress={() => setShowLocationPicker(false)}>
+                  <Ionicons name="close" size={22} color="#000" />
+                </TouchableOpacity>
+              </View>
+
+              {Platform.OS !== 'web' && MapView ? (
+                <MapView
+                  style={styles.pickerMap}
+                  initialRegion={{
+                    latitude: pickerLocation.latitude,
+                    longitude: pickerLocation.longitude,
+                    latitudeDelta: 0.02,
+                    longitudeDelta: 0.02,
+                  }}
+                  onPress={(e: any) => {
+                    const coord = e?.nativeEvent?.coordinate;
+                    if (coord && typeof coord.latitude === 'number' && typeof coord.longitude === 'number') {
+                      setPickerLocation({ latitude: coord.latitude, longitude: coord.longitude });
+                      resolvePickerLabel({ latitude: coord.latitude, longitude: coord.longitude });
+                    }
+                  }}
+                >
+                  <Marker
+                    coordinate={pickerLocation}
+                    draggable
+                    onDragEnd={(e: any) => {
+                      const coord = e?.nativeEvent?.coordinate;
+                      if (coord && typeof coord.latitude === 'number' && typeof coord.longitude === 'number') {
+                        setPickerLocation({ latitude: coord.latitude, longitude: coord.longitude });
+                        resolvePickerLabel({ latitude: coord.latitude, longitude: coord.longitude });
+                      }
+                    }}
+                    title="Selected"
+                  />
+                </MapView>
+              ) : (
+                <View style={[styles.pickerMap, { alignItems: 'center', justifyContent: 'center' }]}>
+                  <Text style={{ color: '#666' }}>Map is not available on web preview.</Text>
+                </View>
+              )}
+
+              <View style={styles.pickerFooter}>
+                <Text style={styles.pickerSubtitle} numberOfLines={2}>
+                  {isResolvingPickerLabel
+                    ? 'Resolving location...'
+                    : (pickerLocationLabel || `${pickerLocation.latitude.toFixed(4)}, ${pickerLocation.longitude.toFixed(4)}`)}
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.pickerConfirmBtn}
+                  onPress={() => {
+                    setManualLocation({ latitude: pickerLocation.latitude, longitude: pickerLocation.longitude });
+                    setManualLocationLabel(pickerLocationLabel || `${pickerLocation.latitude.toFixed(4)}, ${pickerLocation.longitude.toFixed(4)}`);
+                    setShowLocationPicker(false);
+                  }}
+                >
+                  <Text style={styles.pickerConfirmText}>Confirm Location</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -535,7 +711,7 @@ export default function GoLiveScreen() {
             <Text style={styles.statsText}>👥 Viewers: {viewerCount}</Text>
             <Text style={styles.statsText}>💬 Comments: {comments.length}</Text>
             <Text style={styles.statsText}>⏱️ Duration: {formatDuration(streamDuration)}</Text>
-            <Text style={styles.statsText}>📍 Location: {location ? 'Enabled' : 'Disabled'}</Text>
+            <Text style={styles.statsText}>📍 Location: {(location || manualLocation) ? 'Enabled' : 'Disabled'}</Text>
           </View>
         )}
 
@@ -629,7 +805,7 @@ export default function GoLiveScreen() {
       )}
 
       {/* Map Panel */}
-      {showMap && location && (
+      {showMap && (location || manualLocation) && (
         <View style={styles.mapPanel}>
           <View style={styles.mapPanelHeader}>
             <Text style={styles.mapPanelTitle}>Stream Location</Text>
@@ -642,13 +818,13 @@ export default function GoLiveScreen() {
             <MapView
               style={styles.map}
               initialRegion={{
-                latitude: location.latitude,
-                longitude: location.longitude,
+                latitude: (location || manualLocation)!.latitude,
+                longitude: (location || manualLocation)!.longitude,
                 latitudeDelta: 0.01,
                 longitudeDelta: 0.01,
               }}
             >
-              <Marker coordinate={location} title="You are here" />
+              <Marker coordinate={(location || manualLocation)!} title="You are here" />
             </MapView>
           ) : (
             <View style={[styles.map, { alignItems: 'center', justifyContent: 'center' }]}>
@@ -672,10 +848,24 @@ const styles = StyleSheet.create({
   setupInput: { borderWidth: 1, borderColor: '#ddd', borderRadius: 8, padding: 12, fontSize: 16 },
   setupHint: { marginTop: 8, fontSize: 14, color: '#666' },
   setupValue: { fontSize: 14, color: '#666' },
+  locationActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 10 },
+  locationActionPrimary: { backgroundColor: '#667eea' },
+  locationActionSecondary: { backgroundColor: '#eef2ff', borderWidth: 1, borderColor: '#c7d2fe' },
+  locationActionTextPrimary: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  locationActionTextSecondary: { color: '#667eea', fontWeight: '700', fontSize: 13 },
   setupInfo: { fontSize: 14, color: '#666', marginTop: 4 },
   startButton: { backgroundColor: '#667eea', margin: 16, padding: 16, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   startButtonDisabled: { opacity: 0.5 },
   startButtonText: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
+  pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  pickerSheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden', maxHeight: '85%' },
+  pickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  pickerTitle: { fontSize: 16, fontWeight: '800', color: '#111' },
+  pickerMap: { width: '100%', height: 320, backgroundColor: '#f2f2f2' },
+  pickerFooter: { paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#eee' },
+  pickerSubtitle: { fontSize: 13, color: '#444', marginBottom: 10 },
+  pickerConfirmBtn: { backgroundColor: '#667eea', paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  pickerConfirmText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   videoContainer: { flex: 1, backgroundColor: '#000' },
   overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'box-none' },
   topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: 'rgba(0,0,0,0.5)' },

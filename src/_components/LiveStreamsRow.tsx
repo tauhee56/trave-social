@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState, memo } from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useState, memo } from 'react';
+import { AppState, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { getActiveLiveStreams } from '../../lib/firebaseHelpers';
 
 const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
@@ -23,53 +24,88 @@ function LiveStreamsRowComponent() {
 	const lastFetchRef = React.useRef<number>(0);
 	const isFetchingRef = React.useRef<boolean>(false);
 	const hasInitializedRef = React.useRef<boolean>(false);
+	const isMountedRef = React.useRef<boolean>(true);
+	const pollTimerRef = React.useRef<any>(null);
+	const appStateRef = React.useRef<string>(AppState.currentState);
+
+	useEffect(() => {
+		return () => {
+			isMountedRef.current = false;
+		};
+	}, []);
+
+	const fetchLiveStreams = useCallback(async () => {
+		// Prevent multiple concurrent fetches
+		if (isFetchingRef.current) return;
+
+		const now = Date.now();
+		if (now - lastFetchRef.current < 1200) return;
+		lastFetchRef.current = now;
+
+		isFetchingRef.current = true;
+		try {
+			const res: any = await getActiveLiveStreams();
+			if (!isMountedRef.current) return;
+			
+			let streams: any[] = [];
+			if (Array.isArray(res)) {
+				streams = res;
+			} else if (res && typeof res === 'object') {
+				const candidate = (res as any).streams ?? (res as any).data;
+				streams = Array.isArray(candidate) ? candidate : [];
+			} else {
+				streams = [];
+			}
+
+			if (streams.length > 0) {
+				streams.sort((a: any, b: any) => (b?.viewerCount || 0) - (a?.viewerCount || 0));
+			}
+			setLiveStreams(streams as any);
+		} catch (error) {
+			console.error('❌ Error fetching live streams:', error);
+		} finally {
+			isFetchingRef.current = false;
+		}
+	}, []);
+
+	useFocusEffect(
+		useCallback(() => {
+			fetchLiveStreams();
+			return () => {};
+		}, [fetchLiveStreams])
+	);
 
 	useEffect(() => {
 		// Only fetch once on initial mount
 		if (hasInitializedRef.current) return;
 		hasInitializedRef.current = true;
 
-		let isMounted = true;
-
-		const fetchLiveStreams = async () => {
-			// Prevent multiple concurrent fetches
-			if (isFetchingRef.current) return;
-
-			isFetchingRef.current = true;
-
-			try {
-				const res: any = await getActiveLiveStreams();
-				if (!isMounted) {
-					isFetchingRef.current = false;
-					return;
-				}
-				
-				let streams: any[] = [];
-				if (Array.isArray(res)) {
-					streams = res;
-				} else if (res && typeof res === 'object') {
-					const candidate = (res as any).streams ?? (res as any).data;
-					streams = Array.isArray(candidate) ? candidate : [];
-				} else {
-					streams = [];
-				}
-
-				if (streams.length > 0) {
-					streams.sort((a: any, b: any) => (b?.viewerCount || 0) - (a?.viewerCount || 0));
-				}
-				setLiveStreams(streams);
-			} catch (error) {
-				console.error('❌ Error fetching live streams:', error);
-			} finally {
-				isFetchingRef.current = false;
-			}
-		};
-
-		// Initial fetch only - no polling
 		fetchLiveStreams();
+		pollTimerRef.current = setInterval(fetchLiveStreams, 5000);
+
+		const sub = AppState.addEventListener('change', (nextState) => {
+			appStateRef.current = nextState;
+			if (nextState === 'active') {
+				fetchLiveStreams();
+				if (!pollTimerRef.current) {
+					pollTimerRef.current = setInterval(fetchLiveStreams, 5000);
+				}
+			} else {
+				if (pollTimerRef.current) {
+					clearInterval(pollTimerRef.current);
+					pollTimerRef.current = null;
+				}
+			}
+		});
 
 		return () => {
-			isMounted = false;
+			try {
+				sub.remove();
+			} catch {}
+			if (pollTimerRef.current) {
+				clearInterval(pollTimerRef.current);
+				pollTimerRef.current = null;
+			}
 		};
 	}, []);
 
@@ -82,7 +118,9 @@ function LiveStreamsRowComponent() {
 			pathname: '/watch-live',
 			params: {
 				streamId: stream.id,
+				roomId: (stream as any)?.roomId || stream.channelName,
 				channelName: stream.channelName,
+				title: (stream as any)?.title,
 				hostName: stream.userName,
 				hostAvatar: stream.userAvatar
 			}

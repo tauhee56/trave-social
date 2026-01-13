@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'react-native';
 // import { useAuthLoading, useUser } from './_components/UserContext';
@@ -12,21 +11,19 @@ import { Image } from 'react-native';
 // @ts-ignore
 import { useInboxPolling } from '../hooks/useInboxPolling';
 import { archiveConversation, deleteConversation } from '../lib/firebaseHelpers/archive';
-import InboxRow from '../src/_components/InboxRow';
-import { useUserProfile } from '../app/_hooks/useUserProfile';
+import { markConversationAsRead } from '../lib/firebaseHelpers/conversation';
 import { apiService } from './_services/apiService';
 
 // Helper component to show conversation with user profile
-function ConversationItem({ item, userId, router, formatTime, conversations, setConversations, setOptimisticReadByOtherId, onOpenActions }: any) {
-  const otherUserId = item.participants?.find((uid: string) => uid !== userId);
-  const { profile, loading } = useUserProfile(otherUserId);
-  const profileAny = profile as any;
-  const username = profileAny?.username || profileAny?.displayName || profileAny?.name || otherUserId?.substring(0, 12) || 'User';
+function ConversationItem({ item, userId, router, formatTime, profilesById, setConversations, setOptimisticReadByOtherId, onOpenActions }: any) {
+  const otherUserId = item?.otherUserId || item.participants?.find((uid: string) => uid !== userId);
+  const profileAny = otherUserId ? profilesById?.[String(otherUserId)] : null;
+  const username = profileAny?.username || profileAny?.displayName || profileAny?.name || String(otherUserId || '').substring(0, 12) || 'User';
   const avatar = profileAny?.avatar || profileAny?.photoURL;
   const lastMsgPreview = item.lastMessage?.substring(0, 40) || 'No messages yet';
   
   const DEFAULT_AVATAR = 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1/default/default-pic.jpg';
-  const displayAvatar = avatar && avatar.trim() ? avatar : DEFAULT_AVATAR;
+  const displayAvatar = typeof avatar === 'string' && avatar.trim() ? avatar : DEFAULT_AVATAR;
   
   return (
     <TouchableOpacity
@@ -46,6 +43,11 @@ function ConversationItem({ item, userId, router, formatTime, conversations, set
       delayLongPress={350}
       onPress={() => {
         if (!otherUserId) return;
+
+        const conversationId = String(item.conversationId || item.id || item._id);
+        if (!conversationId) return;
+
+        markConversationAsRead(conversationId, String(userId)).catch(() => {});
 
         if (typeof setConversations === 'function') {
           setConversations((prev: any[]) => {
@@ -71,7 +73,7 @@ function ConversationItem({ item, userId, router, formatTime, conversations, set
         router.push({
           pathname: '/dm',
           params: {
-            conversationId: item.conversationId || item.id || item._id,
+            conversationId,
             otherUserId: otherUserId,
             user: username
           }
@@ -113,10 +115,61 @@ function ConversationItem({ item, userId, router, formatTime, conversations, set
 }
 
 export default function Inbox() {
-    // Default avatar from Firebase Storage
-    const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
   const router = useRouter();
   const navigation = useNavigation();
+
+  const [profilesById, setProfilesById] = useState<Record<string, any>>({});
+
+  const coerceToEpochMs = useCallback((value: any): number => {
+    if (!value) return 0;
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      // Handle seconds vs milliseconds
+      if (value > 0 && value < 10_000_000_000) return value * 1000;
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return 0;
+
+      // Numeric string
+      if (/^\d+$/.test(trimmed)) {
+        const asNum = Number(trimmed);
+        if (Number.isFinite(asNum)) {
+          if (asNum > 0 && asNum < 10_000_000_000) return asNum * 1000;
+          return asNum;
+        }
+      }
+
+      // ISO date string
+      const parsed = Date.parse(trimmed);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    // Firestore Timestamp
+    if (typeof value?.toDate === 'function') {
+      const d = value.toDate();
+      const ms = d instanceof Date ? d.getTime() : NaN;
+      return Number.isFinite(ms) ? ms : 0;
+    }
+
+    // Common timestamp shapes from backends
+    const seconds = value?.seconds ?? value?._seconds;
+    const nanos = value?.nanoseconds ?? value?._nanoseconds;
+    if (typeof seconds === 'number' && Number.isFinite(seconds)) {
+      const ms = seconds * 1000 + (typeof nanos === 'number' ? Math.floor(nanos / 1_000_000) : 0);
+      return Number.isFinite(ms) ? ms : 0;
+    }
+
+    // Date object
+    if (value instanceof Date) {
+      const ms = value.getTime();
+      return Number.isFinite(ms) ? ms : 0;
+    }
+
+    return 0;
+  }, []);
 
   const handleClose = () => {
     try {
@@ -177,18 +230,85 @@ export default function Inbox() {
     if (!Array.isArray(raw)) return [];
 
     return raw.map((convo: any) => {
-      const participants = Array.isArray(convo?.participants) ? convo.participants.map(String) : [];
+      const participantsRaw = convo?.participants ?? convo?.participantIds ?? convo?.members;
+      const participants = Array.isArray(participantsRaw) ? participantsRaw.map(String) : [];
       const otherId = participants.find((p: string) => p !== String(userId));
+
+      const baseId = convo?.conversationId || convo?.id || convo?._id;
+      const stableId = typeof baseId === 'string' && baseId.trim()
+        ? baseId
+        : (participants.length >= 2 ? participants.slice().sort().join('_') : String(baseId || otherId || 'conversation'));
+
+      const lastText = convo?.lastMessage ?? convo?.lastMessageText ?? convo?.last_message;
+
+      // Prefer last-message timestamp fields over updatedAt
+      const timeRaw = convo?.lastMessageAt ?? convo?.lastMessageTime ?? convo?.last_message_at ?? convo?.updatedAt ?? convo?.createdAt;
+      const lastMessageAt = coerceToEpochMs(timeRaw);
+
       const optimisticTs = otherId ? optimisticReadByOtherId[String(otherId)] : undefined;
       const suppressUnread = typeof optimisticTs === 'number' && (Date.now() - optimisticTs) < 30000;
 
+      const unreadCountRaw = convo?.unreadCount ?? convo?.unread ?? convo?.unread_count;
+      const unreadCount = suppressUnread ? 0 : (typeof unreadCountRaw === 'number' ? unreadCountRaw : Number(unreadCountRaw || 0));
+
       return {
         ...convo,
-        id: convo.id || convo._id,
-        unreadCount: suppressUnread ? 0 : convo?.unreadCount
+        id: stableId,
+        conversationId: stableId,
+        participants,
+        otherUserId: otherId || convo?.otherUserId || convo?.otherUser?.id,
+        lastMessage: typeof lastText === 'string' ? lastText : (lastText ? String(lastText) : ''),
+        lastMessageAt,
+        unreadCount: Number.isFinite(unreadCount) ? unreadCount : 0,
       };
     });
-  }, [optimisticReadByOtherId, userId]);
+  }, [coerceToEpochMs, optimisticReadByOtherId, userId]);
+
+  useEffect(() => {
+    if (!Array.isArray(conversations) || conversations.length === 0) return;
+
+    const ids = Array.from(new Set(
+      conversations
+        .map((c: any) => c?.otherUserId)
+        .filter((x: any) => typeof x === 'string' && x.trim() !== '')
+        .map(String)
+    ));
+
+    const missing = ids.filter((id) => !profilesById?.[id]);
+    if (missing.length === 0) return;
+
+    let mounted = true;
+    (async () => {
+      try {
+        const results = await Promise.allSettled(
+          missing.map(async (id) => {
+            const res = await apiService.get(`/users/${id}`);
+            if (!res?.success) return null;
+            const data = res?.data;
+            if (!data) return null;
+            const avatar = data?.avatar || data?.photoURL || 'https://res.cloudinary.com/dinwxxnzm/image/upload/v1/default/default-pic.jpg';
+            return [id, { ...data, avatar }] as const;
+          })
+        );
+
+        if (!mounted) return;
+        setProfilesById((prev) => {
+          const next = { ...(prev || {}) };
+          for (const r of results) {
+            if (r.status === 'fulfilled' && r.value) {
+              const [id, profile] = r.value;
+              next[String(id)] = profile;
+            }
+          }
+          return next;
+        });
+      } catch {}
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [conversations, profilesById]);
 
   const refreshInbox = useCallback(async () => {
     if (!userId) return;
@@ -317,24 +437,22 @@ export default function Inbox() {
     useCallback(() => {
       if (!userId) return;
 
-      let isActive = true;
-
       (async () => {
         await refreshInbox();
       })();
 
       return () => {
-        isActive = false;
+        return;
       };
     }, [refreshInbox, userId])
   );
 
   function formatTime(timestamp: any) {
-    if (!timestamp) return '';
-    const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
-    if (!date) return '';
+    const ms = coerceToEpochMs(timestamp);
+    if (!ms) return '';
+    const date = new Date(ms);
     const now = new Date();
-    const diff = now.getTime() - date.getTime();
+    const diff = Math.max(0, now.getTime() - date.getTime());
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     if (hours < 1) return 'now';
@@ -455,8 +573,10 @@ export default function Inbox() {
         });
 
         const getSortTime = (c: any) => {
-          const t = c?.updatedAt || c?.lastMessageAt || c?.lastMessageTime || c?.createdAt;
-          const d = t?.toDate ? t.toDate() : (t ? new Date(t) : null);
+          const direct = c?.lastMessageAt;
+          if (typeof direct === 'number' && Number.isFinite(direct)) return direct;
+          const t = c?.updatedAt || c?.lastMessageTime || c?.createdAt;
+          const d = t?.toDate ? t.toDate() : (typeof t === 'number' ? new Date(t) : (t ? new Date(t) : null));
           return d && !Number.isNaN(d.getTime()) ? d.getTime() : 0;
         };
 
@@ -473,8 +593,7 @@ export default function Inbox() {
           } else {
             const aggregatedUnread = (existing?.unreadCount || 0) + (c?.unreadCount || 0);
             const keep = getSortTime(c) >= getSortTime(existing) ? c : existing;
-            keep.unreadCount = aggregatedUnread;
-            map.set(key, keep);
+            map.set(key, { ...keep, unreadCount: aggregatedUnread });
           }
         }
 
@@ -485,7 +604,7 @@ export default function Inbox() {
           return (
             <FlatList
               data={filteredConvos}
-              keyExtractor={(item, index) => item.conversationId || item.id || item._id || `convo-${index}`}
+              keyExtractor={(item) => String(item.conversationId || item.id)}
               style={{ width: '100%', flex: 1 }}
               renderItem={({ item, index }) => (
                 <ConversationItem 
@@ -493,7 +612,7 @@ export default function Inbox() {
                   userId={userId}
                   router={router}
                   formatTime={formatTime}
-                  conversations={conversations}
+                  profilesById={profilesById}
                   setConversations={setConversations}
                   setOptimisticReadByOtherId={setOptimisticReadByOtherId}
                   onOpenActions={openActions}

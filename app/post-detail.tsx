@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 // import { getCurrentUser } from '../lib/firebaseHelpers';
+import { sharePost } from '../lib/postShare';
 import PostViewerModal from '../src/_components/PostViewerModal';
 
 export default function PostDetailScreen() {
@@ -61,7 +62,7 @@ export default function PostDetailScreen() {
         savedPosts: {},
         handleLikePost: () => {},
         handleSavePost: () => {},
-        handleSharePost: () => {},
+        handleSharePost: (p: any) => sharePost(p),
         setCommentModalPostId: () => {},
         setCommentModalAvatar: () => {},
         setCommentModalVisible: () => {},

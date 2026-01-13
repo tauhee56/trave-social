@@ -7,13 +7,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { followUser, unfollowUser } from '../lib/firebaseHelpers/follow';
-import { useUser } from './_components/UserContext';
 
 const DEFAULT_AVATAR = 'https://via.placeholder.com/200x200.png?text=Profile';
 const API_URL = API_BASE_URL;
 
 type UserItem = {
   uid: string;
+  firebaseUid?: string;
   name: string;
   username?: string;
   avatar: string;
@@ -26,12 +26,24 @@ type TabType = 'followers' | 'following' | 'friends' | 'blocked';
 export default function FriendsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const authUser = useUser();
-  
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadUserId = async () => {
+      try {
+        const uid = await AsyncStorage.getItem('userId');
+        setCurrentUserId(uid);
+      } catch (e) {
+        setCurrentUserId(null);
+      }
+    };
+    loadUserId();
+  }, []);
+
   // Get userId and tab from params
-  const userId = typeof params.userId === 'string' ? params.userId : authUser?.uid;
+  const userId = typeof params.userId === 'string' ? params.userId : currentUserId;
   const initialTab = typeof params.tab === 'string' ? params.tab as TabType : 'followers';
-  
+
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [followers, setFollowers] = useState<UserItem[]>([]);
   const [following, setFollowing] = useState<UserItem[]>([]);
@@ -41,8 +53,8 @@ export default function FriendsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [followLoadingIds, setFollowLoadingIds] = useState<Set<string>>(new Set());
   const [profileName, setProfileName] = useState('');
-  
-  const isOwnProfile = userId === authUser?.uid;
+
+  const isOwnProfile = !!userId && !!currentUserId && userId === currentUserId;
 
   const normalizeAvatarUri = (uri?: string | null) => {
     const raw = (uri ?? '').toString().trim();
@@ -64,15 +76,13 @@ export default function FriendsScreen() {
 
   useEffect(() => {
     fetchAllData();
-  }, [userId, authUser?.uid]);
+  }, [userId, currentUserId]);
 
   const fetchAllData = async () => {
     if (!userId) return;
     setLoading(true);
 
     try {
-      const currentUserId = authUser?.uid;
-
       // Fetch followers
       const followersRes = await fetch(`${API_URL}/follow/users/${userId}/followers?currentUserId=${currentUserId}`);
       const followersData = await followersRes.json();
@@ -118,23 +128,23 @@ export default function FriendsScreen() {
   };
 
   const handleFollowToggle = async (targetUserId: string, isCurrentlyFollowing: boolean) => {
-    if (!authUser?.uid || targetUserId === authUser.uid) return;
-    
+    if (!currentUserId || targetUserId === currentUserId) return;
+
     setFollowLoadingIds(prev => new Set(prev).add(targetUserId));
-    
+
     try {
       if (isCurrentlyFollowing) {
-        await unfollowUser(authUser.uid, targetUserId);
+        await unfollowUser(currentUserId, targetUserId);
       } else {
-        await followUser(authUser.uid, targetUserId);
+        await followUser(currentUserId, targetUserId);
       }
-      
+
       // Update local state
-      const updateUserList = (list: UserItem[]) => 
+      const updateUserList = (list: UserItem[]) =>
         list.map(u => u.uid === targetUserId ? { ...u, isFollowing: !isCurrentlyFollowing } : u);
-      
-      setFollowers(updateUserList);
-      setFollowing(updateUserList);
+
+      setFollowers(updateUserList(followers));
+      setFollowing(updateUserList(following));
       setFriends(prev => {
         if (isCurrentlyFollowing) {
           // Removing from friends
@@ -148,12 +158,12 @@ export default function FriendsScreen() {
           return prev;
         }
       });
-      
+
     } catch (error) {
       console.error('Error toggling follow:', error);
       Alert.alert('Error', 'Failed to update follow status');
     }
-    
+
     setFollowLoadingIds(prev => {
       const newSet = new Set(prev);
       newSet.delete(targetUserId);
@@ -162,7 +172,7 @@ export default function FriendsScreen() {
   };
 
   const handleUnblock = async (targetUserId: string) => {
-    if (!authUser?.uid) return;
+    if (!currentUserId) return;
 
     Alert.alert(
       'Unblock User',
@@ -174,9 +184,10 @@ export default function FriendsScreen() {
           onPress: async () => {
             try {
               // Call backend API to unblock
-              const response = await fetch(`${API_URL}/users/${authUser.uid}/block/${targetUserId}`, {
+              const response = await fetch(`${API_URL}/users/${currentUserId}/block/${targetUserId}`, {
                 method: 'DELETE'
               });
+
               const data = await response.json();
 
               if (data.success) {
@@ -195,8 +206,8 @@ export default function FriendsScreen() {
   };
 
   const handleRemoveFollower = async (targetUserId: string) => {
-    if (!authUser?.uid || !isOwnProfile) return;
-    
+    if (!currentUserId || !isOwnProfile) return;
+
     Alert.alert(
       'Remove Follower',
       'This person will be removed from your followers. They won\'t be notified.',
@@ -208,7 +219,7 @@ export default function FriendsScreen() {
           onPress: async () => {
             try {
               // Remove from your followers (unfollow them from you)
-              await unfollowUser(targetUserId, authUser.uid);
+              await unfollowUser(targetUserId, currentUserId);
               setFollowers(prev => prev.filter(u => u.uid !== targetUserId));
               // Update friends list
               setFriends(prev => prev.filter(u => u.uid !== targetUserId));
@@ -238,24 +249,26 @@ export default function FriendsScreen() {
         data = blockedUsers;
         break;
     }
-    
+
     if (!searchQuery.trim()) return data;
-    
+
     const query = searchQuery.toLowerCase();
-    return data.filter(u => 
-      (u.name || '').toLowerCase().includes(query) || 
+    return data.filter(u =>
+      (u.name || '').toLowerCase().includes(query) ||
       ((u.username || '').toLowerCase().includes(query))
     );
   };
 
   const renderUserItem = ({ item }: { item: UserItem }) => {
-    const isMe = item.uid === authUser?.uid;
+    const isMe =
+      !!currentUserId &&
+      (item.uid === currentUserId || (item.firebaseUid ? item.firebaseUid === currentUserId : false));
     const isFollowLoading = followLoadingIds.has(item.uid);
     const avatarUri = normalizeAvatarUri(item.avatar);
     const displayName = (item.name || '').trim() || (item.username ? `@${item.username}` : 'User');
-    
+
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.userItem}
         onPress={() => router.push(`/user-profile?id=${item.uid}`)}
         activeOpacity={0.7}
@@ -283,6 +296,12 @@ export default function FriendsScreen() {
           )}
         </View>
         
+        {isMe && activeTab !== 'blocked' && (
+          <View style={styles.youPill}>
+            <Text style={styles.youPillText}>You</Text>
+          </View>
+        )}
+
         {!isMe && activeTab !== 'blocked' && (
           <TouchableOpacity
             style={[
@@ -457,6 +476,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  youPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#f1f1f1',
+  },
+  youPillText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',

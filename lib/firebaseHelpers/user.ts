@@ -33,8 +33,8 @@ export async function updateUserSection(userId: string, section: { name: string,
  */
 export async function getUserHighlights(userId: string, requesterUserId?: string) {
   try {
-    const params = requesterUserId ? { requesterUserId } : {};
-    const res = await fetch(`/api/users/${userId}/highlights${new URLSearchParams(params).toString() ? '?' + new URLSearchParams(params).toString() : ''}`);
+    const qs = requesterUserId ? `?requesterUserId=${encodeURIComponent(requesterUserId)}` : '';
+    const res = await fetch(`/api/users/${userId}/highlights${qs}`);
     const data = await res.json();
     return { success: data.success, highlights: data.data || [] };
   } catch (error: any) {
@@ -148,7 +148,7 @@ export async function updateUserProfile(uid: string, data: any) {
 export async function searchUsers(queryText: string, resultLimit: number = 20) {
   try {
     const { apiService } = await import('../../app/_services/apiService');
-    const res = await apiService.get('/users/search', { q: queryText, limit: Math.min(50, resultLimit) });
+    const res = await apiService.get('/users/search', { params: { q: queryText, limit: Math.min(50, resultLimit) } });
     let results = res.data || [];
 
     // Normalize IDs:

@@ -1,16 +1,19 @@
 import { Image as ExpoImage } from 'expo-image';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
-import { Dimensions, PermissionsAndroid, Platform, Share, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, Dimensions, PermissionsAndroid, Platform, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 // import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 // Firestore imports removed
 
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { PostLocationModal } from '../components/PostLocationModal';
+// import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
+// Firestore imports removed - using backend API
 import { useUser } from './_components/UserContext';
 // Firebase imports removed - using backend API
 import { getAllPosts } from '../lib/firebaseHelpers';
+import { sharePost } from '../lib/postShare';
 import { apiService } from './_services/apiService';
 import { addComment } from '../lib/firebaseHelpers/comments';
 import { getOptimizedImageUrl } from '../lib/imageHelpers';
@@ -95,18 +98,63 @@ const DEFAULT_REGION = {
   longitudeDelta: 0.09,
 };
 
+const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
+
 export default function MapScreen() {
   const currentUser = useUser();
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [posts, setPosts] = useState<PostType[]>([]);
+  const safePosts = Array.isArray(posts) ? posts : [];
+  const [selectedPosts, setSelectedPosts] = useState<PostType[] | null>(null);
+  const safeSelectedPosts = Array.isArray(selectedPosts) ? selectedPosts : [];
+
+  const mapRef = useRef<any>(null);
+  const appStateRef = useRef<string>(AppState.currentState);
+
+  const [modalComment, setModalComment] = useState<{[id:string]:string}>({});
+  const [modalLikes, setModalLikes] = useState<{[id:string]:number}>({});
+  const [modalLiked, setModalLiked] = useState<{[id:string]:boolean}>({});
+  const [modalCommentsCount, setModalCommentsCount] = useState<{[id:string]:number}>({});
+
   // Placeholder search function for modal
   function doSearch() {
     // TODO: Implement search logic to update map region based on query
     // Example: setMapRegion(...) or call geocoding API
     console.log('Search triggered for query:', query);
   }
-  const [modalComment, setModalComment] = useState<{[id:string]:string}>({});
-  const [modalLikes, setModalLikes] = useState<{[id:string]:number}>({});
-  const [modalLiked, setModalLiked] = useState<{[id:string]:boolean}>({});
-  const [modalCommentsCount, setModalCommentsCount] = useState<{[id:string]:number}>({});
+
+  const router = useRouter();
+  const params = useLocalSearchParams();
+  const initialQuery = (params.q as string) || '';
+  const userId = (params.user as string) || undefined; // Get userId from params
+  const latParam = params.lat ? parseFloat(params.lat as string) : undefined;
+  const lonParam = params.lon ? parseFloat(params.lon as string) : undefined;
+
+  const [query, setQuery] = useState(initialQuery);
+  // Viewer location state
+  const [viewerCoords, setViewerCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
+  // Defensive: always use array
+  const safeLiveStreams = Array.isArray(liveStreams) ? liveStreams : [];
+
+  const livePollTimerRef = useRef<any>(null);
+  const isFetchingLiveRef = useRef<boolean>(false);
+  const lastLiveFetchRef = useRef<number>(0);
+  const isMountedRef = useRef<boolean>(true);
+
+  const [mapRegion, setMapRegion] = useState<Region | null>(DEFAULT_REGION);
+  // Ensure mapRegion is always valid after mount
+  useEffect(() => {
+    if (!mapRegion || !isValidLatLon(mapRegion.latitude, mapRegion.longitude)) {
+      setMapRegion(DEFAULT_REGION);
+    }
+  }, []);
+
+  const [locationPermission, setLocationPermission] = useState<'granted'|'denied'|'unknown'>('unknown');
+  const [showSearch, setShowSearch] = useState(false);
+  const [showCommentsModalId, setShowCommentsModal] = useState<string | null>(null);
 
   // Load posts from Firestore on mount (with caching)
   const postsCache = useRef<PostType[]>([]);
@@ -134,6 +182,7 @@ export default function MapScreen() {
       }
     }).finally(() => setLoading(false));
   }, []);
+
   async function handleModalLike(post: PostType) {
     const alreadyLiked = modalLiked[post.id] || false;
     if (alreadyLiked) return; // Only allow one like per user
@@ -143,10 +192,7 @@ export default function MapScreen() {
   }
   async function handleModalShare(post: PostType) {
     try {
-      await Share.share({
-        message: `Check out this post by ${post.userName}: ${post.caption || ''}`,
-        url: post.imageUrl
-      });
+      await sharePost(post);
     } catch (error) {
       console.error('Share error:', error);
     }
@@ -182,84 +228,20 @@ export default function MapScreen() {
       setModalCommentsCount(c => ({...c, [post.id]: Math.max(0, (c[post.id] ?? post.commentsCount ?? 0) - 1)}));
     }
   }
-  // Default avatar from Firebase Storage
-  const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
-  const router = useRouter();
-  const params = useLocalSearchParams();
-  const initialQuery = (params.q as string) || '';
-  const userId = (params.user as string) || undefined; // Get userId from params
-  const latParam = params.lat ? parseFloat(params.lat as string) : undefined;
-  const lonParam = params.lon ? parseFloat(params.lon as string) : undefined;
-
-  const [query, setQuery] = useState(initialQuery);
-  const [loading, setLoading] = useState(false);
-  // Viewer location state
-  const [viewerCoords, setViewerCoords] = useState<{ lat: number; lon: number } | null>(null);
-  const [posts, setPosts] = useState<PostType[]>([]);
-  // Defensive: always use array
-  const safePosts = Array.isArray(posts) ? posts : [];
-  const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
-  // Defensive: always use array
-  const safeLiveStreams = Array.isArray(liveStreams) ? liveStreams : [];
-  const [mapRegion, setMapRegion] = useState<Region | null>(DEFAULT_REGION);
-  // Ensure mapRegion is always valid after mount
-  useEffect(() => {
-    if (!mapRegion || !isValidLatLon(mapRegion.latitude, mapRegion.longitude)) {
-      setMapRegion(DEFAULT_REGION);
-    }
-  }, []);
-  const [selectedPosts, setSelectedPosts] = useState<PostType[] | null>(null);
-  // Defensive: always use array
-  const safeSelectedPosts = Array.isArray(selectedPosts) ? selectedPosts : [];
-  const mapRef = useRef<any>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [locationPermission, setLocationPermission] = useState<'granted'|'denied'|'unknown'>('unknown');
-  const [showSearch, setShowSearch] = useState(false);
-  const [showCommentsModalId, setShowCommentsModal] = useState<string | null>(null);
 
   // Request location permissions and get viewer location on mount
   useEffect(() => {
-    requestLocationPermission();
-    (async () => {
-      try {
-        let location;
-        if (Platform.OS === 'android') {
-          location = await Location.getCurrentPositionAsync({});
-        } else {
-          location = await Location.getCurrentPositionAsync({});
-        }
-        if (location?.coords) {
-          setViewerCoords({ lat: location.coords.latitude, lon: location.coords.longitude });
-        }
-      } catch (err) {
-        setViewerCoords(null);
-      }
-    })();
-  }, []);
+    return () => {
+      isMountedRef.current = false;
 
-  // OPTIMIZATION: Removed duplicate live stream listener
-  // Live streams are already fetched by LiveStreamsRow component on home screen
-  // Map will fetch live streams only when user opens map tab
-  useEffect(() => {
-    const fetchLiveStreams = async () => {
-      try {
-        // Fetch live streams from backend API
-        const res = await apiService.get('/live-streams');
-        const streams = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
-        
-        // Sort by viewer count
-        streams.sort((a: any, b: any) => (b.viewerCount || 0) - (a.viewerCount || 0));
-        setLiveStreams(streams);
-      } catch (error) {
-        console.error('Error fetching live streams:', error);
-        setLiveStreams([]);
+      if (livePollTimerRef.current) {
+        clearInterval(livePollTimerRef.current);
+        livePollTimerRef.current = null;
       }
     };
-
-    fetchLiveStreams();
   }, []);
 
-  const requestLocationPermission = async () => {
+  async function requestLocationPermission() {
     try {
       if (Platform.OS === 'android') {
         const granted = await PermissionsAndroid.request(
@@ -289,6 +271,84 @@ export default function MapScreen() {
       setLocationPermission('denied');
     }
   }
+
+  useEffect(() => {
+    requestLocationPermission();
+    (async () => {
+      try {
+        let location;
+        if (Platform.OS === 'android') {
+          location = await Location.getCurrentPositionAsync({});
+        } else {
+          location = await Location.getCurrentPositionAsync({});
+        }
+        if (location?.coords) {
+          setViewerCoords({ lat: location.coords.latitude, lon: location.coords.longitude });
+        }
+      } catch (err) {
+        setViewerCoords(null);
+      }
+    })();
+  }, []);
+
+  const fetchLiveStreams = useCallback(async () => {
+    if (isFetchingLiveRef.current) return;
+    const now = Date.now();
+    if (now - lastLiveFetchRef.current < 1200) return;
+    lastLiveFetchRef.current = now;
+
+    isFetchingLiveRef.current = true;
+    try {
+      const res = await apiService.get('/live-streams');
+      const streams = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
+      streams.sort((a: any, b: any) => (b.viewerCount || 0) - (a.viewerCount || 0));
+      if (isMountedRef.current) setLiveStreams(streams);
+    } catch (error) {
+      console.error('Error fetching live streams:', error);
+      if (isMountedRef.current) setLiveStreams([]);
+    } finally {
+      isFetchingLiveRef.current = false;
+    }
+  }, [apiService]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchLiveStreams();
+      if (!livePollTimerRef.current) {
+        livePollTimerRef.current = setInterval(fetchLiveStreams, 5000);
+      }
+
+      return () => {
+        if (livePollTimerRef.current) {
+          clearInterval(livePollTimerRef.current);
+          livePollTimerRef.current = null;
+        }
+      };
+    }, [fetchLiveStreams])
+  );
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      appStateRef.current = nextState;
+      if (nextState === 'active') {
+        fetchLiveStreams();
+        if (!livePollTimerRef.current) {
+          livePollTimerRef.current = setInterval(fetchLiveStreams, 5000);
+        }
+      } else {
+        if (livePollTimerRef.current) {
+          clearInterval(livePollTimerRef.current);
+          livePollTimerRef.current = null;
+        }
+      }
+    });
+
+    return () => {
+      try {
+        sub.remove();
+      } catch {}
+    };
+  }, [fetchLiveStreams]);
 
   function findPostsNear(lat: number, lon: number, radiusKm: number): PostType[] {
     return posts.filter(post => {
@@ -495,7 +555,14 @@ export default function MapScreen() {
           // Navigate to watch-live screen
           router.push({
             pathname: '/watch-live',
-            params: { channelName: stream.channelName || stream.id }
+            params: {
+              streamId: (stream as any)?.id || (stream as any)?._id,
+              roomId: (stream as any)?.roomId || stream.channelName || (stream as any)?.id,
+              channelName: stream.channelName || (stream as any)?.id,
+              title: (stream as any)?.title,
+              hostName: (stream as any)?.userName,
+              hostAvatar: (stream as any)?.userAvatar,
+            }
           });
         }}
       >
@@ -519,7 +586,7 @@ export default function MapScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <View style={styles.container}>
       <View style={{ flex: 1 }}>
         {/* Main map or error fallback */}
         {!loading && validRegion && Platform.OS !== 'web' && MapView ? (
@@ -590,7 +657,7 @@ export default function MapScreen() {
           }}
         />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

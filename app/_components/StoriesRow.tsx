@@ -42,16 +42,13 @@ interface StoryUser {
   userName: string;
   userAvatar: string;
   stories: any[];
+  hasUnseen?: boolean;
+  bubblePreviewUrl?: string;
+  bubbleMediaType?: 'image' | 'video';
 }
 
 function getStoryBubbleThumbnail(storyUser: StoryUser, defaultAvatarUrl: string): string {
-  const first = Array.isArray(storyUser?.stories) ? storyUser.stories[0] : undefined;
-  const mediaType = first?.mediaType;
-  if (mediaType === 'video') {
-    return first?.thumbnailUrl || first?.thumbnail || storyUser?.userAvatar || defaultAvatarUrl;
-  }
-  // image
-  return first?.imageUrl || first?.image || storyUser?.userAvatar || defaultAvatarUrl;
+  return storyUser?.bubblePreviewUrl || storyUser?.userAvatar || defaultAvatarUrl;
 }
 
 function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger, resetTrigger }: { onStoryPress?: (stories: any[], initialIndex: number) => void; onStoryViewerClose?: () => void; refreshTrigger?: number; resetTrigger?: number }): React.ReactElement {
@@ -73,6 +70,8 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
   
   // Default avatar placeholder
   const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
+  const GREEN_RING = '#25D366';
+  const GREY_RING = '#9AA0A6';
   
   // Get current user from AsyncStorage (token-based auth)
   useEffect(() => {
@@ -103,6 +102,20 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
     loadStories();
     loadCurrentUserAvatar();
   }, [refreshTrigger]);
+
+  // Mark a user's stories as seen (persist + update local ring state)
+  const markUserStoriesSeen = useCallback(async (userId: string, stories: any[]) => {
+    try {
+      const ids = Array.isArray(stories) ? stories.map((s: any) => String(s?._id || s?.id || '')) : [];
+      const raw = await AsyncStorage.getItem('seenStoryIds');
+      const arr = raw ? JSON.parse(raw) : [];
+      const set = new Set<string>(Array.isArray(arr) ? arr.map((x: any) => String(x)) : []);
+      ids.forEach(id => { if (id) set.add(id); });
+      await AsyncStorage.setItem('seenStoryIds', JSON.stringify(Array.from(set)));
+      // Update local state so ring color changes instantly
+      setStoryUsers(prev => prev.map(u => u.userId === userId ? { ...u, hasUnseen: false } : u));
+    } catch {}
+  }, []);
 
   // Reset state when StoriesViewer closes
   useEffect(() => {
@@ -175,6 +188,14 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
       const result = await getAllStoriesForFeed();
       console.log('[StoriesRow] API Response received:', JSON.stringify(result).substring(0, 200));
       console.log('[StoriesRow] Got result.success:', result.success, 'result.data type:', typeof result.data, 'length:', result.data?.length);
+      let seenSet = new Set<string>();
+      try {
+        const raw = await AsyncStorage.getItem('seenStoryIds');
+        const arr = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(arr)) {
+          seenSet = new Set(arr.map((x: any) => String(x)));
+        }
+      } catch {}
       
       if (result.success && result.data && Array.isArray(result.data)) {
         const now = Date.now();
@@ -233,12 +254,29 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
             thumbnailUrl: story.thumbnail || story.thumbnailUrl,
             mediaType: story.video ? 'video' : 'image'
           }));
+          const hasUnseen = transformedStories.some((s: any) => !seenSet.has(String(s.id)));
+
+          // Pick bubble preview: first unseen story, else latest by createdAt, else first
+          const firstUnseen = transformedStories.find((s: any) => !seenSet.has(String(s.id)));
+          const latest = transformedStories.reduce((acc: any, cur: any) => {
+            const accTs = Number(new Date(acc?.createdAt || 0));
+            const curTs = Number(new Date(cur?.createdAt || 0));
+            return curTs > accTs ? cur : acc;
+          }, transformedStories[0]);
+          const previewStory = firstUnseen || latest || transformedStories[0];
+          const bubbleMediaType: 'image' | 'video' = previewStory?.mediaType === 'video' ? 'video' : 'image';
+          const bubblePreviewUrl = bubbleMediaType === 'video'
+            ? (previewStory?.thumbnailUrl || previewStory?.imageUrl || '')
+            : (previewStory?.imageUrl || previewStory?.thumbnailUrl || '');
           
           users.push({
             userId: userId,
             userName: firstStory.userName || 'Anonymous',
             userAvatar: avatarMap.get(userId) || DEFAULT_AVATAR_URL,
-            stories: transformedStories as any[]
+            stories: transformedStories as any[],
+            hasUnseen,
+            bubblePreviewUrl,
+            bubbleMediaType
           });
         }
         
@@ -286,7 +324,7 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
   const hasMyStory = !!(myUser && myUser.stories && myUser.stories.length > 0);
   return (
     <View style={styles.container}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
         {/* Current user story: avatar only if exists, plus if not */}
         <View style={styles.storyWrapper}>
           <View style={styles.currentUserTile}>
@@ -333,17 +371,30 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
             <TouchableOpacity
               style={styles.storyButton}
               activeOpacity={0.8}
-              onPress={() => {
+              onPress={async () => {
+                await markUserStoriesSeen(String(myUser.userId), myUser.stories);
                 if (onStoryPress) onStoryPress(myUser.stories, 0);
               }}
             >
-              <LinearGradient colors={['#f39c12', '#e0245e', '#007aff']} style={styles.gradientBorder}>
+              <LinearGradient colors={[myUser.hasUnseen ? GREEN_RING : GREY_RING, myUser.hasUnseen ? GREEN_RING : GREY_RING]} style={styles.gradientBorder}>
                 <View style={styles.storyAvatarWrapper}>
                   <ExpoImage
                     source={{ uri: getStoryBubbleThumbnail(myUser, DEFAULT_AVATAR_URL) }}
                     style={styles.storyAvatar}
                     contentFit="cover"
                     cachePolicy="memory-disk"
+                  />
+                </View>
+                {myUser.bubbleMediaType === 'video' ? (
+                  <View style={styles.overlayTypePill}>
+                    <Feather name={'video'} size={12} color="#fff" />
+                  </View>
+                ) : null}
+                <View style={styles.overlayAvatarChip}>
+                  <ExpoImage
+                    source={{ uri: myUser.userAvatar || DEFAULT_AVATAR_URL }}
+                    style={styles.overlayAvatarImg}
+                    contentFit="cover"
                   />
                 </View>
               </LinearGradient>
@@ -358,15 +409,30 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
             <TouchableOpacity
               style={styles.storyButton}
               activeOpacity={0.8}
-              onPress={() => onStoryPress && onStoryPress(user.stories, 0)}
+              onPress={async () => {
+                await markUserStoriesSeen(String(user.userId), user.stories);
+                onStoryPress && onStoryPress(user.stories, 0);
+              }}
             >
-              <LinearGradient colors={['#f39c12', '#e0245e', '#007aff']} style={styles.gradientBorder}>
+              <LinearGradient colors={[user.hasUnseen ? GREEN_RING : GREY_RING, user.hasUnseen ? GREEN_RING : GREY_RING]} style={styles.gradientBorder}>
                 <View style={styles.storyAvatarWrapper}>
                   <ExpoImage
                     source={{ uri: getStoryBubbleThumbnail(user, DEFAULT_AVATAR_URL) }}
                     style={styles.storyAvatar}
                     contentFit="cover"
                     cachePolicy="memory-disk"
+                  />
+                </View>
+                {user.bubbleMediaType === 'video' ? (
+                  <View style={styles.overlayTypePill}>
+                    <Feather name={'video'} size={12} color="#fff" />
+                  </View>
+                ) : null}
+                <View style={styles.overlayAvatarChip}>
+                  <ExpoImage
+                    source={{ uri: user.userAvatar || DEFAULT_AVATAR_URL }}
+                    style={styles.overlayAvatarImg}
+                    contentFit="cover"
                   />
                 </View>
               </LinearGradient>
@@ -378,29 +444,23 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
       {/* Simple & Clean Story Upload Modal */}
       <Modal
         visible={showUploadModal}
+        transparent
         animationType="slide"
-        transparent={false}
         onRequestClose={() => {
-          console.log('[StoriesRow] Modal onRequestClose called');
-          // Reset all state when modal closes
           setShowUploadModal(false);
           setSelectedMedia(null);
           setLocationQuery('');
           setLocationSuggestions([]);
-          setUploading(false);
-          setUploadProgress(0);
-          setIsViewingStories(false); // Reset viewing flag
         }}
       >
         <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }} edges={['top', 'bottom']}>
           <KeyboardAvoidingView
             style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
           >
-            {/* Main content card */}
-            <View style={styles.uploadModalCard}>
-              {/* Header with User Profile */}
+            <View style={{ flex: 1 }}>
+              {/* Header */}
               <View style={styles.modalHeader}>
                 <TouchableOpacity
                   activeOpacity={0.6}
@@ -760,38 +820,74 @@ const styles = StyleSheet.create({
   },
   storyWrapper: {
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 4,
   },
   storyButton: {
-    marginBottom: 6,
+    marginBottom: 8,
   },
   gradientBorder: {
-    width: 68,
-    height: 68,
-    borderRadius: 16,
+    width: 76,
+    height: 96,
+    borderRadius: 18,
     padding: 3,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative',
   },
   storyAvatarWrapper: {
     width: '100%',
     height: '100%',
-    borderRadius: 13,
+    borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: '#fff',
     position: 'relative',
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: '#fff',
   },
   storyAvatar: {
     width: '100%',
     height: '100%',
-    borderRadius: 11,
+    borderRadius: 14,
+  },
+  overlayTypePill: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  overlayAvatarChip: {
+    position: 'absolute',
+    top: 2,
+    left: -6,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#fff',
+    overflow: 'hidden',
+    backgroundColor: '#e9eef5',
+    zIndex: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  overlayAvatarImg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 14,
   },
   userName: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
-    width: 72,
+    width: 84,
     textAlign: 'center',
     color: '#222',
   },

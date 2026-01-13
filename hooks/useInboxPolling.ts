@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
-import { startConversationsPolling, stopPolling } from '../lib/pollingService';
+import { startConversationsPolling, startMessagesPolling, stopPolling } from '../lib/pollingService';
 import { getCachedUserProfile, cacheUserProfile } from '../lib/redisCache';
 
 interface UseInboxPollingOptions {
@@ -117,8 +117,6 @@ export function useInboxPolling(
  * useMessagesPolling Hook
  * Polls for new messages in a conversation
  */
-import { startMessagesPolling, stopPolling as stopMessagePolling } from '../lib/pollingService';
-
 interface UseMessagesPollingOptions {
   pollingInterval?: number;
   enabled?: boolean;

@@ -5,7 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getRegions, searchUsers } from "../lib/firebaseHelpers/index";
+import { getOrCreateConversation, getRegions, searchUsers } from "../lib/firebaseHelpers/index";
 import { followUser, sendFollowRequest, unfollowUser } from "../lib/firebaseHelpers/follow";
 
 // Type definitions
@@ -28,6 +28,7 @@ type User = {
   displayName?: string;
   photoURL?: string;
   bio?: string;
+  isPrivate?: boolean;
 };
 
 const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
@@ -57,6 +58,8 @@ export default function SearchModal() {
   const [loadingRegions, setLoadingRegions] = useState<boolean>(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [followingMap, setFollowingMap] = useState<{ [key: string]: boolean }>({});
+  const [requestedMap, setRequestedMap] = useState<{ [key: string]: boolean }>({});
+  const [followLoadingMap, setFollowLoadingMap] = useState<{ [key: string]: boolean }>({});
 
   // Get current user ID and load following list on mount
   useEffect(() => {
@@ -147,14 +150,14 @@ export default function SearchModal() {
       setLoadingUsers(true);
       searchUsers('', 10).then(result => {
         if (result.success && Array.isArray(result.data)) {
-          const users = result.data.map((u: any) => ({
-            uid: u.firebaseUid || u.uid || u._id || u.id,  // ✅ firebaseUid first!
-            displayName: u.displayName || 'Unknown',
-            photoURL: u.avatar || u.photoURL || DEFAULT_AVATAR_URL,
-            bio: u.bio || ''
-          }));
-          console.log('[SearchModal] Recommendations mapped:', users.map(u => ({ uid: u.uid, name: u.displayName })));
-          setRecommendations(users);
+          const safeUsers = result.data.map((u: any) => ({
+            uid: String(u?.uid || ''),
+            displayName: u?.displayName || 'Unknown',
+            photoURL: u?.photoURL || u?.avatar || DEFAULT_AVATAR_URL,
+            bio: u?.bio || '',
+            isPrivate: typeof u?.isPrivate === 'boolean' ? u.isPrivate : false,
+          })).filter((u: any) => typeof u.uid === 'string' && u.uid.trim().length > 0);
+          setRecommendations(safeUsers);
         } else {
           setRecommendations([]);
         }
@@ -170,23 +173,28 @@ export default function SearchModal() {
       return;
     }
     setLoadingUsers(true);
+    let cancelled = false;
     const timer = setTimeout(async () => {
       const result = await searchUsers(q, 20);
+      if (cancelled) return;
       if (result.success && Array.isArray(result.data)) {
-        const users = result.data.map((u: any) => ({
-          uid: u.firebaseUid || u.uid || u._id || u.id,  // ✅ firebaseUid first!
-          displayName: u.displayName || 'Unknown',
-          photoURL: u.avatar || u.photoURL || DEFAULT_AVATAR_URL,
-          bio: u.bio || ''
-        }));
-        console.log('[SearchModal] Mapped users:', users.map(u => ({ uid: u.uid, name: u.displayName })));
-        setUsers(users);
+        const safeUsers = result.data.map((u: any) => ({
+          uid: String(u?.uid || ''),
+          displayName: u?.displayName || 'Unknown',
+          photoURL: u?.photoURL || u?.avatar || DEFAULT_AVATAR_URL,
+          bio: u?.bio || '',
+          isPrivate: typeof u?.isPrivate === 'boolean' ? u.isPrivate : false,
+        })).filter((u: any) => typeof u.uid === 'string' && u.uid.trim().length > 0);
+        setUsers(safeUsers);
       } else {
         setUsers([]);
       }
-      setLoadingUsers(false);
+      if (!cancelled) setLoadingUsers(false);
     }, 300);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [q, tab]);
 
   // UI
@@ -351,10 +359,11 @@ export default function SearchModal() {
               </View>
             )}
             {/* People Tab Results (Firebase users) */}
-            {tab === 'people' && q.length >= 2 && (
+            {tab === 'people' && (
               <FlatList
-                data={users}
+                data={q.length >= 2 ? users : recommendations}
                 keyExtractor={(item: User) => item.uid}
+                keyboardShouldPersistTaps="handled"
                 renderItem={({ item }: { item: User }) => {
                   const isOwnProfile = currentUserId === item.uid;
                   console.log('[SearchModal] Rendering user:', item.displayName, 'uid:', item.uid, 'currentUserId:', currentUserId, 'isOwnProfile:', isOwnProfile);
@@ -390,14 +399,30 @@ export default function SearchModal() {
                                 return;
                               }
                               console.log('[SearchModal] Navigating to DM with:', item.uid);
-                              router.push({
-                                pathname: '/dm',
-                                params: {
-                                  otherUserId: item.uid,
-                                  user: item.displayName || 'Traveler',
-                                  avatar: item.photoURL || DEFAULT_AVATAR_URL
+                              (async () => {
+                                try {
+                                  const convo = await getOrCreateConversation(String(currentUserId), String(item.uid));
+                                  const conversationId = convo?.success ? convo?.conversationId : null;
+                                  router.push({
+                                    pathname: '/dm',
+                                    params: {
+                                      conversationId: conversationId || undefined,
+                                      otherUserId: item.uid,
+                                      user: item.displayName || 'Traveler',
+                                      avatar: item.photoURL || DEFAULT_AVATAR_URL
+                                    }
+                                  });
+                                } catch {
+                                  router.push({
+                                    pathname: '/dm',
+                                    params: {
+                                      otherUserId: item.uid,
+                                      user: item.displayName || 'Traveler',
+                                      avatar: item.photoURL || DEFAULT_AVATAR_URL
+                                    }
+                                  });
                                 }
-                              });
+                              })();
                             }}
                             accessibilityLabel="Send message"
                           >
@@ -410,32 +435,49 @@ export default function SearchModal() {
                                 console.log('[SearchModal] Missing IDs for follow:', { currentUserId, itemUid: item.uid });
                                 return;
                               }
+                              if (followLoadingMap[item.uid]) return;
+
+                              const isFollowing = !!followingMap[item.uid];
+                              const isRequested = !!requestedMap[item.uid];
+                              if (!isFollowing && isRequested) return;
+
                               console.log('[SearchModal] Follow/Unfollow clicked for:', item.uid, 'Currently following:', followingMap[item.uid]);
-                              const isFollowing = followingMap[item.uid];
                               console.log('[SearchModal] Toggle follow for', item.uid, 'currently following:', isFollowing);
-                              if (isFollowing) {
-                                unfollowUser(currentUserId, item.uid).then(res => {
+                              setFollowLoadingMap((prev) => ({ ...(prev || {}), [item.uid]: true }));
+
+                              try {
+                                if (isFollowing) {
+                                  const res = await unfollowUser(currentUserId, item.uid);
                                   console.log('[SearchModal] Unfollow response:', res);
-                                  if (res.success) {
+                                  if (res?.success) {
                                     setFollowingMap(prev => ({ ...prev, [item.uid]: false }));
                                   }
-                                }).catch(err => {
-                                  console.error('[SearchModal] Unfollow error:', err);
-                                });
-                              } else {
-                                followUser(currentUserId, item.uid).then(res => {
+                                } else if (item?.isPrivate) {
+                                  const res = await sendFollowRequest(currentUserId, item.uid);
+                                  console.log('[SearchModal] Follow request response:', res);
+                                  if (res?.success) {
+                                    setRequestedMap(prev => ({ ...prev, [item.uid]: true }));
+                                  }
+                                } else {
+                                  const res = await followUser(currentUserId, item.uid);
                                   console.log('[SearchModal] Follow response:', res);
-                                  if (res.success) {
+                                  if (res?.success) {
                                     setFollowingMap(prev => ({ ...prev, [item.uid]: true }));
                                   }
-                                }).catch(err => {
-                                  console.error('[SearchModal] Follow error:', err);
-                                });
+                                }
+                              } catch (err) {
+                                console.error('[SearchModal] Follow action error:', err);
+                              } finally {
+                                setFollowLoadingMap((prev) => ({ ...(prev || {}), [item.uid]: false }));
                               }
                             }}
-                            accessibilityLabel={followingMap[item.uid] ? "Unfollow" : "Follow"}
+                            accessibilityLabel={followingMap[item.uid] ? "Unfollow" : (requestedMap[item.uid] ? "Requested" : "Follow")}
                           >
-                            <Feather name={followingMap[item.uid] ? "check" : "user-plus"} size={18} color={followingMap[item.uid] ? "#34C759" : "#666"} />
+                            <Feather
+                              name={followingMap[item.uid] ? "check" : (requestedMap[item.uid] ? "clock" : "user-plus")}
+                              size={18}
+                              color={followingMap[item.uid] ? "#34C759" : (requestedMap[item.uid] ? "#f39c12" : "#666")}
+                            />
                           </TouchableOpacity>
                         </View>
                       )}
@@ -443,7 +485,8 @@ export default function SearchModal() {
                   );
                 }}
                 ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No travelers found</Text>}
-                style={{ marginTop: 16, maxHeight: 120 }}
+                style={{ marginTop: 16, flex: 1 }}
+                contentContainerStyle={{ paddingBottom: 12 }}
                 initialNumToRender={15}
                 maxToRenderPerBatch={10}
                 windowSize={7}

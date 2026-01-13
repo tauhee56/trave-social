@@ -132,6 +132,17 @@ async function apiRequestWithRetry(method: string, url: string, data?: any, conf
     try {
       const requestConfig: any = { method, url };
 
+      const canTreatConfigAsParams = (obj: any) => {
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+        if ('params' in obj) return false;
+        // Avoid treating axios config as params
+        if ('headers' in obj) return false;
+        if ('timeout' in obj) return false;
+        if ('baseURL' in obj) return false;
+        if ('signal' in obj) return false;
+        return Object.keys(obj).length > 0;
+      };
+
       // ✅ Clean data handling
       if (data) {
         if (method === 'get') {
@@ -139,6 +150,11 @@ async function apiRequestWithRetry(method: string, url: string, data?: any, conf
         } else {
           requestConfig.data = data;
         }
+      }
+
+      // Back-compat: allow passing query params directly as the config object
+      if (method === 'get' && !requestConfig.params && canTreatConfigAsParams(config)) {
+        requestConfig.params = config;
       }
 
       // ✅ Add additional params from config

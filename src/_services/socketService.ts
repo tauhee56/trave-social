@@ -1,7 +1,7 @@
 import io from 'socket.io-client';
 
 // Use LAN IP for mobile device access
-const SOCKET_URL = 'http://192.168.1.100:5000'; // <-- Replace with your computer's LAN IP
+const SOCKET_URL = 'http://192.168.1.10:5000'; // <-- Replace with your computer's LAN IP
 const socket = io(SOCKET_URL);
 
 export function subscribeToMessages(onMessage: (msg: any) => void) {

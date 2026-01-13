@@ -4,8 +4,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Image as ExpoImage } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 // Firebase removed - using Backend API
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../lib/api';
 import { useCurrentLocation } from '../../hooks/useCurrentLocation';
@@ -13,6 +17,8 @@ import { getUserHighlights, getUserSectionsSorted, getUserStories } from '../../
 import { followUser, sendFollowRequest, unfollowUser } from '../../lib/firebaseHelpers/follow';
 import { likePost, unlikePost } from '../../lib/firebaseHelpers/post';
 import { getOptimizedImageUrl } from '../../lib/imageHelpers';
+import { buildProfileDeepLink, buildProfileWebLink, sharePost, shareProfile } from '../../lib/postShare';
+
 import { userService } from '../../lib/userService';
 import { fetchBlockedUserIds, filterOutBlocked } from '../../services/moderation';
 import CommentSection from '../../src/_components/CommentSection';
@@ -64,6 +70,53 @@ function normalizeExternalUrl(input: any): string | null {
   const lower = raw.toLowerCase();
   if (lower.startsWith('http://') || lower.startsWith('https://')) return raw;
   return `https://${raw}`;
+}
+
+type ProfileLinkPlatform =
+  | 'facebook'
+  | 'instagram'
+  | 'twitter'
+  | 'whatsapp'
+  | 'youtube'
+  | 'linkedin'
+  | 'website'
+  | 'unknown';
+
+function splitProfileLinks(raw: any): string[] {
+  if (typeof raw !== 'string') return [];
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  return trimmed
+    .split(/[\n,]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function getUrlHost(url: string): string | null {
+  try {
+    const normalized = normalizeExternalUrl(url) || url;
+    const withoutProto = normalized.replace(/^https?:\/\//i, '');
+    const host = withoutProto.split('/')[0]?.trim();
+    return host || null;
+  } catch {
+    return null;
+  }
+}
+
+function detectProfileLinkPlatform(url: string): ProfileLinkPlatform {
+  const host = (getUrlHost(url) || '').toLowerCase();
+  if (!host) return 'unknown';
+  if (host.includes('facebook.com') || host.includes('fb.com') || host.includes('fb.me')) return 'facebook';
+  if (host.includes('instagram.com')) return 'instagram';
+  if (host.includes('twitter.com') || host.includes('x.com')) return 'twitter';
+  if (host.includes('whatsapp.com') || host.includes('wa.me')) return 'whatsapp';
+  if (host.includes('youtube.com') || host.includes('youtu.be')) return 'youtube';
+  if (host.includes('linkedin.com')) return 'linkedin';
+  return 'website';
+}
+
+function getFaviconUrl(url: string): string {
+  return `https://www.google.com/s2/favicons?sz=64&domain_url=${encodeURIComponent(url)}`;
 }
 
 // Utility to parse/sanitize coordinates
@@ -361,14 +414,12 @@ export default function Profile({ userIdProp }: any) {
     }
   };
 
-  const handleSharePost = (post: any) => {
-    import('react-native').then(({ Share }) => {
-      Share.share({
-        message: post.caption ? `${post.caption}\n${post.imageUrl || post.imageUrls?.[0]}` : (post.imageUrl || post.imageUrls?.[0] || ''),
-        url: post.imageUrl || post.imageUrls?.[0],
-        title: 'Check out this post!'
-      });
-    });
+  const handleSharePost = async (post: any) => {
+    try {
+      await sharePost(post);
+    } catch (e) {
+      console.log('Share error:', e);
+    }
   };
 
   // Block user handler
@@ -842,25 +893,55 @@ export default function Profile({ userIdProp }: any) {
             {!!profile?.username && <Text style={styles.username}>@{profile.username}</Text>}
           {!!profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
           {!!profile?.website && (!isPrivate || isOwnProfile || approvedFollower) && (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={async () => {
-                const url = normalizeExternalUrl(profile.website);
-                if (!url) return;
-                try {
-                  const canOpen = await Linking.canOpenURL(url);
-                  if (!canOpen) {
-                    Alert.alert('Invalid Link', 'Could not open this website link.');
-                    return;
+            <View style={styles.linksBlock}>
+              {splitProfileLinks(profile.website).map((rawLink) => {
+                const url = normalizeExternalUrl(rawLink);
+                if (!url) return null;
+                const platform = detectProfileLinkPlatform(url);
+                const icon = (() => {
+                  if (platform === 'facebook') return <Feather name="facebook" size={16} color="#1877F2" />;
+                  if (platform === 'instagram') return <Feather name="instagram" size={16} color="#C13584" />;
+                  if (platform === 'twitter') return <Feather name="twitter" size={16} color="#1DA1F2" />;
+                  if (platform === 'youtube') return <Feather name="youtube" size={16} color="#FF0000" />;
+                  if (platform === 'linkedin') return <Feather name="linkedin" size={16} color="#0A66C2" />;
+                  if (platform === 'whatsapp') return <Ionicons name={'logo-whatsapp' as any} size={17} color="#25D366" />;
+                  if (platform === 'website') {
+                    return (
+                      <ExpoImage
+                        source={{ uri: getFaviconUrl(url) }}
+                        style={styles.linkFavicon}
+                        contentFit="cover"
+                        transition={150}
+                      />
+                    );
                   }
-                  await Linking.openURL(url);
-                } catch {
-                  Alert.alert('Error', 'Failed to open website link.');
-                }
-              }}
-            >
-              <Text style={styles.website}>🔗 {profile.website}</Text>
-            </TouchableOpacity>
+                  return <Feather name="link-2" size={16} color="#007aff" />;
+                })();
+
+                return (
+                  <TouchableOpacity
+                    key={url}
+                    activeOpacity={0.7}
+                    onPress={async () => {
+                      try {
+                        const canOpen = await Linking.canOpenURL(url);
+                        if (!canOpen) {
+                          Alert.alert('Invalid Link', 'Could not open this link.');
+                          return;
+                        }
+                        await Linking.openURL(url);
+                      } catch {
+                        Alert.alert('Error', 'Failed to open link.');
+                      }
+                    }}
+                    style={styles.linkRow}
+                  >
+                    <View style={styles.linkIconWrap}>{icon}</View>
+                    <Text style={styles.linkText} numberOfLines={1} ellipsizeMode="tail">{rawLink}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           )}
           {!!(profile as any)?.location && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.location}>📍 {(profile as any).location}</Text>}
           {!!(profile as any)?.phone && (!isPrivate || isOwnProfile || approvedFollower) && <Text style={styles.phone}>📱 {(profile as any).phone}</Text>}
@@ -889,20 +970,20 @@ export default function Profile({ userIdProp }: any) {
         {(!isPrivate || isOwnProfile || approvedFollower) && (
           <View style={{ marginBottom: 4, marginTop: 4 }}>
             <HighlightCarousel highlights={highlights} onPressHighlight={handlePressHighlight} isOwnProfile={isOwnProfile} onAddHighlight={() => setCreateHighlightModalVisible(true)} />
-          {/* StoriesViewer for own stories */}
-          {storiesViewerVisible && (
-            <Modal
-              visible={storiesViewerVisible}
-              transparent={false}
-              animationType="fade"
-              onRequestClose={() => setStoriesViewerVisible(false)}
-            >
-              <StoriesViewer
-                stories={userStories}
-                onClose={() => setStoriesViewerVisible(false)}
-              />
-            </Modal>
-          )}
+            {/* StoriesViewer for own stories */}
+            {storiesViewerVisible && (
+              <Modal
+                visible={storiesViewerVisible}
+                transparent={false}
+                animationType="fade"
+                onRequestClose={() => setStoriesViewerVisible(false)}
+              >
+                <StoriesViewer
+                  stories={userStories}
+                  onClose={() => setStoriesViewerVisible(false)}
+                />
+              </Modal>
+            )}
             <HighlightViewer
               visible={highlightViewerVisible}
               highlightId={selectedHighlightId}
@@ -914,9 +995,23 @@ export default function Profile({ userIdProp }: any) {
         {/* Follow/Unfollow button for other users' profiles */}
         {!isOwnProfile && (
           <View style={styles.pillRow}>
-            <TouchableOpacity style={[styles.followBtn, isFollowing && styles.followingBtn]} onPress={handleFollowToggle} disabled={followLoading}>
-              <Text style={[styles.followText, isFollowing && styles.followingText]}>
-                {isFollowing ? (followLoading ? 'Unfollowing...' : 'Following') : (followLoading ? 'Following...' : 'Follow')}
+            <TouchableOpacity
+              style={[
+                styles.followBtn,
+                (isFollowing || followRequestPending) && styles.followingBtn
+              ]}
+              onPress={handleFollowToggle}
+              disabled={followLoading || followRequestPending}
+            >
+              <Text style={[
+                styles.followText,
+                (isFollowing || followRequestPending) && styles.followingText
+              ]}>
+                {followRequestPending
+                  ? 'Requested'
+                  : (isFollowing
+                    ? (followLoading ? 'Unfollowing...' : 'Following')
+                    : (followLoading ? 'Following...' : 'Follow'))}
               </Text>
             </TouchableOpacity>
             {(!isPrivate || approvedFollower) && (
@@ -1210,13 +1305,10 @@ export default function Profile({ userIdProp }: any) {
                 style={styles.menuItem}
                 onPress={() => {
                   setUserMenuVisible(false);
-                  // Share profile
-                  import('react-native').then(({ Share }) => {
-                    const deepLink = `trave-social://user-profile/${viewedUserId}`;
-                    Share.share({
-                      message: `Check out ${profile?.name || 'this user'}'s profile on Trave Social!\n${deepLink}`,
-                      title: 'Share Profile'
-                    });
+                  shareProfile({
+                    userId: String(viewedUserId || ''),
+                    name: typeof profile?.name === 'string' ? profile.name : (typeof profile?.displayName === 'string' ? profile.displayName : ''),
+                    username: typeof profile?.username === 'string' ? profile.username : ''
                   });
                 }}
               >
@@ -1234,7 +1326,8 @@ export default function Profile({ userIdProp }: any) {
                   setUserMenuVisible(false);
                   // Copy profile URL
                   import('expo-clipboard').then(async (Clipboard) => {
-                    await Clipboard.setStringAsync(`trave-social://user-profile/${viewedUserId}`);
+                    const id = String(viewedUserId || '');
+                    await Clipboard.setStringAsync(buildProfileWebLink(id) || buildProfileDeepLink(id));
                     Alert.alert('Copied', 'Profile link copied to clipboard');
                   }).catch(() => {
                     Alert.alert('Error', 'Could not copy link');
@@ -1263,16 +1356,16 @@ export default function Profile({ userIdProp }: any) {
 }
 
 const styles = StyleSheet.create({
-    headerBackBtn: { padding: 8, marginRight: 8 },
-    headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#222', flex: 1, textAlign: 'center' },
-    headerMenuBtn: { padding: 8, marginLeft: 8, marginTop: 4 },
-    menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-    menuSheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '85%' },
-    menuSheetContent: { paddingBottom: 20, paddingTop: 8 },
-    menuHandle: { width: 40, height: 4, backgroundColor: '#ccc', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 16 },
-    menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 20 },
-    menuIconContainer: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
-    menuItemText: { fontSize: 16, color: '#222', fontWeight: '500' },
+  headerBackBtn: { padding: 8, marginRight: 8 },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#222', flex: 1, textAlign: 'center' },
+  headerMenuBtn: { padding: 8, marginLeft: 8, marginTop: 4 },
+  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  menuSheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '85%' },
+  menuSheetContent: { paddingBottom: 20, paddingTop: 8 },
+  menuHandle: { width: 40, height: 4, backgroundColor: '#ccc', borderRadius: 2, alignSelf: 'center', marginTop: 8, marginBottom: 16 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 20 },
+  menuIconContainer: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  menuItemText: { fontSize: 16, color: '#222', fontWeight: '500' },
   container: { flex: 1, backgroundColor: '#fff' },
   topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: '#e0e0e0', justifyContent: 'space-between' },
   topIcon: { padding: 4 },
@@ -1290,7 +1383,11 @@ const styles = StyleSheet.create({
   displayName: { fontSize: 15, fontWeight: '600', color: '#222' },
   username: { fontSize: 13, color: '#667eea', marginTop: 2, fontWeight: '500' },
   bio: { fontSize: 13, color: '#555', marginTop: 4, textAlign: 'center', lineHeight: 18 },
-  website: { fontSize: 12, color: '#007aff', marginTop: 4 },
+  linksBlock: { marginTop: 6, width: '100%' },
+  linkRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
+  linkIconWrap: { width: 22, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
+  linkFavicon: { width: 16, height: 16, borderRadius: 4 },
+  linkText: { flex: 1, fontSize: 12, color: '#007aff' },
   location: { fontSize: 12, color: '#666', marginTop: 3 },
   phone: { fontSize: 12, color: '#666', marginTop: 3 },
   interests: { fontSize: 12, color: '#666', marginTop: 3, fontStyle: 'italic' },

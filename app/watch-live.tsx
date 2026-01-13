@@ -181,6 +181,13 @@ export default function WatchLiveScreen() {
               : (typeof s?.channelName === 'string' ? s.channelName : '');
             if (rid) setEffectiveRoomId(rid);
             if (typeof s?.title === 'string' && s.title) setEffectiveTitle(s.title);
+
+            const loc = s?.location;
+            const lat = (typeof loc?.latitude === 'number' ? loc.latitude : (typeof s?.latitude === 'number' ? s.latitude : undefined));
+            const lon = (typeof loc?.longitude === 'number' ? loc.longitude : (typeof s?.longitude === 'number' ? s.longitude : undefined));
+            if (typeof lat === 'number' && typeof lon === 'number' && isFinite(lat) && isFinite(lon)) {
+              setBroadcasterLocation({ latitude: lat, longitude: lon });
+            }
           });
           // Give it a moment to fetch once, then cleanup.
           setTimeout(() => {
@@ -195,6 +202,34 @@ export default function WatchLiveScreen() {
     // Only run once for initial params.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Always try to keep broadcasterLocation in sync when we have streamId
+  useEffect(() => {
+    if (!streamIdParam) return;
+    let unsubscribe: null | (() => void) = null;
+
+    (async () => {
+      try {
+        const mod: { subscribeToLiveStream: (id: string, cb: (s: any) => void) => () => void } = await import('../lib/firebaseHelpers/live');
+        unsubscribe = mod.subscribeToLiveStream(String(streamIdParam), (s: any) => {
+          const loc = s?.location;
+          const lat = (typeof loc?.latitude === 'number' ? loc.latitude : (typeof s?.latitude === 'number' ? s.latitude : undefined));
+          const lon = (typeof loc?.longitude === 'number' ? loc.longitude : (typeof s?.longitude === 'number' ? s.longitude : undefined));
+          if (typeof lat === 'number' && typeof lon === 'number' && isFinite(lat) && isFinite(lon)) {
+            setBroadcasterLocation({ latitude: lat, longitude: lon });
+          }
+        });
+      } catch (e: any) {
+        logger.error('Subscribe to live stream details failed:', e);
+      }
+    })();
+
+    return () => {
+      try {
+        if (unsubscribe) unsubscribe();
+      } catch {}
+    };
+  }, [streamIdParam]);
 
   // Join stream
   const handleJoinStream = async () => {

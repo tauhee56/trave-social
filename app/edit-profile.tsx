@@ -296,7 +296,11 @@ export default function EditProfile() {
           <View style={{ width: 40 }} />
         </View>
 
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.content}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
           {/* Avatar */}
           <TouchableOpacity onPress={pickImage} style={styles.avatarContainer} disabled={loading}>
             <Image source={{ uri: avatar || DEFAULT_AVATAR_URL }} style={styles.avatar} />
@@ -518,6 +522,9 @@ const styles = StyleSheet.create({
   content: { 
     flex: 1,
     paddingTop: 24 
+  },
+  scrollContent: {
+    paddingBottom: 120,
   },
   avatarContainer: { 
     alignItems: 'center', 
