@@ -2,20 +2,19 @@ import { Image as ExpoImage } from 'expo-image';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Dimensions, PermissionsAndroid, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Dimensions, FlatList, PermissionsAndroid, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
-// import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
-// Firestore imports removed
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { PostLocationModal } from '../components/PostLocationModal';
-// import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
-// Firestore imports removed - using backend API
 import { useUser } from './_components/UserContext';
-// Firebase imports removed - using backend API
+import PostCard from './_components/PostCard';
+
 import { getAllPosts } from '../lib/firebaseHelpers';
-import { sharePost } from '../lib/postShare';
 import { apiService } from './_services/apiService';
-import { addComment } from '../lib/firebaseHelpers/comments';
 import { getOptimizedImageUrl } from '../lib/imageHelpers';
 
 type Region = {
@@ -33,22 +32,20 @@ if (Platform.OS !== 'web') {
   Marker = RNMaps.Marker;
 }
 
-// Standard Google Maps style (clean, default look)
 const standardMapStyle = [
-  { "featureType": "water", "elementType": "geometry", "stylers": [ { "color": "#aadaff" } ] },
-  { "featureType": "landscape", "elementType": "geometry", "stylers": [ { "color": "#e5f5e0" } ] },
-  { "featureType": "road", "elementType": "geometry", "stylers": [ { "color": "#ffffff" } ] },
-  { "featureType": "road", "elementType": "labels.text.fill", "stylers": [ { "color": "#7b7b7b" } ] },
-  { "featureType": "road", "elementType": "labels.text.stroke", "stylers": [ { "color": "#ffffff" } ] },
-  { "featureType": "poi.park", "elementType": "geometry", "stylers": [ { "color": "#b6e5a8" } ] },
-  { "featureType": "administrative", "elementType": "labels.text.fill", "stylers": [ { "color": "#495e6a" } ] },
-  { "featureType": "poi", "elementType": "geometry", "stylers": [ { "color": "#e5e5e5" } ] },
-  { "featureType": "transit", "elementType": "geometry", "stylers": [ { "color": "#f2f2f2" } ] },
-  { "featureType": "landscape.natural", "elementType": "geometry", "stylers": [ { "color": "#d0f5d8" } ] },
-  { "featureType": "landscape.man_made", "elementType": "geometry", "stylers": [ { "color": "#f8f8f8" } ] }
+  { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#aadaff" }] },
+  { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#e5f5e0" }] },
+  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#ffffff" }] },
+  { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#7b7b7b" }] },
+  { "featureType": "road", "elementType": "labels.text.stroke", "stylers": [{ "color": "#ffffff" }] },
+  { "featureType": "poi.park", "elementType": "geometry", "stylers": [{ "color": "#b6e5a8" }] },
+  { "featureType": "administrative", "elementType": "labels.text.fill", "stylers": [{ "color": "#495e6a" }] },
+  { "featureType": "poi", "elementType": "geometry", "stylers": [{ "color": "#e5e5e5" }] },
+  { "featureType": "transit", "elementType": "geometry", "stylers": [{ "color": "#f2f2f2" }] },
+  { "featureType": "landscape.natural", "elementType": "geometry", "stylers": [{ "color": "#d0f5d8" }] },
+  { "featureType": "landscape.man_made", "elementType": "geometry", "stylers": [{ "color": "#f8f8f8" }] },
 ];
 
-const { width } = Dimensions.get('window');
 const IMAGE_PLACEHOLDER = 'L5H2EC=PM+yV0g-mq.wG9c010J}I';
 
 interface PostType {
@@ -59,11 +56,7 @@ interface PostType {
   imageUrl: string;
   imageUrls?: string[];
   caption?: string;
-  location?: {
-    lat: number;
-    lon: number;
-    name?: string;
-  } | string;
+  location?: { lat: number; lon: number; name?: string } | string;
   lat?: number;
   lon?: number;
   likes?: number;
@@ -79,8 +72,6 @@ interface LiveStream {
   userId: string;
   userName: string;
   userAvatar: string;
-  imageUrl: string;
-  imageUrls?: string[];
   channelName?: string;
   viewerCount: number;
   isLive: boolean;
@@ -91,7 +82,7 @@ interface LiveStream {
   };
 }
 
-const DEFAULT_REGION = {
+const DEFAULT_REGION: Region = {
   latitude: 33.6844,
   longitude: 73.0479,
   latitudeDelta: 0.09,
@@ -100,8 +91,42 @@ const DEFAULT_REGION = {
 
 const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
 
+type LocationSuggestion = {
+  name: string;
+  count: number;
+  verifiedCount?: number;
+};
+
+type LocationMeta = {
+  location: string;
+  postCount: number;
+  visits: number;
+  verifiedVisits: number;
+};
+
 export default function MapScreen() {
   const currentUser = useUser();
+  const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+
+  function isValidLatLon(lat: any, lon: any) {
+    return (
+      typeof lat === 'number' && typeof lon === 'number' &&
+      !isNaN(lat) && !isNaN(lon) &&
+      lat >= -90 && lat <= 90 &&
+      lon >= -180 && lon <= 180
+    );
+  }
+
+  function isValidRegion(region: Region | null): boolean {
+    return (
+      !!region &&
+      isValidLatLon(region.latitude, region.longitude) &&
+      typeof region.latitudeDelta === 'number' && typeof region.longitudeDelta === 'number' &&
+      isFinite(region.latitudeDelta) && isFinite(region.longitudeDelta) &&
+      region.latitudeDelta > 0 && region.longitudeDelta > 0
+    );
+  }
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,13 +143,6 @@ export default function MapScreen() {
   const [modalLiked, setModalLiked] = useState<{[id:string]:boolean}>({});
   const [modalCommentsCount, setModalCommentsCount] = useState<{[id:string]:number}>({});
 
-  // Placeholder search function for modal
-  function doSearch() {
-    // TODO: Implement search logic to update map region based on query
-    // Example: setMapRegion(...) or call geocoding API
-    console.log('Search triggered for query:', query);
-  }
-
   const router = useRouter();
   const params = useLocalSearchParams();
   const initialQuery = (params.q as string) || '';
@@ -133,11 +151,24 @@ export default function MapScreen() {
   const lonParam = params.lon ? parseFloat(params.lon as string) : undefined;
 
   const [query, setQuery] = useState(initialQuery);
-  // Viewer location state
   const [viewerCoords, setViewerCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
-  // Defensive: always use array
   const safeLiveStreams = Array.isArray(liveStreams) ? liveStreams : [];
+
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [locationMeta, setLocationMeta] = useState<LocationMeta | null>(null);
+  const [locationPosts, setLocationPosts] = useState<any[]>([]);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationLoadingMore, setLocationLoadingMore] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationSkip, setLocationSkip] = useState(0);
+  const [locationHasMore, setLocationHasMore] = useState(true);
+
+  const suggestionCacheRef = useRef<Map<string, { ts: number; data: LocationSuggestion[] }>>(new Map());
+  const debounceTimerRef = useRef<any>(null);
+  const lastSuggestReqRef = useRef<number>(0);
 
   const livePollTimerRef = useRef<any>(null);
   const isFetchingLiveRef = useRef<boolean>(false);
@@ -145,202 +176,16 @@ export default function MapScreen() {
   const isMountedRef = useRef<boolean>(true);
 
   const [mapRegion, setMapRegion] = useState<Region | null>(DEFAULT_REGION);
-  // Ensure mapRegion is always valid after mount
-  useEffect(() => {
-    if (!mapRegion || !isValidLatLon(mapRegion.latitude, mapRegion.longitude)) {
-      setMapRegion(DEFAULT_REGION);
-    }
-  }, []);
-
   const [locationPermission, setLocationPermission] = useState<'granted'|'denied'|'unknown'>('unknown');
   const [showSearch, setShowSearch] = useState(false);
   const [showCommentsModalId, setShowCommentsModal] = useState<string | null>(null);
 
-  // Load posts from Firestore on mount (with caching)
-  const postsCache = useRef<PostType[]>([]);
-  const lastFetchTime = useRef<number>(0);
-
   useEffect(() => {
-    setLoading(true);
-    // Fetch posts with cache (avoid refetching within 60 seconds)
-    const now = Date.now();
-    if (postsCache.current.length > 0 && (now - lastFetchTime.current) < 60000) {
-      setPosts(postsCache.current);
-      setLoading(false);
-      return;
-    }
+    if (!showSearch) return;
 
-    // Reduced limit to 50 for much faster loading
-    getAllPosts(50).then(res => {
-      if (res.success) {
-        const postsArray = Array.isArray(res.posts) ? res.posts : [];
-        setPosts(postsArray);
-        postsCache.current = postsArray;
-        lastFetchTime.current = now;
-      } else {
-        setError(res.error || 'Failed to load posts');
-      }
-    }).finally(() => setLoading(false));
-  }, []);
-
-  async function handleModalLike(post: PostType) {
-    const alreadyLiked = modalLiked[post.id] || false;
-    if (alreadyLiked) return; // Only allow one like per user
-    setModalLiked(l => ({...l, [post.id]: true}));
-    setModalLikes(l => ({...l, [post.id]: (l[post.id] ?? post.likesCount ?? post.likes ?? 0) + 1}));
-    // TODO: Call likePost API here
-  }
-  async function handleModalShare(post: PostType) {
-    try {
-      await sharePost(post);
-    } catch (error) {
-      console.error('Share error:', error);
-    }
-  }
-  async function handleModalComment(post: PostType) {
-    if (!modalComment[post.id] || !modalComment[post.id].trim()) return;
-
-    // const currentUser = getCurrentUser();
-    // if (!currentUser) {
-    //   console.log('❌ User not logged in');
-    //   return;
-    // }
-    // TODO: Use user from context or props
-
-    const commentText = modalComment[post.id].trim();
-
-    // Optimistic UI update
-    setModalCommentsCount(c => ({...c, [post.id]: (c[post.id] ?? post.commentsCount ?? 0) + 1}));
-    setModalComment(c => ({...c, [post.id]: ''}));
-
-    // Add comment to Firebase
-    const result = await addComment(
-      post.id,
-      currentUser.uid,
-      currentUser.displayName || 'User',
-      currentUser.photoURL || DEFAULT_AVATAR_URL,
-      commentText
-    );
-
-    if (!result.success) {
-      console.error('❌ Failed to add comment:', result.error);
-      // Revert optimistic update on error
-      setModalCommentsCount(c => ({...c, [post.id]: Math.max(0, (c[post.id] ?? post.commentsCount ?? 0) - 1)}));
-    }
-  }
-
-  // Request location permissions and get viewer location on mount
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-
-      if (livePollTimerRef.current) {
-        clearInterval(livePollTimerRef.current);
-        livePollTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  async function requestLocationPermission() {
-    try {
-      if (Platform.OS === 'android') {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          {
-            title: 'Location Permission',
-            message: 'This app needs access to your location for maps',
-            buttonPositive: 'OK',
-          }
-        );
-        if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-          setLocationPermission('granted');
-        } else {
-          setLocationPermission('denied');
-          console.warn('Location permission denied');
-        }
-      } else {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          setLocationPermission('granted');
-        } else {
-          setLocationPermission('denied');
-          console.warn('Location permission denied');
-        }
-      }
-    } catch (error) {
-      setLocationPermission('denied');
-    }
-  }
-
-  useEffect(() => {
-    requestLocationPermission();
-    (async () => {
-      try {
-        let location;
-        if (Platform.OS === 'android') {
-          location = await Location.getCurrentPositionAsync({});
-        } else {
-          location = await Location.getCurrentPositionAsync({});
-        }
-        if (location?.coords) {
-          setViewerCoords({ lat: location.coords.latitude, lon: location.coords.longitude });
-        }
-      } catch (err) {
-        setViewerCoords(null);
-      }
-    })();
-  }, []);
-
-  const fetchLiveStreams = useCallback(async () => {
-    if (isFetchingLiveRef.current) return;
-    const now = Date.now();
-    if (now - lastLiveFetchRef.current < 1200) return;
-    lastLiveFetchRef.current = now;
-
-    isFetchingLiveRef.current = true;
-    try {
-      const res = await apiService.get('/live-streams');
-      const streams = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
-      streams.sort((a: any, b: any) => (b.viewerCount || 0) - (a.viewerCount || 0));
-      if (isMountedRef.current) setLiveStreams(streams);
-    } catch (error) {
-      console.error('Error fetching live streams:', error);
-      if (isMountedRef.current) setLiveStreams([]);
-    } finally {
-      isFetchingLiveRef.current = false;
-    }
-  }, [apiService]);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchLiveStreams();
-      if (!livePollTimerRef.current) {
-        livePollTimerRef.current = setInterval(fetchLiveStreams, 5000);
-      }
-
-      return () => {
-        if (livePollTimerRef.current) {
-          clearInterval(livePollTimerRef.current);
-          livePollTimerRef.current = null;
-        }
-      };
-    }, [fetchLiveStreams])
-  );
-
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (nextState) => {
-      appStateRef.current = nextState;
-      if (nextState === 'active') {
-        fetchLiveStreams();
-        if (!livePollTimerRef.current) {
-          livePollTimerRef.current = setInterval(fetchLiveStreams, 5000);
-        }
-      } else {
-        if (livePollTimerRef.current) {
-          clearInterval(livePollTimerRef.current);
-          livePollTimerRef.current = null;
-        }
-      }
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setShowSearch(false);
+      return true;
     });
 
     return () => {
@@ -348,170 +193,307 @@ export default function MapScreen() {
         sub.remove();
       } catch {}
     };
-  }, [fetchLiveStreams]);
+  }, [showSearch]);
 
-  function findPostsNear(lat: number, lon: number, radiusKm: number): PostType[] {
-    return posts.filter(post => {
-      if (!post.lat || !post.lon) return false;
-      const distance = getDistance(lat, lon, post.lat, post.lon);
-      return distance <= radiusKm;
-    });
-  }
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const uid = await AsyncStorage.getItem('userId');
+        if (!cancelled) setCurrentUserId(uid);
+      } catch {
+        if (!cancelled) setCurrentUserId(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371; // Earth's radius in km
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  }
+  const resetLocationSearch = useCallback(() => {
+    setSuggestions([]);
+    setSelectedLocation(null);
+    setLocationMeta(null);
+    setLocationPosts([]);
+    setLocationError(null);
+    setLocationSkip(0);
+    setLocationHasMore(true);
+  }, []);
 
-  // Helper to check valid lat/lon
-  function isValidLatLon(lat: any, lon: any) {
-    return (
-      typeof lat === 'number' && typeof lon === 'number' &&
-      !isNaN(lat) && !isNaN(lon) &&
-      lat >= -90 && lat <= 90 &&
-      lon >= -180 && lon <= 180
-    );
-  }
+  const fetchSuggestions = useCallback(async (text: string) => {
+    const q = text.trim();
+    if (!q) {
+      setSuggestions([]);
+      return;
+    }
 
-  // Show posts with valid location AND 100+ likes (unless viewing specific user)
-  const filteredPosts = safePosts.filter(p => {
+    const cacheKey = q.toLowerCase();
+    const cached = suggestionCacheRef.current.get(cacheKey);
+    if (cached && (Date.now() - cached.ts) < 2 * 60 * 1000) {
+      setSuggestions(cached.data);
+      return;
+    }
+
+    const reqId = Date.now();
+    lastSuggestReqRef.current = reqId;
+
+    try {
+      const res: any = await apiService.getLocationSuggestions(q, 12);
+      if (lastSuggestReqRef.current !== reqId) return;
+      const data = Array.isArray(res?.data) ? res.data : [];
+      const normalized: LocationSuggestion[] = data
+        .map((d: any) => ({
+          name: String(d?.name || '').trim(),
+          count: typeof d?.count === 'number' ? d.count : 0,
+          verifiedCount: typeof d?.verifiedCount === 'number' ? d.verifiedCount : 0,
+        }))
+        .filter((d: any) => d.name);
+
+      suggestionCacheRef.current.set(cacheKey, { ts: Date.now(), data: normalized });
+      setSuggestions(normalized);
+    } catch {
+      if (lastSuggestReqRef.current !== reqId) return;
+      setSuggestions([]);
+    }
+  }, []);
+
+  const fetchLocationFeed = useCallback(async (locationName: string, mode: 'reset' | 'more' = 'reset') => {
+    const loc = locationName.trim();
+    if (!loc) return;
+
+    if (mode === 'reset') {
+      setLocationLoading(true);
+      setLocationError(null);
+      setLocationSkip(0);
+      setLocationHasMore(true);
+      setLocationPosts([]);
+    } else {
+      if (locationLoading || locationLoadingMore || !locationHasMore) return;
+      setLocationLoadingMore(true);
+    }
+
+    const nextSkip = mode === 'reset' ? 0 : locationSkip;
+    try {
+      if (mode === 'reset') {
+        try {
+          const metaRes: any = await apiService.getLocationMeta(loc, currentUserId || undefined);
+          const meta = metaRes?.data;
+          if (meta && typeof meta === 'object') {
+            setLocationMeta({
+              location: String(meta.location || loc),
+              postCount: typeof meta.postCount === 'number' ? meta.postCount : 0,
+              visits: typeof meta.visits === 'number' ? meta.visits : 0,
+              verifiedVisits: typeof meta.verifiedVisits === 'number' ? meta.verifiedVisits : 0,
+            });
+          } else {
+            setLocationMeta({ location: loc, postCount: 0, visits: 0, verifiedVisits: 0 });
+          }
+        } catch {
+          setLocationMeta({ location: loc, postCount: 0, visits: 0, verifiedVisits: 0 });
+        }
+      }
+
+      const res: any = await apiService.getPostsByLocation(loc, nextSkip, 10, currentUserId || undefined);
+      const newPosts = Array.isArray(res?.data) ? res.data : [];
+      const normalized = newPosts.map((p: any) => ({ ...p, id: p?.id || p?._id }));
+
+      setLocationPosts((prev) => (mode === 'reset' ? normalized : [...prev, ...normalized]));
+      setLocationSkip(nextSkip + normalized.length);
+      setLocationHasMore(normalized.length >= 10);
+    } catch (e: any) {
+      setLocationError(e?.message || 'Failed to load location posts');
+      setLocationHasMore(false);
+    } finally {
+      if (mode === 'reset') setLocationLoading(false);
+      else setLocationLoadingMore(false);
+    }
+  }, [currentUserId, locationHasMore, locationLoading, locationLoadingMore, locationSkip]);
+
+  useEffect(() => {
+    if (!showSearch) return;
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+
+    const q = query.trim();
+    if (!q) {
+      resetLocationSearch();
+      return;
+    }
+
+    if (selectedLocation && q.toLowerCase() === selectedLocation.toLowerCase()) {
+      return;
+    }
+
+    setSelectedLocation(null);
+    setLocationMeta(null);
+    setLocationPosts([]);
+    setLocationError(null);
+    setLocationSkip(0);
+    setLocationHasMore(true);
+
+    debounceTimerRef.current = setTimeout(() => {
+      fetchSuggestions(q);
+    }, 400);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+    };
+  }, [fetchSuggestions, query, resetLocationSearch, selectedLocation, showSearch]);
+
+  const postsCache = useRef<PostType[]>([]);
+  const lastFetchTime = useRef<number>(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+
+    const now = Date.now();
+    if (postsCache.current.length > 0 && (now - lastFetchTime.current) < 60000) {
+      setPosts(postsCache.current);
+      setLoading(false);
+      return;
+    }
+
+    getAllPosts(50)
+      .then((res: any) => {
+        if (cancelled) return;
+        if (res?.success) {
+          const postsArray = Array.isArray(res.posts) ? res.posts : [];
+          setPosts(postsArray);
+          postsCache.current = postsArray;
+          lastFetchTime.current = now;
+        } else {
+          setError(res?.error || 'Failed to load posts');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (latParam && lonParam && isValidLatLon(latParam, lonParam)) {
+      setMapRegion((prev) => {
+        const base = prev && isValidRegion(prev) ? prev : DEFAULT_REGION;
+        return {
+          ...base,
+          latitude: latParam,
+          longitude: lonParam,
+        };
+      });
+    }
+  }, [latParam, lonParam]);
+
+  const fetchLiveStreams = useCallback(async () => {
+    try {
+      const res: any = await apiService.get('/live-streams');
+      const data = res?.data;
+      const streams = Array.isArray(data?.streams)
+        ? data.streams
+        : (Array.isArray(data) ? data : []);
+
+      streams.sort((a: any, b: any) => (b.viewerCount || 0) - (a.viewerCount || 0));
+      setLiveStreams(streams);
+    } catch (err) {
+      setLiveStreams([]);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchLiveStreams();
+      const t = setInterval(fetchLiveStreams, 5000);
+      return () => clearInterval(t);
+    }, [fetchLiveStreams])
+  );
+
+  const filteredPosts = safePosts.filter((p) => {
     const lat = p.lat ?? (typeof p.location !== 'string' ? p.location?.lat : undefined);
     const lon = p.lon ?? (typeof p.location !== 'string' ? p.location?.lon : undefined);
     const likes = p.likesCount ?? p.likes ?? 0;
-
-    // If userId param exists, show all posts from that user (no like filter)
-    if (userId) {
-      return isValidLatLon(lat, lon) && p.userId === userId;
-    }
-
-    // Otherwise, show only posts with 100+ likes
+    if (userId) return isValidLatLon(lat, lon) && p.userId === userId;
     return isValidLatLon(lat, lon) && likes >= 100;
   });
 
-  // Group filtered posts by location (lat/lon rounded to 5 decimals), max 5 per location sorted by likes
   const locationGroups: { [key: string]: PostType[] } = {};
-  let markerCount = 0;
-  (Array.isArray(filteredPosts) ? filteredPosts : []).forEach(p => {
+  (Array.isArray(filteredPosts) ? filteredPosts : []).forEach((p) => {
     let lat = p.lat ?? (typeof p.location !== 'string' ? p.location?.lat : undefined);
     let lon = p.lon ?? (typeof p.location !== 'string' ? p.location?.lon : undefined);
     if ((lat == null || lon == null) && typeof p.location === 'object' && p.location) {
       lat = p.location.lat;
       lon = p.location.lon;
     }
-    // Defensive: must have imageUrl
+
     const imageUrl = p.imageUrl || (Array.isArray(p.imageUrls) && p.imageUrls[0]) || DEFAULT_AVATAR_URL;
-    // Extra strict: only allow valid numbers
     if (isValidLatLon(lat, lon) && typeof imageUrl === 'string' && imageUrl) {
       const key = `${Number(lat).toFixed(5)},${Number(lon).toFixed(5)}`;
       if (!locationGroups[key]) locationGroups[key] = [];
       locationGroups[key].push({ ...p, lat: Number(lat), lon: Number(lon), imageUrl });
-      // Sort and keep only top 5 by likes
       locationGroups[key] = locationGroups[key]
         .sort((a, b) => ((b.likesCount ?? b.likes ?? 0) - (a.likesCount ?? a.likes ?? 0)))
         .slice(0, 5);
-      markerCount++;
     }
   });
-  // Limit total markers to 50 to further prevent native crash
-  const limitedLocationGroups = Object.entries(locationGroups).slice(0, 50).reduce((acc, [key, val]) => {
-    acc[key] = val;
-    return acc;
-  }, {} as typeof locationGroups);
-  console.log('Map: Location groups:', Object.keys(limitedLocationGroups).length, 'groups');
-  console.log('Map: Location groups detail:', limitedLocationGroups);
 
-  // Extra logging for region and marker validity
-  function isValidRegion(region: Region | null): boolean {
-    return (
-      !!region &&
-      isValidLatLon(region.latitude, region.longitude) &&
-      typeof region.latitudeDelta === 'number' && typeof region.longitudeDelta === 'number' &&
-      isFinite(region.latitudeDelta) && isFinite(region.longitudeDelta) &&
-      region.latitudeDelta > 0 && region.longitudeDelta > 0
-    );
-  }
+  const limitedLocationGroups = Object.entries(locationGroups)
+    .slice(0, 50)
+    .reduce((acc, [key, val]) => {
+      acc[key] = val;
+      return acc;
+    }, {} as typeof locationGroups);
+
   const validRegion = isValidRegion(mapRegion);
-  const hasValidMarkers = Object.values(limitedLocationGroups).some(group => {
-    const post = Array.isArray(group) ? group[0] : null;
-    return post && isValidLatLon(post.lat, post.lon) && isFinite(Number(post.lat)) && isFinite(Number(post.lon));
-  });
-  console.log('Map: validRegion:', validRegion, 'hasValidMarkers:', hasValidMarkers);
 
-  // Marker component that keeps tracksViewChanges true until images load (or timeout)
   const PostMarker: React.FC<{ post: PostType; postsAtLocation: PostType[] }> = ({ post, postsAtLocation }) => {
     const [tracks, setTracks] = useState(true);
     const [imgLoaded, setImgLoaded] = useState(false);
     const [avatarLoaded, setAvatarLoaded] = useState(false);
 
     useEffect(() => {
-      const timeout = setTimeout(() => {
-        setTracks(false);
-        console.log('⏱️ Marker timeout for post:', post.id);
-      }, 20000); // Allow very slow networks to finish image fetch
+      const timeout = setTimeout(() => setTracks(false), 20000);
       return () => clearTimeout(timeout);
     }, []);
 
     useEffect(() => {
-      if (imgLoaded && avatarLoaded) {
-        setTracks(false);
-        console.log('✅ Both images loaded for post:', post.id);
-      }
+      if (imgLoaded && avatarLoaded) setTracks(false);
     }, [imgLoaded, avatarLoaded]);
 
-    const handleMarkerPress = () => {
-      if (isValidLatLon(Number(post.lat), Number(post.lon))) {
-        setSelectedPosts(postsAtLocation);
-      }
-    };
-
-    // Ensure valid image URL
     const imageUrl = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls[0]) || DEFAULT_AVATAR_URL;
     const avatarUrl = post.userAvatar || DEFAULT_AVATAR_URL;
 
-    // Use thumbnail for map markers (200px is plenty for small markers)
     const markerImageUrl = getOptimizedImageUrl(imageUrl, 'map-marker');
     const markerAvatarUrl = getOptimizedImageUrl(avatarUrl, 'thumbnail');
 
-    console.log('🗺️ Rendering marker for post:', post.id, 'imageUrl:', imageUrl?.substring(0, 50));
-
-    return (
+    return Marker ? (
       <Marker
         key={`post-${post.id}`}
         coordinate={{ latitude: Number(post.lat), longitude: Number(post.lon) }}
         tracksViewChanges={tracks}
-        onPress={handleMarkerPress}
+        onPress={() => setSelectedPosts(postsAtLocation)}
         anchor={{ x: 0.5, y: 0.5 }}
       >
         <View style={styles.markerContainer}>
           <View style={styles.postImageWrapper}>
-            {imageUrl ? (
-              <ExpoImage
-                source={{ uri: markerImageUrl }}
-                style={styles.postImage}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-                priority="high"
-                placeholder={IMAGE_PLACEHOLDER}
-                transition={150}
-                onLoad={() => {
-                  console.log('📸 Post image loaded:', post.id);
-                  setImgLoaded(true);
-                }}
-                onLoadEnd={() => setImgLoaded(true)}
-                onError={(error) => {
-                  console.error('❌ Post image error:', post.id, error);
-                  setImgLoaded(true); // Stop tracking even on error
-                }}
-              />
-            ) : (
-              <View style={[styles.postImage, { backgroundColor: '#ddd' }]} />
-            )}
+            <ExpoImage
+              source={{ uri: markerImageUrl }}
+              style={styles.postImage}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              placeholder={IMAGE_PLACEHOLDER}
+              transition={150}
+              onLoadEnd={() => setImgLoaded(true)}
+              onError={() => setImgLoaded(true)}
+            />
           </View>
           <View style={styles.postAvatarOutside}>
             <ExpoImage
@@ -519,40 +501,25 @@ export default function MapScreen() {
               style={styles.postAvatarImgFixed}
               contentFit="cover"
               cachePolicy="memory-disk"
-              priority="high"
               placeholder={IMAGE_PLACEHOLDER}
               transition={120}
-              onLoad={() => {
-                console.log('👤 Avatar loaded:', post.id);
-                setAvatarLoaded(true);
-              }}
               onLoadEnd={() => setAvatarLoaded(true)}
-              onError={(error) => {
-                console.error('❌ Avatar error:', post.id, error);
-                setAvatarLoaded(true); // Stop tracking even on error
-              }}
+              onError={() => setAvatarLoaded(true)}
             />
           </View>
         </View>
       </Marker>
-    );
+    ) : null;
   };
 
-  // UI render
-  // Live stream markers component
   const LiveStreamMarker = ({ stream }: { stream: LiveStream }) => {
-    if (!stream.location) return null;
-
+    if (!Marker || !stream.location) return null;
     return (
       <Marker
         key={`live-${stream.id}`}
-        coordinate={{
-          latitude: stream.location.latitude,
-          longitude: stream.location.longitude
-        }}
+        coordinate={{ latitude: stream.location.latitude, longitude: stream.location.longitude }}
         anchor={{ x: 0.5, y: 0.5 }}
         onPress={() => {
-          // Navigate to watch-live screen
           router.push({
             pathname: '/watch-live',
             params: {
@@ -593,6 +560,7 @@ export default function MapScreen() {
           <MapView
             ref={mapRef}
             style={styles.mapView}
+            googleRenderer={Platform.OS === 'android' ? 'LATEST' : undefined}
             initialRegion={mapRegion && isValidLatLon(mapRegion.latitude, mapRegion.longitude)
               ? mapRegion
               : DEFAULT_REGION
@@ -607,7 +575,6 @@ export default function MapScreen() {
             {safeLiveStreams.map((stream) => (
               <LiveStreamMarker key={stream.id} stream={stream} />
             ))}
-
             {/* Post markers */}
             {Object.entries(limitedLocationGroups).map(([key, postsAtLocation]) => {
               try {
@@ -656,6 +623,182 @@ export default function MapScreen() {
             }
           }}
         />
+
+        {!showSearch && (
+          <TouchableOpacity
+            style={[styles.searchFab, { bottom: tabBarHeight + 12 }]}
+            activeOpacity={0.85}
+            onPress={() => {
+              setShowSearch(true);
+            }}
+          >
+            <Ionicons name="search" size={20} color="#f39c12" />
+          </TouchableOpacity>
+        )}
+
+        {showSearch && (
+          <View
+            style={[styles.searchOverlay, { bottom: 0 }]}
+            pointerEvents="box-none"
+          >
+            <View
+              pointerEvents="none"
+              renderToHardwareTextureAndroid
+              style={[
+                styles.tabBarBackdrop,
+                {
+                  height: tabBarHeight + 80,
+                },
+              ]}
+            />
+            <TouchableOpacity
+              style={[styles.searchBackButton, { top: insets.top + 10 }]}
+              activeOpacity={0.85}
+              onPress={() => setShowSearch(false)}
+            >
+              <Ionicons name="arrow-back" size={20} color="#111" />
+            </TouchableOpacity>
+
+            <View style={[styles.searchSheet, { bottom: tabBarHeight }]} pointerEvents="auto">
+              <View style={styles.searchSheetHandle} />
+              <View style={styles.searchSheetBar}>
+                {query ? (
+                  <TouchableOpacity
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    onPress={() => {
+                      setQuery('');
+                      resetLocationSearch();
+                    }}
+                    style={{ paddingRight: 8 }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="close" size={18} color="#111" />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ width: 26 }} />
+                )}
+                <TextInput
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Search a location"
+                  placeholderTextColor="#777"
+                  style={styles.searchSheetInput}
+                  returnKeyType="search"
+                  onSubmitEditing={() => {
+                    const q = query.trim();
+                    if (!q) return;
+                    const exact = suggestions.find((s) => s.name.toLowerCase() === q.toLowerCase());
+                    const chosen = exact?.name || suggestions[0]?.name;
+                    if (!chosen) return;
+                    setSelectedLocation(chosen);
+                    setQuery(chosen);
+                    setSuggestions([]);
+                    fetchLocationFeed(chosen, 'reset');
+                  }}
+                />
+                <TouchableOpacity
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    const q = query.trim();
+                    if (!q) return;
+                    const exact = suggestions.find((s) => s.name.toLowerCase() === q.toLowerCase());
+                    const chosen = exact?.name || suggestions[0]?.name;
+                    if (!chosen) return;
+                    setSelectedLocation(chosen);
+                    setQuery(chosen);
+                    setSuggestions([]);
+                    fetchLocationFeed(chosen, 'reset');
+                  }}
+                >
+                  <Ionicons name="search" size={20} color="#111" />
+                </TouchableOpacity>
+              </View>
+
+              {selectedLocation ? (
+                <View style={styles.searchResultsWrap}>
+                  <View style={styles.locationHeaderRow}>
+                    <Text style={styles.locationHeaderCount}>
+                      {typeof locationMeta?.postCount === 'number' ? locationMeta.postCount : locationPosts.length} Post
+                    </Text>
+                    <Text style={styles.locationHeaderTitle} numberOfLines={1}>
+                      {selectedLocation}
+                    </Text>
+                    <Text style={styles.locationHeaderVisits}>
+                      {(locationMeta?.visits ?? locationPosts.length).toString()} Visits
+                    </Text>
+                  </View>
+
+                  {locationLoading ? (
+                    <View style={styles.searchCenterState}>
+                      <ActivityIndicator size="small" color="#111" />
+                    </View>
+                  ) : locationError ? (
+                    <View style={styles.searchCenterState}>
+                      <Text style={{ color: '#c00' }}>{locationError}</Text>
+                    </View>
+                  ) : (
+                    <FlatList
+                      data={locationPosts}
+                      keyExtractor={(item: any, idx: number) => String(item?.id || item?._id || `loc-${idx}`)}
+                      renderItem={({ item }) => (
+                        <PostCard post={item} currentUser={currentUser || (currentUserId ? { uid: currentUserId, id: currentUserId } : null)} showMenu={true} />
+                      )}
+                      onEndReached={() => {
+                        if (!selectedLocation) return;
+                        fetchLocationFeed(selectedLocation, 'more');
+                      }}
+                      onEndReachedThreshold={0.6}
+                      ListFooterComponent={
+                        locationLoadingMore ? (
+                          <View style={{ paddingVertical: 12 }}>
+                            <ActivityIndicator size="small" color="#111" />
+                          </View>
+                        ) : null
+                      }
+                      ListEmptyComponent={
+                        <View style={styles.searchCenterState}>
+                          <Text style={{ color: '#666' }}>No posts found</Text>
+                        </View>
+                      }
+                      showsVerticalScrollIndicator={false}
+                    />
+                  )}
+                </View>
+              ) : (
+                <View style={styles.searchResultsWrap}>
+                  {!query.trim() ? null : suggestions.length === 0 ? (
+                    <View style={styles.searchCenterState}>
+                      <Text style={{ color: '#666' }}>No locations found</Text>
+                    </View>
+                  ) : (
+                    <FlatList
+                      data={suggestions}
+                      keyExtractor={(item) => item.name}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          style={styles.suggestionRow}
+                          onPress={() => {
+                            setSelectedLocation(item.name);
+                            setQuery(item.name);
+                            setSuggestions([]);
+                            fetchLocationFeed(item.name, 'reset');
+                          }}
+                        >
+                          <Text style={styles.suggestionName} numberOfLines={1}>{item.name}</Text>
+                          <Text style={styles.suggestionCount}>{item.count} Post</Text>
+                        </TouchableOpacity>
+                      )}
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator={false}
+                    />
+                  )}
+                </View>
+              )}
+            </View>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -667,9 +810,160 @@ const styles = StyleSheet.create({
   mapView: { width: '100%', height: '100%' },
   errorText: { position: 'absolute', bottom: 20, color: '#c00', backgroundColor: 'rgba(255,255,255,0.9)', padding: 8, borderRadius: 6 },
 
+  searchFab: {
+    position: 'absolute',
+    right: 16,
+    bottom: Platform.OS === 'ios' ? 34 : 20,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+
+  searchOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'transparent',
+    zIndex: 999,
+    elevation: 30,
+  },
+  tabBarBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#fff',
+    zIndex: 1000,
+    elevation: 1000,
+  },
+  searchBackButton: {
+    position: 'absolute',
+    left: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 1002,
+  },
+  searchSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '62%',
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: 'hidden',
+    zIndex: 1001,
+    elevation: 1001,
+  },
+  searchSheetHandle: {
+    width: 54,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#d9d9d9',
+    marginTop: 10,
+    marginBottom: 14,
+  },
+  searchSheetBar: {
+    width: '92%',
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: '#eee',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  searchSheetInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#111',
+    textAlign: 'center',
+    paddingRight: 10,
+  },
+
+  searchResultsWrap: {
+    flex: 1,
+    width: '100%',
+    paddingTop: 10,
+  },
+  searchCenterState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+  },
+  suggestionRow: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  suggestionName: {
+    fontSize: 16,
+    color: '#111',
+    flex: 1,
+    paddingRight: 10,
+  },
+  suggestionCount: {
+    fontSize: 13,
+    color: '#666',
+  },
+  locationHeaderRow: {
+    paddingHorizontal: 18,
+    paddingBottom: 10,
+  },
+  locationHeaderCount: {
+    fontSize: 13,
+    color: '#111',
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  locationHeaderTitle: {
+    fontSize: 20,
+    color: '#111',
+    fontWeight: '700',
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  locationHeaderVisits: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+
   /* Floating action button */
   fab: {
     position: 'absolute',
+
     right: 16,
     bottom: Platform.OS === 'ios' ? 34 : 20,
     width: 40,

@@ -18,9 +18,11 @@ interface LiveStream {
 	startedAt: any;
 }
 
-function LiveStreamsRowComponent() {
+function LiveStreamsRowComponent({ mirror = false }: { mirror?: boolean }) {
 	const router = useRouter();
 	const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
+	const scrollRef = React.useRef<ScrollView>(null);
+	const autoScrolledRef = React.useRef(false);
 	const lastFetchRef = React.useRef<number>(0);
 	const isFetchingRef = React.useRef<boolean>(false);
 	const hasInitializedRef = React.useRef<boolean>(false);
@@ -33,6 +35,10 @@ function LiveStreamsRowComponent() {
 			isMountedRef.current = false;
 		};
 	}, []);
+
+	useEffect(() => {
+		autoScrolledRef.current = false;
+	}, [mirror, liveStreams.length]);
 
 	const fetchLiveStreams = useCallback(async () => {
 		// Prevent multiple concurrent fetches
@@ -129,22 +135,34 @@ function LiveStreamsRowComponent() {
 
 	return (
 		<View style={styles.container}>
-			<View style={styles.header}>
-				<View style={{ flexDirection: 'row', alignItems: 'center' }}>
-					<View style={styles.liveDot} />
+			<View style={[styles.header, mirror && { flexDirection: 'row-reverse' }]}>
+				<View style={[{ flexDirection: 'row', alignItems: 'center' }, mirror && { flexDirection: 'row-reverse' }]}>
+					<View style={[styles.liveDot, mirror && { marginRight: 0, marginLeft: 8 }]} />
 					<Text style={styles.title}>Live Now</Text>
 				</View>
 				<Text style={styles.count}>{liveStreams.length} streaming</Text>
 			</View>
 			<ScrollView 
+				ref={scrollRef}
 				horizontal 
 				showsHorizontalScrollIndicator={false}
-				contentContainerStyle={styles.scrollContent}
+				onContentSizeChange={() => {
+					if (!mirror) return;
+					if (liveStreams.length === 0) return;
+					if (autoScrolledRef.current) return;
+					autoScrolledRef.current = true;
+					requestAnimationFrame(() => {
+						try {
+							scrollRef.current?.scrollToEnd({ animated: false });
+						} catch {}
+					});
+				}}
+				contentContainerStyle={[styles.scrollContent, mirror && { flexDirection: 'row-reverse', flexGrow: 1 }]}
 			>
 				{liveStreams.map((stream) => (
 					<TouchableOpacity
 						key={stream.id}
-						style={styles.streamCard}
+						style={[styles.streamCard, mirror && { marginRight: 0, marginLeft: 16 }]}
 						onPress={() => handleStreamPress(stream)}
 						activeOpacity={0.8}
 					>
@@ -161,7 +179,7 @@ function LiveStreamsRowComponent() {
 						<Text style={styles.userName} numberOfLines={1}>
 							{stream.userName}
 						</Text>
-						<View style={styles.viewerInfo}>
+						<View style={[styles.viewerInfo, mirror && { flexDirection: 'row-reverse' }]}>
 							<Ionicons name="eye" size={12} color="#666" />
 							<Text style={styles.viewerCount}>
 								{stream.viewerCount || 0}

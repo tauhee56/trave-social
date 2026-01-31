@@ -42,76 +42,6 @@ const TabEventContext = createContext<{ emitHomeTabPress: () => void; subscribeH
 
 export const useTabEvent = () => useContext(TabEventContext);
 
-// Dedicated tab bar button components so hooks stay inside components
-const HomeTabButton = (props: any) => {
-  const router = useRouter();
-  const tabEvent = useTabEvent();
-  const selected = props.accessibilityState?.selected === true;
-  return (
-    <TouchableOpacity
-      {...props}
-      onPress={() => {
-        tabEvent?.emitHomeTabPress();
-        logAnalyticsEvent('tab_home_press', { selected: props.accessibilityState?.selected === true });
-        router.push('/(tabs)/home');
-      }}
-      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-      activeOpacity={0.7}
-    >
-      <Ionicons name={selected ? 'home' : 'home-outline'} size={ICON_SIZE} color={selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR} />
-      <Text style={{ fontSize: TAB_LABEL_SIZE, color: selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR, marginTop: 2, fontWeight: selected ? '700' : '500' }}>Home</Text>
-    </TouchableOpacity>
-  );
-};
-
-const SearchTabButton = (props: any) => {
-  const router = useRouter();
-  const selected = props.accessibilityState?.selected === true;
-  return (
-    <TouchableOpacity
-      {...props}
-      onPress={() => { logAnalyticsEvent('tab_search_press', { selected }); router.push('/(tabs)/search'); }}
-      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-      activeOpacity={0.7}
-    >
-      <Ionicons name={selected ? 'search' : 'search-outline'} size={ICON_SIZE} color={selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR} />
-      <Text style={{ fontSize: TAB_LABEL_SIZE, color: selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR, marginTop: 2, fontWeight: selected ? '700' : '500' }}>Search</Text>
-    </TouchableOpacity>
-  );
-};
-
-const MapTabButton = (props: any) => {
-  const router = useRouter();
-  const selected = props.accessibilityState?.selected === true;
-  return (
-    <TouchableOpacity
-      {...props}
-      onPress={() => { logAnalyticsEvent('tab_map_press'); router.push('/(tabs)/map'); }}
-      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-      activeOpacity={0.7}
-    >
-      <Ionicons name={selected ? 'map' : 'map-outline'} size={ICON_SIZE} color={selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR} />
-      <Text style={{ fontSize: TAB_LABEL_SIZE, color: selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR, marginTop: 2, fontWeight: selected ? '700' : '500' }}>Map</Text>
-    </TouchableOpacity>
-  );
-};
-
-const ProfileTabButton = (props: any) => {
-  const router = useRouter();
-  const selected = props.accessibilityState?.selected === true;
-  return (
-    <TouchableOpacity
-      {...props}
-      onPress={() => { logAnalyticsEvent('tab_profile_press'); router.push('/(tabs)/profile'); }}
-      style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-      activeOpacity={0.7}
-    >
-      <Ionicons name={selected ? 'person' : 'person-outline'} size={ICON_SIZE} color={selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR} />
-      <Text style={{ fontSize: TAB_LABEL_SIZE, color: selected ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR, marginTop: 2, fontWeight: selected ? '700' : '500' }}>Profile</Text>
-    </TouchableOpacity>
-  );
-};
-
 export default function TabsLayout() {
   // Simple subscription system for home tab press
   const homeTabPressListeners = useRef<(() => void)[]>([]);
@@ -136,6 +66,10 @@ export default function TabsLayout() {
           tabBarActiveTintColor: TAB_ACTIVE_COLOR,
           tabBarInactiveTintColor: TAB_INACTIVE_COLOR,
           tabBarShowLabel: true,
+          tabBarLabelStyle: {
+            fontSize: TAB_LABEL_SIZE,
+            marginTop: 2,
+          },
           lazy: true,
           freezeOnBlur: true,
           tabBarStyle: {
@@ -150,29 +84,44 @@ export default function TabsLayout() {
       >
         <Tabs.Screen
           name="home"
+          listeners={{
+            tabPress: () => {
+              emitHomeTabPress();
+              logAnalyticsEvent('tab_home_press', {});
+            },
+          }}
           options={{
             title: "Home",
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="home" size={size} color={color} />
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons name={focused ? 'home' : 'home-outline'} size={ICON_SIZE} color={color} />
             ),
-            tabBarButton: (props) => <HomeTabButton {...props} />,
           }}
         />
         <Tabs.Screen
           name="search"
+          listeners={{
+            tabPress: () => {
+              logAnalyticsEvent('tab_search_press', {});
+            },
+          }}
           options={{
             title: "Search",
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="search" size={size} color={color} />
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons name={focused ? 'search' : 'search-outline'} size={ICON_SIZE} color={color} />
             ),
-            tabBarButton: (props) => <SearchTabButton {...props} />,
           }}
         />
         <Tabs.Screen
           name="post"
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              logAnalyticsEvent('tab_post_press', {});
+              router.push('/create-post');
+            },
+          }}
           options={{
             title: "Post",
-            tabBarLabel: '',
             tabBarIcon: ({ color, size }) => (
               <View style={{
                 width: 40,
@@ -191,41 +140,34 @@ export default function TabsLayout() {
                 <Feather name="plus" size={18} color="#fff" />
               </View>
             ),
-            tabBarButton: (props) => {
-              return (
-                <TouchableOpacity
-                  onPress={() => { logAnalyticsEvent('tab_post_press'); router.push('/create-post'); }}
-                  style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="add" size={28} color={TAB_INACTIVE_COLOR} />
-                  <Text style={{ fontSize: TAB_LABEL_SIZE, color: TAB_INACTIVE_COLOR, marginTop: 2, fontWeight: '500' }}>Post</Text>
-                </TouchableOpacity>
-              );
-            },
           }}
         />
         <Tabs.Screen
           name="map"
+          listeners={{
+            tabPress: () => {
+              logAnalyticsEvent('tab_map_press', {});
+            },
+          }}
           options={{
             title: "Map",
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons name={focused ? "map" : "map-outline"} size={24} color={color} />
+              <Ionicons name={focused ? "map" : "map-outline"} size={ICON_SIZE} color={color} />
             ),
-            tabBarLabel: ({ focused }) => (
-              <Text style={{ fontSize: TAB_LABEL_SIZE, color: focused ? TAB_ACTIVE_COLOR : TAB_INACTIVE_COLOR, marginTop: 2 }}>Map</Text>
-            ),
-            tabBarButton: (props) => <MapTabButton {...props} />,
           }}
         />
         <Tabs.Screen
           name="profile"
+          listeners={{
+            tabPress: () => {
+              logAnalyticsEvent('tab_profile_press', {});
+            },
+          }}
           options={{
             title: "Profile",
             tabBarIcon: ({ color, focused }) => (
-              <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
+              <Ionicons name={focused ? "person" : "person-outline"} size={ICON_SIZE} color={color} />
             ),
-            tabBarButton: (props) => <ProfileTabButton {...props} />,
           }}
         />
       </Tabs>

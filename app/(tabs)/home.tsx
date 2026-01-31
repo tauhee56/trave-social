@@ -26,7 +26,10 @@ import { apiService } from '../_services/apiService';
 
 const { width } = Dimensions.get("window");
 
+const MIRROR_HOME = true;
+
 export default function Home() {
+
     const defaultCategoryObjects = Array.isArray(DEFAULT_CATEGORIES)
       ? DEFAULT_CATEGORIES.map((cat: any) =>
           typeof cat === 'string'
@@ -55,7 +58,13 @@ export default function Home() {
     const [storiesRefreshTrigger, setStoriesRefreshTrigger] = useState(0);
     const [storiesRowResetTrigger, setStoriesRowResetTrigger] = useState(0);
     const flatListRef = React.useRef<FlatList>(null);
+    const categoriesScrollRef = React.useRef<ScrollView>(null);
+    const categoriesAutoScrolledRef = React.useRef(false);
     const openedStoryIdRef = React.useRef<string | null>(null);
+
+    useEffect(() => {
+      categoriesAutoScrolledRef.current = false;
+    }, [categories.length]);
 
     // Get current user ID from AsyncStorage (token-based auth)
     useEffect(() => {
@@ -288,6 +297,16 @@ export default function Home() {
         loadCategories();
     }, []);
 
+    useEffect(() => {
+        if (!MIRROR_HOME) return;
+        if (!categories || categories.length === 0) return;
+        requestAnimationFrame(() => {
+            try {
+                categoriesScrollRef.current?.scrollToEnd({ animated: false });
+            } catch {}
+        });
+    }, [categories.length]);
+
     // Privacy Filter logic - FIXED to properly check if user has access
     async function filterPostsByPrivacy(posts: any[], userId: string | undefined) {
         // If no user logged in, show only public posts
@@ -405,7 +424,7 @@ export default function Home() {
 
     if (loading) {
         return (
-            <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}> 
+            <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]} > 
                 <ActivityIndicator size="large" color="#f39c12" />
             </View>
         );
@@ -450,18 +469,34 @@ export default function Home() {
                             }}
                             refreshTrigger={storiesRefreshTrigger}
                             resetTrigger={storiesRowResetTrigger}
+                            mirror={MIRROR_HOME}
                         />
-                        <LiveStreamsRow />
+                        <LiveStreamsRow mirror={MIRROR_HOME} />
                         <View style={styles.headerSection}>
-                            <TouchableOpacity style={styles.searchBar} onPress={() => router.push('/search-modal')}>
+                            <TouchableOpacity style={[styles.searchBar, MIRROR_HOME && { flexDirection: 'row-reverse' }]} onPress={() => router.push('/search-modal')}>
                                 <Feather name="search" size={18} color="#222" />
-                                <Text style={styles.searchText}>{searchText}</Text>
+                                <Text style={[styles.searchText, MIRROR_HOME && { marginLeft: 0, marginRight: 8 }]}>{searchText}</Text>
                             </TouchableOpacity>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
+                            <ScrollView
+                                ref={categoriesScrollRef}
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                onContentSizeChange={() => {
+                                  if (!MIRROR_HOME) return;
+                                  if (categoriesAutoScrolledRef.current) return;
+                                  categoriesAutoScrolledRef.current = true;
+                                  requestAnimationFrame(() => {
+                                    try {
+                                      categoriesScrollRef.current?.scrollToEnd({ animated: false });
+                                    } catch {}
+                                  });
+                                }}
+                                contentContainerStyle={[{ paddingHorizontal: 8 }, MIRROR_HOME && { flexDirection: 'row-reverse', flexGrow: 1 }]}
+                            >
                                 {categories.map((cat) => (
                                     <TouchableOpacity
                                         key={cat.name}
-                                        style={styles.chip}
+                                        style={[styles.chip, MIRROR_HOME && { marginRight: 0, marginLeft: 12 }]}
                                         onPress={() => {
                                             console.log('[Category] Clicked category:', cat.name);
                                             const next = cat.name === filter ? '' : cat.name;
@@ -482,7 +517,7 @@ export default function Home() {
                     </View>
                 )}
                 renderItem={({ item }: { item: any }) => (
-                    <PostCard post={{ ...item, imageUrl: item.thumbnailUrl || item.imageUrl }} currentUser={currentUserData || currentUserId} showMenu={false} />
+                    <PostCard post={{ ...item, imageUrl: item.thumbnailUrl || item.imageUrl }} currentUser={currentUserData || currentUserId} showMenu={false} mirror={MIRROR_HOME} />
                 )}
                 ListFooterComponent={
                     loadingMore ? (

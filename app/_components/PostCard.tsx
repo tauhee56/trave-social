@@ -28,6 +28,7 @@ interface PostCardProps {
   highlightedCommentText?: string;
   showCommentsModal?: boolean;
   onCloseCommentsModal?: () => void;
+  mirror?: boolean;
 }
 
 const styles = StyleSheet.create({
@@ -465,7 +466,7 @@ const styles = StyleSheet.create({
   },
 });
 
-function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, highlightedCommentText }: PostCardProps) {
+function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, highlightedCommentText, mirror = false }: PostCardProps) {
   // Visits logic
   const [visitCount, setVisitCount] = useState<number>(typeof post?.visits === 'number' ? post.visits : 0);
   useEffect(() => {
@@ -703,7 +704,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
     <View style={{ flex: 1, backgroundColor: appColors.background }}>
       <View style={[styles.card, { backgroundColor: appColors.background }]}>
         {/* Top section: Location/Visits (left), Avatar (right) */}
-        <View style={styles.topRow}>
+        <View style={[styles.topRow, mirror && { flexDirection: 'row-reverse' }]}>
           {/* Location and Visits (left) - CLICKABLE */}
           <TouchableOpacity
             style={styles.locationInfo}
@@ -743,18 +744,18 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
             accessibilityRole="button"
             accessibilityLabel={liked ? 'Unlike post' : 'Like post'}
           >
-            <View style={styles.locationRow}>
+            <View style={[styles.locationRow, mirror && { flexDirection: 'row-reverse' }]}>
               {/* Show verified badge if location is verified, otherwise show map pin */}
               {post?.locationData?.verified ? (
-                <View style={styles.verifiedBadgeBox}>
+                <View style={[styles.verifiedBadgeBox, mirror && { marginRight: 0, marginLeft: 10 }]}>
                   <VerifiedBadge size={20} color="#000" />
                 </View>
               ) : (
-                <View style={styles.locationIconBox}>
+                <View style={[styles.locationIconBox, mirror && { marginRight: 0, marginLeft: 12 }]}>
                   <Feather name="map-pin" size={20} color="#111" />
                 </View>
               )}
-              <View style={styles.locationTextWrap}>
+              <View style={[styles.locationTextWrap, mirror && { alignItems: 'flex-end' }]}>
                 <Text style={styles.locationName} numberOfLines={1} ellipsizeMode="tail">
                   {post?.locationData?.name || post?.locationName || post?.location || 'Unknown Location'}
                 </Text>
@@ -1029,7 +1030,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
       </View>
       {/* All content inside card box */}
       <View style={{ paddingHorizontal: 2 }}>
-        <View style={styles.iconRow}>
+        <View style={[styles.iconRow, mirror && { flexDirection: 'row-reverse' }]}>
           <TouchableOpacity
             onPress={async () => {
               const userId = userIdForLike;
@@ -1094,26 +1095,26 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 console.error('Like/unlike exception:', err);
               }
             }}
-            style={{ marginRight: 8, flexDirection: 'row', alignItems: 'center' }}
+            style={{ marginRight: mirror ? 0 : 8, marginLeft: mirror ? 8 : 0, flexDirection: mirror ? 'row-reverse' : 'row', alignItems: 'center' }}
           >
             {liked ? (
               <MaterialCommunityIcons name="heart" size={24} color={appColors.like} />
             ) : (
               <MaterialCommunityIcons name="heart-outline" size={24} color={appColors.icon} />
             )}
-            <Text style={{ marginLeft: 6, fontWeight: '700', color: appColors.text, fontSize: 15 }}>{typeof likesCount === 'number' || typeof likesCount === 'string' ? String(likesCount) : ''}</Text>
+            <Text style={{ marginLeft: mirror ? 0 : 6, marginRight: mirror ? 6 : 0, fontWeight: '700', color: appColors.text, fontSize: 15 }}>{typeof likesCount === 'number' || typeof likesCount === 'string' ? String(likesCount) : ''}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             accessible
             accessibilityRole="button"
             accessibilityLabel="Open comments"
             onPress={() => setShowCommentsModal(true)}
-            style={{ marginRight: 24 }}
+            style={{ marginRight: mirror ? 0 : 24, marginLeft: mirror ? 24 : 0 }}
           >
             <Feather name="message-circle" size={22} color={appColors.icon} />
           </TouchableOpacity>
           <TouchableOpacity
-            style={{ marginRight: 24 }}
+            style={{ marginRight: mirror ? 0 : 24, marginLeft: mirror ? 24 : 0 }}
             onPress={async () => {
               try {
                 await sharePost(post);
@@ -1128,9 +1129,9 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
           <SaveButton post={{ ...post, savedBy }} currentUser={currentUser} />
         </View>
         {/* Likes Count */}
-        <Text style={[styles.likes, { color: appColors.text }]}>{typeof likesCount === 'number' ? `${likesCount.toLocaleString()} likes` : ''}</Text>
+        <Text style={[styles.likes, { color: appColors.text }, mirror && { textAlign: 'right' }]}>{typeof likesCount === 'number' ? `${likesCount.toLocaleString()} likes` : ''}</Text>
         {/* Description (expandable) */}
-        <Text style={[styles.caption, { color: appColors.text }]} numberOfLines={showFullDesc ? undefined : 2}>
+        <Text style={[styles.caption, { color: appColors.text }, mirror && { textAlign: 'right' }]} numberOfLines={showFullDesc ? undefined : 2}>
           {(() => {
             let username = '';
             if (typeof post?.userName === 'string' || typeof post?.userName === 'number') {
@@ -1148,7 +1149,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
 
         {/* Hashtags Display */}
         {post?.hashtags && Array.isArray(post.hashtags) && post.hashtags.length > 0 && (
-          <View style={styles.hashtags}>
+          <View style={[styles.hashtags, mirror && { flexDirection: 'row-reverse' }]}>
             {post.hashtags.map((hashtag: string, idx: number) => (
               <TouchableOpacity
                 key={`${hashtag}-${idx}`}
@@ -1169,11 +1170,11 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
 
         {/* Comments Preview */}
         <TouchableOpacity onPress={() => setShowCommentsModal(true)}>
-          <Text style={[styles.commentPreview, { color: appColors.muted }]}>{`View all ${commentCount} comments`}</Text>
+          <Text style={[styles.commentPreview, { color: appColors.muted }, mirror && { textAlign: 'right' }]}>{`View all ${commentCount} comments`}</Text>
         </TouchableOpacity>
         {/* Remove the comment input box below like button */}
         {/* Time */}
-        <Text style={styles.time}>{getTimeAgo(post?.createdAt)}</Text>
+        <Text style={[styles.time, mirror && { textAlign: 'left' }]}>{getTimeAgo(post?.createdAt)}</Text>
       </View>
       {/* Comments Modal */}
       <Modal

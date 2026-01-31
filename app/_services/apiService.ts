@@ -250,6 +250,12 @@ export const apiService = {
   // ✅ Categories & Locations
   getCategories: () => apiRequest('get', '/categories'),
   getLocationCount: () => apiRequest('get', '/posts/location-count'),
+  getLocationSuggestions: (q: string, limit: number = 10) =>
+    apiRequest('get', '/locations/suggest', undefined, { q, limit }),
+  getLocationMeta: (location: string, viewerId?: string) =>
+    apiRequest('get', '/locations/meta', undefined, { location, viewerId }),
+  getPostsByLocation: (location: string, skip: number = 0, limit: number = 20, viewerId?: string) =>
+    apiRequest('get', '/posts/by-location', undefined, { location, skip, limit, viewerId }),
   
   // ✅ Status Check
   checkStatus: () => apiRequest('get', '/status'),

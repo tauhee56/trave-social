@@ -51,7 +51,7 @@ function getStoryBubbleThumbnail(storyUser: StoryUser, defaultAvatarUrl: string)
   return storyUser?.bubblePreviewUrl || storyUser?.userAvatar || defaultAvatarUrl;
 }
 
-function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger, resetTrigger }: { onStoryPress?: (stories: any[], initialIndex: number) => void; onStoryViewerClose?: () => void; refreshTrigger?: number; resetTrigger?: number }): React.ReactElement {
+function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger, resetTrigger, mirror = false }: { onStoryPress?: (stories: any[], initialIndex: number) => void; onStoryViewerClose?: () => void; refreshTrigger?: number; resetTrigger?: number; mirror?: boolean }): React.ReactElement {
   const [storyUsers, setStoryUsers] = useState<StoryUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -64,6 +64,8 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [authUser, setAuthUser] = useState<any>(null);
   const [isViewingStories, setIsViewingStories] = useState(false);
+  const scrollRef = React.useRef<ScrollView>(null);
+  const autoScrolledRef = React.useRef(false);
   
   // Use ref to prevent picker from opening during transitions
   const pickerBlockedRef = React.useRef(false);
@@ -102,6 +104,20 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
     loadStories();
     loadCurrentUserAvatar();
   }, [refreshTrigger]);
+
+  useEffect(() => {
+    if (!mirror) return;
+    // Ensure the horizontal list starts from the right (Option A)
+    requestAnimationFrame(() => {
+      try {
+        scrollRef.current?.scrollToEnd({ animated: false });
+      } catch {}
+    });
+  }, [mirror, storyUsers.length, authUser?.uid]);
+
+  useEffect(() => {
+    autoScrolledRef.current = false;
+  }, [mirror, storyUsers.length, authUser?.uid]);
 
   // Mark a user's stories as seen (persist + update local ring state)
   const markUserStoriesSeen = useCallback(async (userId: string, stories: any[]) => {
@@ -324,9 +340,24 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
   const hasMyStory = !!(myUser && myUser.stories && myUser.stories.length > 0);
   return (
     <View style={styles.container}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        onContentSizeChange={() => {
+          if (!mirror) return;
+          if (autoScrolledRef.current) return;
+          autoScrolledRef.current = true;
+          requestAnimationFrame(() => {
+            try {
+              scrollRef.current?.scrollToEnd({ animated: false });
+            } catch {}
+          });
+        }}
+        contentContainerStyle={[{ paddingHorizontal: 8 }, mirror && { flexDirection: 'row-reverse', flexGrow: 1 }]}
+      >
         {/* Current user story: avatar only if exists, plus if not */}
-        <View style={styles.storyWrapper}>
+        <View style={[styles.storyWrapper, mirror && { marginRight: 0, marginLeft: 4 }]}>
           <View style={styles.currentUserTile}>
             <TouchableOpacity
               style={styles.storyButton}
@@ -367,7 +398,7 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
         </View>
 
         {hasMyStory && myUser ? (
-          <View style={styles.storyWrapper} key="my-story">
+          <View style={[styles.storyWrapper, mirror && { marginRight: 0, marginLeft: 4 }]} key="my-story">
             <TouchableOpacity
               style={styles.storyButton}
               activeOpacity={0.8}
@@ -386,11 +417,11 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
                   />
                 </View>
                 {myUser.bubbleMediaType === 'video' ? (
-                  <View style={styles.overlayTypePill}>
+                  <View style={[styles.overlayTypePill, mirror && { left: undefined, right: 6 }]}>
                     <Feather name={'video'} size={12} color="#fff" />
                   </View>
                 ) : null}
-                <View style={styles.overlayAvatarChip}>
+                <View style={[styles.overlayAvatarChip, mirror && { left: undefined, right: -6 }]}>
                   <ExpoImage
                     source={{ uri: myUser.userAvatar || DEFAULT_AVATAR_URL }}
                     style={styles.overlayAvatarImg}
@@ -405,7 +436,7 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
 
         {/* Other users' stories */}
         {authUser && authUser.uid ? storyUsers.filter(u => u.userId !== authUser.uid).map((user, idx) => (
-          <View style={styles.storyWrapper} key={user.userId}>
+          <View style={[styles.storyWrapper, mirror && { marginRight: 0, marginLeft: 4 }]} key={user.userId}>
             <TouchableOpacity
               style={styles.storyButton}
               activeOpacity={0.8}
@@ -424,11 +455,11 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
                   />
                 </View>
                 {user.bubbleMediaType === 'video' ? (
-                  <View style={styles.overlayTypePill}>
+                  <View style={[styles.overlayTypePill, mirror && { left: undefined, right: 6 }]}>
                     <Feather name={'video'} size={12} color="#fff" />
                   </View>
                 ) : null}
-                <View style={styles.overlayAvatarChip}>
+                <View style={[styles.overlayAvatarChip, mirror && { left: undefined, right: -6 }]}>
                   <ExpoImage
                     source={{ uri: user.userAvatar || DEFAULT_AVATAR_URL }}
                     style={styles.overlayAvatarImg}

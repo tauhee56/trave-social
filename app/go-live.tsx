@@ -36,7 +36,7 @@ import { Audio } from 'expo-av';
 import { ZEEGOCLOUD_CONFIG, generateRoomId } from '../config/zeegocloud';
 import ZeegocloudStreamingService from '../services/implementations/ZeegocloudStreamingService';
 import ZeegocloudLiveHost from './_components/ZeegocloudLiveHost';
-import { endLiveStream, startLiveStream } from '../lib/firebaseHelpers/live';
+import { endLiveStream, getActiveLiveStreams, startLiveStream } from '../lib/firebaseHelpers/live';
 
 let MapView: any = null;
 let Marker: any = null;
@@ -100,7 +100,13 @@ export default function GoLiveScreen() {
   const [roomId, setRoomId] = useState('');
   const [streamTitle, setStreamTitle] = useState('');
 
+  // User state
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  const storedUserIdRef = useRef<string | null>(null);
+
   const backendStreamIdRef = useRef<string | null>(null);
+  const streamOwnerIdRef = useRef<string | null>(null);
 
   // Refs
   const isStreamingRef = useRef(isStreaming);
@@ -111,8 +117,107 @@ export default function GoLiveScreen() {
   useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
   useEffect(() => { roomIdRef.current = roomId; }, [roomId]);
 
-  // User state
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const uid = await AsyncStorage.getItem('userId');
+        storedUserIdRef.current = uid ? String(uid) : null;
+      } catch {
+        storedUserIdRef.current = null;
+      }
+    })();
+  }, []);
+
+  const normalizeStreamId = useCallback((value: any): string | null => {
+    if (value == null) return null;
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+    if (typeof value === 'object') {
+      if (typeof (value as any).$oid === 'string') return (value as any).$oid;
+      if (typeof (value as any).toHexString === 'function') {
+        try { return (value as any).toHexString(); } catch {}
+      }
+      if (typeof (value as any).toString === 'function') {
+        try {
+          const s = (value as any).toString();
+          if (s && s !== '[object Object]') return s;
+        } catch {}
+      }
+    }
+    return null;
+  }, []);
+
+  const resolveOwnActiveStreamId = useCallback(async (userId: string): Promise<string | null> => {
+    try {
+      const streams: any[] = await getActiveLiveStreams();
+      if (!Array.isArray(streams) || streams.length === 0) return null;
+
+      const mine = streams.find((s: any) => String(s?.userId || '') === String(userId));
+      return normalizeStreamId(mine?.id) || normalizeStreamId(mine?._id);
+    } catch {
+      return null;
+    }
+  }, [normalizeStreamId]);
+
+  const endBackendStreamBestEffort = useCallback(async (streamId: string, userId: string | null | undefined) => {
+    try {
+      if (!streamId || !userId) return;
+
+      const first: any = await endLiveStream(String(streamId), String(userId));
+      if (first?.success === true) return;
+
+      const errText = String(first?.error || '');
+      const looksLikeOwnerMismatch = errText.toLowerCase().includes('only stream owner') || errText.toLowerCase().includes('owner');
+      const fallbackUserId = auth.currentUser?.uid;
+
+      if (looksLikeOwnerMismatch && fallbackUserId && String(fallbackUserId) !== String(userId)) {
+        await endLiveStream(String(streamId), String(fallbackUserId));
+      }
+    } catch (e: any) {
+      logger.error('endBackendStreamBestEffort failed:', e);
+    }
+  }, []);
+
+  const endStreamSilently = useCallback(async () => {
+    try {
+      if (!isStreamingRef.current) return;
+      if (isExplicitlyEndingRef.current) return;
+
+      isExplicitlyEndingRef.current = true;
+
+      try {
+        if (zeegocloudServiceRef.current) {
+          await zeegocloudServiceRef.current.stopBroadcast();
+          await zeegocloudServiceRef.current.disconnect();
+        }
+      } catch (e: any) {
+        logger.error('Silent stop/disconnect failed:', e);
+      }
+
+      setIsStreaming(false);
+      isStreamingRef.current = false;
+
+      try {
+        let streamId = backendStreamIdRef.current;
+        const userId = streamOwnerIdRef.current || storedUserIdRef.current || currentUser?.uid;
+
+        if (!streamId && userId) {
+          streamId = await resolveOwnActiveStreamId(String(userId));
+        }
+
+        if (streamId && userId) {
+          await endBackendStreamBestEffort(String(streamId), String(userId));
+        }
+      } catch (e: any) {
+        logger.error('Silent end live stream (backend) failed:', e);
+      }
+
+      backendStreamIdRef.current = null;
+      streamOwnerIdRef.current = null;
+    } catch (e: any) {
+      logger.error('endStreamSilently failed:', e);
+    }
+  }, [currentUser?.uid, resolveOwnActiveStreamId]);
   
   // Controls state
   const [isMuted, setIsMuted] = useState(false);
@@ -313,6 +418,26 @@ export default function GoLiveScreen() {
       return;
     }
 
+    if (!storedUserIdRef.current) {
+      try {
+        const uid = await AsyncStorage.getItem('userId');
+        storedUserIdRef.current = uid ? String(uid) : null;
+      } catch {
+        storedUserIdRef.current = null;
+      }
+    }
+
+    const authU = auth.currentUser;
+    const effectiveUserId = storedUserIdRef.current || authU?.uid || currentUser?.uid;
+    if (!effectiveUserId) {
+      Alert.alert('Error', 'User not available. Please sign in again.');
+      return;
+    }
+
+    isExplicitlyEndingRef.current = false;
+    backendStreamIdRef.current = null;
+    streamOwnerIdRef.current = effectiveUserId;
+
     try {
       setIsInitializing(true);
 
@@ -337,9 +462,9 @@ export default function GoLiveScreen() {
         // TODO: Call your backend API to save stream info
 
         try {
-          const userId = currentUser?.uid || 'anonymous';
-          const userName = currentUser?.displayName || 'Anonymous';
-          const userAvatar = currentUser?.photoURL || DEFAULT_AVATAR_URL;
+          const userId = effectiveUserId;
+          const userName = authU?.displayName || currentUser?.displayName || 'Anonymous';
+          const userAvatar = authU?.photoURL || currentUser?.photoURL || DEFAULT_AVATAR_URL;
           const effectiveRoomId = typeof zeegocloudServiceRef.current.getRoomId === 'function'
             ? zeegocloudServiceRef.current.getRoomId()
             : roomId;
@@ -355,7 +480,10 @@ export default function GoLiveScreen() {
             longitude: effectiveLoc?.longitude,
           });
 
-          const newId = resp?.id ? String(resp.id) : (resp?.data?.id ? String(resp.data.id) : null);
+          const newId =
+            normalizeStreamId(resp?.data?.id) ||
+            normalizeStreamId(resp?.data?._id) ||
+            normalizeStreamId(resp?.id);
           if (newId) backendStreamIdRef.current = newId;
         } catch (e: any) {
           logger.error('Start live stream (backend) failed:', e);
@@ -398,16 +526,22 @@ export default function GoLiveScreen() {
               // TODO: Update backend that stream ended
 
               try {
-                const streamId = backendStreamIdRef.current;
-                const userId = currentUser?.uid;
+                let streamId = backendStreamIdRef.current;
+                const userId = streamOwnerIdRef.current || storedUserIdRef.current || currentUser?.uid;
+
+                if (!streamId && userId) {
+                  streamId = await resolveOwnActiveStreamId(String(userId));
+                }
+
                 if (streamId && userId) {
-                  await endLiveStream(String(streamId), String(userId));
+                  await endBackendStreamBestEffort(String(streamId), String(userId));
                 }
               } catch (e: any) {
                 logger.error('End live stream (backend) failed:', e);
               }
 
               backendStreamIdRef.current = null;
+              streamOwnerIdRef.current = null;
 
               router.back();
             } catch (error) {
@@ -474,6 +608,24 @@ export default function GoLiveScreen() {
     });
     return () => backHandler.remove();
   }, [isStreaming]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      const prev = appStateRef.current;
+      appStateRef.current = nextState;
+
+      if (prev === 'active' && (nextState === 'background' || nextState === 'inactive')) {
+        void endStreamSilently();
+      }
+    });
+
+    return () => {
+      try {
+        sub.remove();
+      } catch {}
+      void endStreamSilently();
+    };
+  }, [endStreamSilently]);
 
   // Render comment item
   const renderComment = ({ item }: { item: Comment }) => (
