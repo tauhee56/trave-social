@@ -81,7 +81,7 @@ export default function PostViewerModal(props: PostViewerModalProps) {
             </TouchableOpacity>
           )}
           <Image
-            source={{ uri: post.imageUrl || post.imageUrls?.[0] || '' }}
+            source={{ uri: post.imageUrl || (post as any)?.mediaUrls?.[0] || post.imageUrls?.[0] || '' }}
             style={styles.image}
             resizeMode="contain"
           />

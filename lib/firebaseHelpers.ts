@@ -683,13 +683,56 @@ export async function createPost(
   caption: string,
   location?: string,
   mediaType: 'image' | 'video' = 'image',
-  locationData?: { name: string; address: string; lat?: number; lon?: number; verified?: boolean },
+  locationData?: { name: string; address: string; placeId?: string; neighborhood?: string; city?: string; country?: string; countryCode?: string; lat?: number; lon?: number; verified?: boolean },
   taggedUserIds?: string[],
   category?: string,
   hashtags?: string[],
   mentions?: string[]
 ) {
   try {
+    const normalizeLocationKey = (val: any) => String(val || '').trim().toLowerCase();
+    const uniqueLocationKeys = (keys: any[]) => {
+      const out: string[] = [];
+      const seen = new Set<string>();
+      for (const k of Array.isArray(keys) ? keys : []) {
+        const n = normalizeLocationKey(k);
+        if (!n) continue;
+        if (seen.has(n)) continue;
+        seen.add(n);
+        out.push(n);
+      }
+      return out;
+    };
+
+    const buildLocationKeys = () => {
+      const keys: any[] = [];
+      if (locationData) {
+        keys.push(locationData.name);
+        keys.push(locationData.neighborhood);
+        keys.push(locationData.city);
+        keys.push(locationData.country);
+        keys.push(locationData.countryCode);
+
+        const addr = typeof locationData.address === 'string' ? locationData.address : '';
+        if (addr) {
+          const parts = addr.split(',').map(p => p.trim()).filter(Boolean);
+          if (parts.length >= 1) keys.push(parts[0]);
+          if (parts.length >= 2) keys.push(parts[1]);
+          if (parts.length >= 1) keys.push(parts[parts.length - 1]);
+        }
+      }
+      keys.push(location);
+
+      const normalized = uniqueLocationKeys(keys);
+      const countryCode = normalizeLocationKey(locationData && locationData.countryCode);
+      const country = normalizeLocationKey(locationData && locationData.country);
+      if (countryCode === 'gb' || country === 'uk' || country === 'united kingdom') {
+        if (!normalized.includes('uk')) normalized.push('uk');
+        if (!normalized.includes('united kingdom')) normalized.push('united kingdom');
+      }
+      return uniqueLocationKeys(normalized);
+    };
+
     const mediaUrls = [];
     for (const uri of mediaUris || []) {
       const upload = await uploadImage(uri);
@@ -697,12 +740,15 @@ export async function createPost(
       mediaUrls.push(upload.url);
     }
 
+    const locationKeys = buildLocationKeys();
+
     const payload = {
       userId,
       content: caption || ' ',  // Backend expects 'content' field (use space if empty)
       caption: caption || ' ',  // Also send caption for compatibility
       location,
       locationData,
+      locationKeys,
       mediaType,
       mediaUrls,
       category,

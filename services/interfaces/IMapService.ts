@@ -33,6 +33,7 @@ export interface IMapService {
    * Get autocomplete suggestions for place search
    */
   getAutocompleteSuggestions(input: string): Promise<{ placeId: string; description: string }[]>;
+  getNearbyPlaces(latitude: number, longitude: number, radiusMeters: number, keyword?: string): Promise<LocationData[]>;
 
   // ==================== DISTANCE & DIRECTIONS ====================
   /**

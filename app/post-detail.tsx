@@ -8,7 +8,7 @@ import PostViewerModal from '../src/_components/PostViewerModal';
 
 export default function PostDetailScreen() {
   const params = useLocalSearchParams();
-  const postId = params.id as string;
+  const postId = (params.id || (params as any).postId) as string;
   const router = useRouter();
   
   const [post, setPost] = useState<any>(null);
@@ -25,8 +25,24 @@ export default function PostDetailScreen() {
       // Fetch post by ID
       const { getPostById } = await import('../lib/firebaseHelpers/post');
       const result = await getPostById(postId);
-      if (result.success && result.post) {
-        setPost(result.post);
+      const fetchedPost = result?.post || result?.data;
+      if (result.success && fetchedPost) {
+        setPost(fetchedPost);
+
+        const tappedPostId = String(fetchedPost?.id || fetchedPost?._id || postId || '');
+        const ownerId =
+          (typeof fetchedPost?.userId === 'string' ? fetchedPost.userId : (fetchedPost?.userId?._id || fetchedPost?.userId?.uid)) ||
+          (typeof fetchedPost?.ownerId === 'string' ? fetchedPost.ownerId : undefined) ||
+          (typeof fetchedPost?.authorId === 'string' ? fetchedPost.authorId : undefined) ||
+          '';
+
+        if (ownerId && tappedPostId) {
+          router.replace({
+            pathname: '/user/[userId]/posts',
+            params: { userId: String(ownerId), postId: tappedPostId }
+          } as any);
+          return;
+        }
       }
       setLoading(false);
     }

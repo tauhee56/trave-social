@@ -46,6 +46,10 @@ export const mapService: IMapService = {
     if (!_mapService) _mapService = new GoogleMapsService();
     return _mapService.getAutocompleteSuggestions(input);
   },
+  getNearbyPlaces: async (latitude: number, longitude: number, radiusMeters: number, keyword?: string) => {
+    if (!_mapService) _mapService = new GoogleMapsService();
+    return _mapService.getNearbyPlaces(latitude, longitude, radiusMeters, keyword);
+  },
   calculateDistance: async (origin: { latitude: number; longitude: number }, destination: { latitude: number; longitude: number }) => {
     if (!_mapService) _mapService = new GoogleMapsService();
     return _mapService.calculateDistance(origin, destination);

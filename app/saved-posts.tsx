@@ -97,7 +97,25 @@ export default function SavedPostsScreen() {
     <View style={styles.postCard}>
       <TouchableOpacity 
         style={styles.postImageContainer}
-        onPress={() => router.push({ pathname: '/post-detail', params: { postId: item._id } })}
+        onPress={() => {
+          const tappedPostId = String(item?.id || item?._id || '');
+          const ownerId =
+            (typeof item?.userId === 'string' ? item.userId : (item?.userId?._id || item?.userId?.uid)) ||
+            (typeof item?.ownerId === 'string' ? item.ownerId : undefined) ||
+            (typeof item?.authorId === 'string' ? item.authorId : undefined) ||
+            (typeof item?.postedBy === 'string' ? item.postedBy : (item?.postedBy?._id || item?.postedBy?.uid)) ||
+            '';
+
+          if (ownerId && tappedPostId) {
+            router.push({
+              pathname: '/user/[userId]/posts',
+              params: { userId: String(ownerId), postId: tappedPostId }
+            } as any);
+            return;
+          }
+
+          router.push({ pathname: '/post-detail', params: { postId: tappedPostId || item._id } });
+        }}
         activeOpacity={0.7}
       >
         {item.mediaUrls && item.mediaUrls.length > 0 ? (

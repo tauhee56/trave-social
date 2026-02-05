@@ -237,7 +237,7 @@ export default function SearchScreen() {
             keyExtractor={item => item.id}
             renderItem={({ item }) => (
               <TouchableOpacity style={styles.row} onPress={() => router.push({ pathname: '/highlight/[id]', params: { id: item.id } })}>
-                <Image source={{ uri: item.imageUrl || item.imageUrls?.[0] || 'https://via.placeholder.com/200x200.png?text=Post' }} style={styles.postImg} />
+                <Image source={{ uri: item.imageUrl || item.mediaUrls?.[0] || item.imageUrls?.[0] || 'https://via.placeholder.com/200x200.png?text=Post' }} style={styles.postImg} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name}>{item.userName || 'User'}</Text>
                   <Text style={styles.caption} numberOfLines={1}>{item.caption}</Text>
@@ -275,7 +275,7 @@ export default function SearchScreen() {
           keyExtractor={item => item.id}
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.row} onPress={() => router.push({ pathname: '/highlight/[id]', params: { id: item.id } })}>
-              <Image source={{ uri: item.imageUrl || item.imageUrls?.[0] || 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d' }} style={styles.postImg} />
+              <Image source={{ uri: item.imageUrl || item.mediaUrls?.[0] || item.imageUrls?.[0] || 'https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/default%2Fdefault-pic.jpg?alt=media&token=7177f487-a345-4e45-9a56-732f03dbf65d' }} style={styles.postImg} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{item.userName || 'User'}</Text>
                 <Text style={styles.caption}>{item.caption}</Text>

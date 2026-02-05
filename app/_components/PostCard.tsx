@@ -19,6 +19,9 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isSmallDevice = SCREEN_WIDTH < 375;
 const IMAGE_PLACEHOLDER = 'L5H2EC=PM+yV0g-mq.wG9c010J}I';
 
+const MIN_MEDIA_RATIO = 4 / 5;
+const MAX_MEDIA_RATIO = 1.91;
+
 // Props type for PostCard
 interface PostCardProps {
   post: any;
@@ -125,9 +128,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   imageWrap: {
-    flex: 1,
     width: '100%',
-    height: SCREEN_HEIGHT,
     backgroundColor: "#000",
     justifyContent: "center",
     alignItems: "center",
@@ -135,7 +136,7 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    height: SCREEN_HEIGHT,
+    height: '100%',
     resizeMode: "contain",
     alignSelf: 'center',
   },
@@ -592,16 +593,27 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
     return videoExtensions.some(ext => lowerUrl.includes(ext));
   };
 
-  // Filter out video URLs from images array
-  const rawImages: string[] = post?.imageUrls && post.imageUrls.length > 0 ? post.imageUrls.filter(Boolean) : (post?.imageUrl ? [post.imageUrl] : []);
-  const images: string[] = rawImages.filter((url: string) => !isVideoUrl(url));
+  const rawMedia: string[] = Array.isArray((post as any)?.mediaUrls) && (post as any).mediaUrls.length > 0
+    ? (post as any).mediaUrls.filter(Boolean)
+    : (post?.imageUrls && post.imageUrls.length > 0
+      ? post.imageUrls.filter(Boolean)
+      : (post?.imageUrl ? [post.imageUrl] : []));
 
-  const videos: string[] = post?.videoUrls && post.videoUrls.length > 0 ? post.videoUrls.filter(Boolean) : (post?.videoUrl ? [post.videoUrl] : []);
+  const images: string[] = rawMedia.filter((url: string) => !isVideoUrl(url));
+  const mediaVideos: string[] = rawMedia.filter((url: string) => isVideoUrl(url));
+
+  const rawVideos: string[] = post?.videoUrls && post.videoUrls.length > 0
+    ? post.videoUrls.filter(Boolean)
+    : (post?.videoUrl ? [post.videoUrl] : []);
+
+  const videos: string[] = [...mediaVideos, ...rawVideos].filter(Boolean);
 
   // If images exist, show only image carousel. If no images, show only first video. If neither, show placeholder.
   let showImages = images.length > 0;
   let showVideo = !showImages && videos.length > 0;
   const [mediaIndex, setMediaIndex] = useState(0);
+  const currentImageUrl = showImages ? images[mediaIndex] : undefined;
+  const currentVideoUrl = showVideo ? videos[0] : undefined;
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false); // Videos don't auto-play
@@ -615,10 +627,44 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
   const videoRef = useRef<VideoType>(null);
   const mediaIndexRef = useRef(0);
 
+  const mediaRatioCacheRef = useRef<Map<string, number>>(new Map());
+  const [mediaHeight, setMediaHeight] = useState<number>(SCREEN_WIDTH);
+
+  const clampMediaRatio = (ratio: number) => {
+    if (!Number.isFinite(ratio) || ratio <= 0) return 1;
+    return Math.min(MAX_MEDIA_RATIO, Math.max(MIN_MEDIA_RATIO, ratio));
+  };
+
+  const setHeightFromRatio = (ratio: number) => {
+    const clamped = clampMediaRatio(ratio);
+    const nextHeight = SCREEN_WIDTH / clamped;
+    setMediaHeight(nextHeight);
+  };
+
   // Update ref when state changes
   useEffect(() => {
     mediaIndexRef.current = mediaIndex;
   }, [mediaIndex]);
+
+  useEffect(() => {
+    if (showImages && images.length > 0 && mediaIndex >= images.length) {
+      setMediaIndex(0);
+    }
+  }, [showImages, images.length, mediaIndex]);
+
+  useEffect(() => {
+    const currentUrl = currentImageUrl || currentVideoUrl;
+    if (typeof currentUrl === 'string' && currentUrl) {
+      const cached = mediaRatioCacheRef.current.get(currentUrl);
+      if (typeof cached === 'number') {
+        setHeightFromRatio(cached);
+      } else {
+        setHeightFromRatio(1);
+      }
+    } else {
+      setHeightFromRatio(1);
+    }
+  }, [currentImageUrl, currentVideoUrl]);
 
   // Carousel swipe gesture - improved handling
   const carouselPanResponder = React.useMemo(() =>
@@ -796,13 +842,25 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
         {/* Media content: Image/Video */}
         {/* Image carousel if images exist */}
         {showImages && (
-          <View style={styles.imageWrap} {...carouselPanResponder.panHandlers}>
+          <View style={[styles.imageWrap, { height: mediaHeight }]} {...carouselPanResponder.panHandlers}>
             <ExpoImage
-              source={{ uri: getOptimizedImageUrl(images[mediaIndex] || 'https://via.placeholder.com/600x600.png?text=No+Image', 'feed') }}
+              source={{ uri: getOptimizedImageUrl(currentImageUrl || 'https://via.placeholder.com/600x600.png?text=No+Image', 'feed') }}
               style={styles.image}
               contentFit="cover"
               placeholder={IMAGE_PLACEHOLDER}
               transition={200}
+              onLoad={(e: any) => {
+                const w = e?.source?.width;
+                const h = e?.source?.height;
+                if (typeof w === 'number' && typeof h === 'number' && h > 0) {
+                  const rawUrl = currentImageUrl;
+                  if (typeof rawUrl === 'string' && rawUrl) {
+                    const ratio = w / h;
+                    mediaRatioCacheRef.current.set(rawUrl, ratio);
+                    setHeightFromRatio(ratio);
+                  }
+                }
+              }}
             />
             {/* Left/Right tap areas for navigation */}
             {images.length > 1 && (
@@ -841,7 +899,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
         {/* Video if no images and video exists */}
         {showVideo && (
           <TouchableOpacity
-            style={styles.imageWrap}
+            style={[styles.imageWrap, { height: mediaHeight }]}
             activeOpacity={1}
             onPress={() => {
               // Toggle play/pause on tap (center area)
@@ -876,6 +934,16 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                     setVideoLoading(false);
                     if (status.durationMillis) {
                       setVideoDuration(Math.floor(status.durationMillis / 1000));
+                    }
+                    const w = status?.naturalSize?.width;
+                    const h = status?.naturalSize?.height;
+                    if (typeof w === 'number' && typeof h === 'number' && h > 0) {
+                      const ratio = w / h;
+                      const rawUrl = videos[0];
+                      if (typeof rawUrl === 'string' && rawUrl) {
+                        mediaRatioCacheRef.current.set(rawUrl, ratio);
+                        setHeightFromRatio(ratio);
+                      }
                     }
                   }}
                   onError={(e: any) => { setVideoError(e?.nativeEvent?.error || 'Video failed to load'); setVideoLoading(false); }}

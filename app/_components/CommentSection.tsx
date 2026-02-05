@@ -57,22 +57,34 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     loadComments();
   }, [postId]);
 
+  const normalizeId = (val: any): string => {
+    if (typeof val === 'string') return val;
+    if (val && typeof val === 'object') {
+      return String(val._id || val.id || val.uid || val.userId || val.firebaseUid || '');
+    }
+    return '';
+  };
+
   const loadComments = async () => {
     setLoading(true);
     const res = await getPostComments(postId);
     if (res.success && Array.isArray(res.data)) {
-      // Map backend MongoDB data to Comment type
-      const mappedComments = res.data.map((c: any) => ({
-        id: c._id || c.id,  // MongoDB returns _id, not id
-        text: c.text || '',
-        userAvatar: c.userAvatar || '',
-        userName: c.userName || 'User',  // Default to 'User' if no userName
-        userId: c.userId || '',
-        createdAt: c.createdAt,
-        editedAt: c.editedAt,
-        replies: c.replies || [],
-        reactions: c.reactions || {}
-      }));
+      const mapComment = (c: any): Comment => {
+        const repliesRaw = Array.isArray(c?.replies) ? c.replies : [];
+        return {
+          id: normalizeId(c?._id || c?.id),
+          text: c?.text || '',
+          userAvatar: c?.userAvatar || '',
+          userName: c?.userName || 'User',
+          userId: normalizeId(c?.userId),
+          createdAt: c?.createdAt,
+          editedAt: c?.editedAt,
+          replies: repliesRaw.map(mapComment),
+          reactions: c?.reactions || {},
+        };
+      };
+
+      const mappedComments = res.data.map(mapComment);
       console.log('[CommentSection] Loaded', mappedComments.length, 'comments:', mappedComments.map((c: any) => ({ id: c.id, userName: c.userName })));
       setComments(mappedComments);
     }

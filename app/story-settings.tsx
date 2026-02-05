@@ -250,7 +250,7 @@ export default function StorySettingsScreen() {
         {/* Info */}
         <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
           <View style={{ backgroundColor: '#fff8f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, borderLeftWidth: 4, borderLeftColor: '#FFB800' }}>
-            <Text style={{ fontSize: 13, color: '#FF9500' }}>💡 <Text style={{ fontWeight: '600' }}>Tip:</Text> Stories configured as "Everyone" may reach more people and appear in search results.</Text>
+            <Text style={{ fontSize: 13, color: '#FF9500' }}>💡 <Text style={{ fontWeight: '600' }}>Tip:</Text> Stories configured as {'"'}Everyone{'"'} may reach more people and appear in search results.</Text>
           </View>
         </View>
       </ScrollView>

@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "trave-social",
-    "slug": "trave-social",
+    "slug": "trave-social-arshu4",
     "version": "1.0.4",
     "orientation": "portrait",
     "icon": "https://firebasestorage.googleapis.com/v0/b/travel-app-3da72.firebasestorage.app/o/logo%2Ficon.png?alt=media&token=0b576d71-e1d3-47fd-8527-79293b4c3db1",
@@ -37,6 +37,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.tauhee56.travesocial",
+      "config": {
+        "googleMapsApiKey": "AIzaSyCYpwO1yUux1cHtd2bs-huu1hNKv1kC18c"
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Allow Trave-Social to access your camera for posting photos and live streaming.",
@@ -143,9 +146,9 @@
       "FIREBASE_APP_ID": "1:709095117662:web:5f00f45bb4e392ee17f5cf",
       "FIREBASE_MEASUREMENT_ID": "G-PFZRL4FDFD",
       "eas": {
-        "projectId": "9931b8a6-fe70-4ec6-bc95-0b9dc184227a"
+        "projectId": "61e882af-6bec-4a65-97cd-22cb04d8fdea"
       }
     },
-    "owner": "barkat464"
+    "owner": "arshu4"
   }
 }

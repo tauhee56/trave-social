@@ -114,6 +114,7 @@ yarn-error.*
 firebase-debug.log
 firebase-debug.*.log
 functions/lib/
+fingerprint-android.json
 
 # @end expo-cli
 # Keystore files (keep secret)

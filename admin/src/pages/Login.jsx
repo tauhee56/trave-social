@@ -21,7 +21,7 @@ export default function Login() {
         return;
       }
       // Call backend API for admin login
-      const res = await fetch('http://192.168.100.25:5000/api/admin/login', {
+      const res = await fetch('http://192.168.100.40:5000/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })

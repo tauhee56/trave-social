@@ -175,6 +175,34 @@ export class GoogleMapsService implements IMapService {
     }
   }
 
+  async getNearbyPlaces(latitude: number, longitude: number, radiusMeters: number, keyword?: string): Promise<LocationData[]> {
+    try {
+      const radius = Math.max(1, Math.min(50000, Math.floor(radiusMeters || 0)));
+      let url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitude},${longitude}&radius=${radius}&key=${this.apiKey}`;
+      if (keyword && keyword.trim()) {
+        url += `&keyword=${encodeURIComponent(keyword.trim())}`;
+      }
+
+      const response = await fetch(url, { method: 'GET' });
+      if (!response.ok) {
+        throw new Error(`Nearby search failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.status === 'REQUEST_DENIED') {
+        throw new Error(data.error_message || 'API request denied');
+      }
+
+      if (data.status === 'OK' && Array.isArray(data.results)) {
+        return data.results.map((r: any) => this.parsePlaceResult(r));
+      }
+
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
   async calculateDistance(from: LocationData, to: LocationData): Promise<number> {
     // Haversine formula for calculating distance
     const R = 6371; // Earth's radius in kilometers

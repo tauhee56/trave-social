@@ -115,7 +115,7 @@ export default function EditSectionsModal({
     console.log('Post selected:', postId, 'Mode:', sectionMode);
 
     if (sectionMode === 'cover') {
-      const uri = post.imageUrl || post.imageUrls?.[0];
+      const uri = post.imageUrl || (post as any).mediaUrls?.[0] || post.imageUrls?.[0];
       console.log('Setting cover image:', uri);
       
       // Cover is just a thumbnail, don't add post to section automatically
@@ -321,7 +321,7 @@ export default function EditSectionsModal({
                   const postId = p._id || p.id;
                   const section = sections.find(s => s.name === selectedSectionForEdit);
                   const isSelected = sectionMode === 'select' && section?.postIds.includes(postId);
-                  const isCoverSelected = sectionMode === 'cover' && section?.coverImage === (p.imageUrl || p.imageUrls?.[0]);
+                  const isCoverSelected = sectionMode === 'cover' && section?.coverImage === (p.imageUrl || p.mediaUrls?.[0] || p.imageUrls?.[0]);
                   return (
                     <TouchableOpacity
                       key={postId}
@@ -330,7 +330,7 @@ export default function EditSectionsModal({
                       onPress={() => handlePostSelection(p)}
                     >
                       <ExpoImage
-                        source={{ uri: p.imageUrl || p.imageUrls?.[0] }}
+                        source={{ uri: p.imageUrl || p.mediaUrls?.[0] || p.imageUrls?.[0] }}
                         style={styles.gridImage}
                         contentFit="cover"
                         transition={200}

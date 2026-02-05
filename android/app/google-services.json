@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "709095117662-1le6kgokd6har48d1it3bjfabd847ut8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tauhee56.travesocial",
+            "certificate_hash": "262dd5fa13b04d82022bfce3fd7c8f5c2b0e662e"
+          }
+        },
+        {
           "client_id": "709095117662-2jtqjk8941lgf6n90csgk8u1mkm0a0jq.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

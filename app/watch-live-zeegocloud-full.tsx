@@ -31,6 +31,8 @@ import { ZEEGOCLOUD_CONFIG } from '../config/zeegocloud';
 import ZeegocloudStreamingService from '../services/implementations/ZeegocloudStreamingService';
 import ZeegocloudLiveViewer from './_components/ZeegocloudLiveViewer';
 
+import { INSTAGRAM_LIGHT_MAP_STYLE } from '../lib/instagramMapStyle';
+
 let MapView: any = null;
 let Marker: any = null;
 if (Platform.OS !== 'web') {
@@ -413,6 +415,8 @@ export default function WatchLiveScreen() {
                 latitudeDelta: 0.01,
                 longitudeDelta: 0.01,
               }}
+              provider={Platform.OS === 'ios' ? 'google' : undefined}
+              customMapStyle={INSTAGRAM_LIGHT_MAP_STYLE}
             >
               <Marker coordinate={broadcasterLocation} title="Broadcaster" />
               {location && <Marker coordinate={location} title="You" pinColor="blue" />}

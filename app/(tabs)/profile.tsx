@@ -28,9 +28,11 @@ import HighlightCarousel from '../../src/_components/HighlightCarousel';
 import HighlightViewer from '../../src/_components/HighlightViewer';
 import PostViewerModal from '../../src/_components/PostViewerModal';
 import StoriesViewer from '../../src/_components/StoriesViewer';
-// Removed Firebase import - using AsyncStorage for auth instead
+import { INSTAGRAM_LIGHT_MAP_STYLE } from '../../lib/instagramMapStyle';
+
 import { getTaggedPosts, getUserHighlights as getUserHighlightsAPI, getUserPosts as getUserPostsAPI, getUserProfile as getUserProfileAPI, getUserSections as getUserSectionsAPI, getUserStories as getUserStoriesAPI } from '../../src/_services/firebaseService';
 import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
+import { getPassportTickets } from '../../lib/firebaseHelpers/passport';
 
 let MapView: any = null;
 let Marker: any = null;
@@ -130,20 +132,6 @@ function parseCoord(val: any): number | null {
 }
 
 // Types
-const standardMapStyle = [
-  { "featureType": "water", "elementType": "geometry", "stylers": [ { "color": "#aadaff" } ] },
-  { "featureType": "landscape", "elementType": "geometry", "stylers": [ { "color": "#e5f5e0" } ] },
-  { "featureType": "road", "elementType": "geometry", "stylers": [ { "color": "#ffffff" } ] },
-  { "featureType": "road", "elementType": "labels.text.fill", "stylers": [ { "color": "#7b7b7b" } ] },
-  { "featureType": "road", "elementType": "labels.text.stroke", "stylers": [ { "color": "#ffffff" } ] },
-  { "featureType": "poi.park", "elementType": "geometry", "stylers": [ { "color": "#b6e5a8" } ] },
-  { "featureType": "administrative", "elementType": "labels.text.fill", "stylers": [ { "color": "#495e6a" } ] },
-  { "featureType": "poi", "elementType": "geometry", "stylers": [ { "color": "#e5e5e5" } ] },
-  { "featureType": "transit", "elementType": "geometry", "stylers": [ { "color": "#f2f2f2" } ] },
-  { "featureType": "landscape.natural", "elementType": "geometry", "stylers": [ { "color": "#d0f5d8" } ] },
-  { "featureType": "landscape.man_made", "elementType": "geometry", "stylers": [ { "color": "#f8f8f8" } ] }
-];
-
 type Highlight = {
   id: string;
   title: string;
@@ -284,6 +272,7 @@ export default function Profile({ userIdProp }: any) {
   const [followRequestPending, setFollowRequestPending] = useState(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [posts, setPosts] = useState<any[]>([]);
+  const [passportLocationsCount, setPassportLocationsCount] = useState<number>(0);
   const [sections, setSections] = useState<{ name: string; postIds: string[]; coverImage?: string }[]>([]);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [postViewerVisible, setPostViewerVisible] = useState<boolean>(false);
@@ -561,9 +550,25 @@ export default function Profile({ userIdProp }: any) {
             console.log('[Profile] Final profileData being set:', profileData);
             console.log('[Profile] Profile state update - isOwnProfile:', isOwnProfile, 'viewedUserId:', viewedUserId);
             setProfile(profileData);
-            setIsPrivate(profileData?.isPrivate || false);
-            setApprovedFollower(profileData?.approvedFollowers?.includes(currentUserId || '') || false);
+            const derivedIsPrivate = !!profileData?.isPrivate;
+            const derivedApprovedFollower = !!profileData?.approvedFollowers?.includes(currentUserId || '');
+            const canViewPrivateProfile = !derivedIsPrivate || isOwnProfile || derivedApprovedFollower;
+
+            setIsPrivate(derivedIsPrivate);
+            setApprovedFollower(derivedApprovedFollower);
             setFollowRequestPending(profileData?.followRequestPending || false);
+
+            setPassportLocationsCount(0);
+            if (viewedUserId && canViewPrivateProfile) {
+              try {
+                const passportRes: any = await getPassportTickets(viewedUserId);
+                const locations = Array.isArray(passportRes?.locations) ? passportRes.locations : [];
+                const count = typeof passportRes?.ticketCount === 'number' ? passportRes.ticketCount : locations.length;
+                setPassportLocationsCount(count);
+              } catch {
+                setPassportLocationsCount(0);
+              }
+            }
 
             // Check follow status if not own profile
             if (!isOwnProfile && currentUserId && viewedUserId) {
@@ -577,6 +582,7 @@ export default function Profile({ userIdProp }: any) {
           } else {
             console.warn('[Profile] Profile fetch failed:', profileRes.error);
             setProfile(null);
+            setPassportLocationsCount(0);
           }
           
           // Fetch posts
@@ -845,10 +851,20 @@ export default function Profile({ userIdProp }: any) {
         <View style={styles.statsRow}>
           {(!isPrivate || isOwnProfile || approvedFollower) ? (
             <>
-              <View style={styles.statItem}>
-                <Text style={styles.statNum}>{Array.from(new Set(posts.filter(p => p.location && p.location.name).map(p => p.location.name))).length}</Text>
+              <TouchableOpacity
+                style={styles.statItem}
+                onPress={() => {
+                  if (!viewedUserId) return;
+                  router.push({
+                    pathname: '/user/[userId]/locations',
+                    params: { userId: String(viewedUserId) }
+                  } as any);
+                }}
+                disabled={!viewedUserId}
+              >
+                <Text style={styles.statNum}>{passportLocationsCount}</Text>
                 <Text style={styles.statLbl}>Locations</Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.statItem}>
                 <Text style={styles.statNum}>{posts.length}</Text>
                 <Text style={styles.statLbl}>Posts</Text>
@@ -1061,13 +1077,9 @@ export default function Profile({ userIdProp }: any) {
                   longitude: currentLocation.longitude,
                   latitudeDelta: 0.0922,
                   longitudeDelta: 0.0421,
-                } : {
-                  latitude: 37.78825,
-                  longitude: -122.4324,
-                  latitudeDelta: 0.0922,
-                  longitudeDelta: 0.0421,
-                }}
-                customMapStyle={standardMapStyle}
+                } : undefined}
+                provider={Platform.OS === 'ios' ? 'google' : undefined}
+                customMapStyle={INSTAGRAM_LIGHT_MAP_STYLE}
               >
                 {posts.filter(p => {
                   const lat = parseCoord(p.location?.latitude ?? p.location?.lat ?? p.lat ?? p.locationData?.lat);
@@ -1077,7 +1089,7 @@ export default function Profile({ userIdProp }: any) {
                   const lat = parseCoord(post.location?.latitude ?? post.location?.lat ?? post.lat ?? post.locationData?.lat);
                   const lon = parseCoord(post.location?.longitude ?? post.location?.lon ?? post.lon ?? post.locationData?.lon);
                   if (lat === null || lon === null) return null;
-                  const imageUrl = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls[0] : DEFAULT_IMAGE_URL);
+                  const imageUrl = post.imageUrl || (Array.isArray(post.mediaUrls) && post.mediaUrls.length > 0 ? post.mediaUrls[0] : (Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls[0] : DEFAULT_IMAGE_URL));
                   const avatarUrl = post.userAvatar || profile?.avatar || DEFAULT_AVATAR_URL;
                   
                   // Marker with tracksViewChanges true until images are loaded
@@ -1089,6 +1101,17 @@ export default function Profile({ userIdProp }: any) {
                       imageUrl={imageUrl}
                       avatarUrl={avatarUrl}
                       onPress={() => {
+                        const targetUserId = String(viewedUserId || '');
+                        const tappedPostId = String(post?.id || post?._id || '');
+
+                        if (targetUserId && tappedPostId) {
+                          router.push({
+                            pathname: '/user/[userId]/posts',
+                            params: { userId: targetUserId, postId: tappedPostId }
+                          } as any);
+                          return;
+                        }
+
                         const postIndex = posts.findIndex(p => p.id === post.id);
                         setSelectedPostIndex(postIndex);
                         setPostViewerVisible(true);
@@ -1140,14 +1163,28 @@ export default function Profile({ userIdProp }: any) {
                   style={styles.gridItem}
                   activeOpacity={0.8}
                   onPress={() => {
-                    // Find correct index in the posts array being passed to modal
+                    const targetUserId =
+                      viewedUserId ||
+                      (typeof p?.userId === 'string' ? p.userId : p?.userId?._id) ||
+                      '';
+                    const tappedPostId = String(p?.id || p?._id || '');
+
+                    if (targetUserId && tappedPostId) {
+                      router.push({
+                        pathname: '/user/[userId]/posts',
+                        params: { userId: String(targetUserId), postId: tappedPostId }
+                      } as any);
+                      return;
+                    }
+
+                    // Fallback to existing modal behavior if params are missing
                     const modalIndex = currentPostsArray.findIndex(post => (post.id || post._id) === (p.id || p._id));
                     setSelectedPostIndex(modalIndex >= 0 ? modalIndex : index);
                     setPostViewerVisible(true);
                   }}
                 >
                   <ExpoImage
-                    source={{ uri: p.thumbnailUrl || p.imageUrl || p.imageUrls?.[0] || DEFAULT_IMAGE_URL }}
+                    source={{ uri: p.thumbnailUrl || p.imageUrl || p.mediaUrls?.[0] || p.imageUrls?.[0] || DEFAULT_IMAGE_URL }}
                     style={{ width: '100%', height: '100%' }}
                     contentFit="cover"
                     transition={200}

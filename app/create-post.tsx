@@ -3,7 +3,7 @@ import { ResizeMode, Video } from 'expo-av';
 import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser } from '../app/_components/UserContext';
@@ -28,6 +28,9 @@ try {
 
 const { width } = Dimensions.get('window');
 const GRID_SIZE = width / 3;
+
+const MIN_MEDIA_RATIO = 4 / 5;
+const MAX_MEDIA_RATIO = 1.91;
 
 type LocationType = {
   name: string;
@@ -56,8 +59,78 @@ export default function CreatePostScreen() {
   const [verifiedLocation, setVerifiedLocation] = useState<LocationType | null>(null);
   const [taggedUsers, setTaggedUsers] = useState<UserType[]>([]);
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [previewHeight, setPreviewHeight] = useState<number>(width);
+  const previewRatioCacheRef = useRef<Map<string, number>>(new Map());
+  const activePreviewUriRef = useRef<string | null>(null);
+  const previewReqIdRef = useRef(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [networkError, setNetworkError] = useState<boolean>(false);
+
+  const clampMediaRatio = (ratio: number) => {
+    if (!Number.isFinite(ratio) || ratio <= 0) return 1;
+    return Math.min(MAX_MEDIA_RATIO, Math.max(MIN_MEDIA_RATIO, ratio));
+  };
+
+  const setPreviewHeightFromRatio = (ratio: number) => {
+    const clamped = clampMediaRatio(ratio);
+    const nextHeight = width / clamped;
+    setPreviewHeight(nextHeight);
+  };
+
+  useEffect(() => {
+    if (!Array.isArray(selectedImages) || selectedImages.length === 0) {
+      setPreviewIndex(0);
+      setPreviewHeight(width);
+      activePreviewUriRef.current = null;
+      return;
+    }
+
+    if (previewIndex >= selectedImages.length) {
+      setPreviewIndex(0);
+      return;
+    }
+
+    const uri = selectedImages[previewIndex];
+    if (!uri) {
+      setPreviewHeightFromRatio(1);
+      activePreviewUriRef.current = null;
+      return;
+    }
+
+    activePreviewUriRef.current = uri;
+    const reqId = ++previewReqIdRef.current;
+
+    const cached = previewRatioCacheRef.current.get(uri);
+    if (typeof cached === 'number') {
+      setPreviewHeightFromRatio(cached);
+      return;
+    }
+
+    const isVideo = uri.toLowerCase().endsWith('.mp4') || uri.toLowerCase().endsWith('.mov') || uri.toLowerCase().includes('video');
+    if (isVideo) {
+      setPreviewHeightFromRatio(1);
+      return;
+    }
+
+    Image.getSize(
+      uri,
+      (w, h) => {
+        if (h > 0) {
+          const ratio = w / h;
+          previewRatioCacheRef.current.set(uri, ratio);
+          if (previewReqIdRef.current === reqId && activePreviewUriRef.current === uri) {
+            setPreviewHeightFromRatio(ratio);
+          }
+        }
+      },
+      () => {
+        if (previewReqIdRef.current === reqId && activePreviewUriRef.current === uri) {
+          setPreviewHeightFromRatio(1);
+        }
+      }
+    );
+  }, [selectedImages, previewIndex]);
 
   // Modal states
   const [showCategoryModal, setShowCategoryModal] = useState<boolean>(false);
@@ -162,6 +235,9 @@ export default function CreatePostScreen() {
   const [verifiedSearch, setVerifiedSearch] = useState<string>('');
   const [verifiedResults, setVerifiedResults] = useState<LocationType[]>([]);
   const [loadingVerifiedResults, setLoadingVerifiedResults] = useState<boolean>(false);
+  const [verifiedCenter, setVerifiedCenter] = useState<{ lat: number; lon: number } | null>(null);
+  const verifiedSearchTimerRef = useRef<any>(null);
+  const verifiedReqIdRef = useRef(0);
 
   // Tag people modal
   const [userSearch, setUserSearch] = useState<string>('');
@@ -181,10 +257,109 @@ export default function CreatePostScreen() {
   const [verifiedOptions, setVerifiedOptions] = useState<LocationType[]>([]);
 
   useEffect(() => {
+    let cancelled = false;
+    if (!showVerifiedModal) return;
+
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (cancelled) return;
+        if (status !== 'granted') {
+          setVerifiedCenter(null);
+          return;
+        }
+
+        const loc = await Location.getCurrentPositionAsync({});
+        if (cancelled) return;
+        setVerifiedCenter({ lat: loc.coords.latitude, lon: loc.coords.longitude });
+      } catch {
+        if (cancelled) return;
+        setVerifiedCenter(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showVerifiedModal]);
+
+  useEffect(() => {
+    if (!showVerifiedModal) {
+      if (verifiedSearchTimerRef.current) {
+        clearTimeout(verifiedSearchTimerRef.current);
+        verifiedSearchTimerRef.current = null;
+      }
+      setVerifiedSearch('');
+      setVerifiedResults([]);
+      setLoadingVerifiedResults(false);
+      return;
+    }
+
+    if (!verifiedCenter) {
+      setVerifiedResults([]);
+      return;
+    }
+
+    if (verifiedSearchTimerRef.current) {
+      clearTimeout(verifiedSearchTimerRef.current);
+      verifiedSearchTimerRef.current = null;
+    }
+
+    const reqId = ++verifiedReqIdRef.current;
+    setLoadingVerifiedResults(true);
+
+    verifiedSearchTimerRef.current = setTimeout(async () => {
+      try {
+        const places = await mapService.getNearbyPlaces(verifiedCenter.lat, verifiedCenter.lon, 100, verifiedSearch.trim() || undefined);
+        if (verifiedReqIdRef.current !== reqId) return;
+
+        const mapped: LocationType[] = Array.isArray(places)
+          ? places
+              .map((p: any) => ({
+                name: String(p?.placeName || p?.name || p?.address || 'Location'),
+                address: String(p?.address || ''),
+                placeId: typeof p?.placeId === 'string' ? p.placeId : undefined,
+                lat: typeof p?.latitude === 'number' ? p.latitude : 0,
+                lon: typeof p?.longitude === 'number' ? p.longitude : 0,
+                verified: true,
+              }))
+              .filter((p: any) => p.name)
+          : [];
+
+        setVerifiedResults(mapped);
+      } catch {
+        if (verifiedReqIdRef.current !== reqId) return;
+        setVerifiedResults([]);
+      } finally {
+        if (verifiedReqIdRef.current !== reqId) return;
+        setLoadingVerifiedResults(false);
+      }
+    }, 450);
+
+    return () => {
+      if (verifiedSearchTimerRef.current) {
+        clearTimeout(verifiedSearchTimerRef.current);
+        verifiedSearchTimerRef.current = null;
+      }
+    };
+  }, [showVerifiedModal, verifiedCenter, verifiedSearch]);
+
+  useEffect(() => {
     async function fetchVerifiedOptions() {
       // const user = getCurrentUser() as { uid?: string } | null;
       // if (!user) return;
       // TODO: Use user from context or props
+      let resolvedUserId: string | null = null;
+      try {
+        resolvedUserId = typeof user?.uid === 'string' ? user.uid : null;
+        if (!resolvedUserId) {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          resolvedUserId = await AsyncStorage.getItem('userId');
+        }
+      } catch {
+        resolvedUserId = typeof user?.uid === 'string' ? user.uid : null;
+      }
+
       let options: LocationType[] = [];
       // Get current device location
       try {
@@ -223,8 +398,20 @@ export default function CreatePostScreen() {
               if (place.country) addressParts.push(place.country);
               locationAddress = addressParts.join(', ');
             }
-          } catch (geoError) {
-            console.error('Reverse geocoding failed:', geoError);
+          } catch {
+            try {
+              const google = await mapService.reverseGeocode(loc.coords.latitude, loc.coords.longitude);
+              if (google) {
+                if (typeof google.placeName === 'string' && google.placeName.trim()) {
+                  locationName = google.placeName;
+                } else if (typeof google.city === 'string' && google.city.trim()) {
+                  locationName = google.city;
+                }
+                if (typeof google.address === 'string') {
+                  locationAddress = google.address;
+                }
+              }
+            } catch {}
           }
 
           options.push({
@@ -238,7 +425,7 @@ export default function CreatePostScreen() {
       } catch {}
       // Get passport tickets
       try {
-        const tickets = await getPassportTickets(typeof user?.uid === 'string' ? user.uid : '');
+        const tickets = resolvedUserId ? await getPassportTickets(resolvedUserId) : [];
         // Debug: log ticket structure
         if (tickets && tickets.length > 0) {
           console.log('Sample passport ticket:', tickets[0]);
@@ -326,6 +513,7 @@ export default function CreatePostScreen() {
             locationData = {
               name: verifiedLocation.name,
               address: verifiedLocation.address || '',
+              placeId: verifiedLocation.placeId,
               lat: placeDetails.lat ?? 0,
               lon: placeDetails.lon ?? 0,
               verified: true
@@ -336,6 +524,7 @@ export default function CreatePostScreen() {
           locationData = {
             name: verifiedLocation.name,
             address: verifiedLocation.address || '',
+            placeId: verifiedLocation.placeId,
             lat: verifiedLocation.lat ?? 0,
             lon: verifiedLocation.lon ?? 0,
             verified: true
@@ -350,6 +539,7 @@ export default function CreatePostScreen() {
             locationData = {
               name: location.name,
               address: location.address || '',
+              placeId: location.placeId,
               lat: placeDetails.lat ?? 0,
               lon: placeDetails.lon ?? 0,
               verified: false
@@ -359,6 +549,7 @@ export default function CreatePostScreen() {
             locationData = {
               name: location.name,
               address: location.address || '',
+              placeId: location.placeId,
               lat: location.lat ?? 0,
               lon: location.lon ?? 0,
               verified: false
@@ -369,6 +560,7 @@ export default function CreatePostScreen() {
           locationData = {
             name: location.name,
             address: location.address || '',
+            placeId: location.placeId,
             lat: location.lat ?? 0,
             lon: location.lon ?? 0,
             verified: false
@@ -443,6 +635,7 @@ export default function CreatePostScreen() {
         locationData ? { 
           name: locationData.name, 
           address: locationData.address, 
+          placeId: locationData.placeId,
           lat: locationData.lat, 
           lon: locationData.lon,
           verified: locationData.verified
@@ -652,18 +845,20 @@ export default function CreatePostScreen() {
               <View style={{ width: 50 }} />
             </View>
             {/* Image slider preview */}
-            <View style={{ width: width, height: width, backgroundColor: '#f8f8f8', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+            <View style={{ width: width, height: previewHeight, backgroundColor: '#f8f8f8', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
               {selectedImages.length > 1 ? (
                 <>
                   <ScrollView
                     horizontal
                     pagingEnabled
                     showsHorizontalScrollIndicator={false}
-                    style={{ width: width, height: width }}
-                    onScroll={(e) => {
+                    style={{ width: width, height: previewHeight }}
+                    onMomentumScrollEnd={(e) => {
                       const offsetX = e.nativeEvent.contentOffset.x;
                       const currentIndex = Math.round(offsetX / width);
-                      // You can add state to track current index if needed
+                      if (Number.isFinite(currentIndex) && currentIndex !== previewIndex) {
+                        setPreviewIndex(currentIndex);
+                      }
                     }}
                     scrollEventThrottle={16}
                   >
@@ -672,21 +867,32 @@ export default function CreatePostScreen() {
                         <Video
                           key={item + idx}
                           source={{ uri: item }}
-                          style={{ width: width, height: width, backgroundColor: '#000' }}
+                          style={{ width: width, height: previewHeight, backgroundColor: '#000' }}
                           resizeMode={ResizeMode.COVER}
                           shouldPlay={false}
                           useNativeControls={true}
                           isLooping={false}
+                          onLoad={(status: any) => {
+                            const w = status?.naturalSize?.width;
+                            const h = status?.naturalSize?.height;
+                            if (typeof w === 'number' && typeof h === 'number' && h > 0) {
+                              const ratio = w / h;
+                              previewRatioCacheRef.current.set(item, ratio);
+                              if (activePreviewUriRef.current === item) {
+                                setPreviewHeightFromRatio(ratio);
+                              }
+                            }
+                          }}
                         />
                       ) : (
-                        <Image key={item + idx} source={{ uri: item }} style={{ width: width, height: width }} />
+                        <Image key={item + idx} source={{ uri: item }} style={{ width: width, height: previewHeight }} resizeMode="cover" />
                       )
                     ))}
                   </ScrollView>
                   {/* Page indicator */}
                   <View style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 }}>
                     <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
-                      1/{selectedImages.length}
+                      {previewIndex + 1}/{selectedImages.length}
                     </Text>
                   </View>
                 </>
@@ -694,14 +900,23 @@ export default function CreatePostScreen() {
                 selectedImages[0].toLowerCase().endsWith('.mp4') || selectedImages[0].toLowerCase().endsWith('.mov') || selectedImages[0].toLowerCase().includes('video') ? (
                   <Video
                     source={{ uri: selectedImages[0] }}
-                    style={{ width: width, height: width, backgroundColor: '#000' }}
+                    style={{ width: width, height: previewHeight, backgroundColor: '#000' }}
                     resizeMode={ResizeMode.COVER}
                     shouldPlay={false}
                     useNativeControls={true}
                     isLooping={false}
+                    onLoad={(status: any) => {
+                      const w = status?.naturalSize?.width;
+                      const h = status?.naturalSize?.height;
+                      if (typeof w === 'number' && typeof h === 'number' && h > 0) {
+                        const ratio = w / h;
+                        previewRatioCacheRef.current.set(selectedImages[0], ratio);
+                        setPreviewHeightFromRatio(ratio);
+                      }
+                    }}
                   />
                 ) : (
-                  <Image source={{ uri: selectedImages[0] }} style={{ width: width, height: width }} />
+                  <Image source={{ uri: selectedImages[0] }} style={{ width: width, height: previewHeight }} resizeMode="cover" />
                 )
               ) : (
                 <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -926,24 +1141,69 @@ export default function CreatePostScreen() {
               <Text style={{ color: '#888', marginBottom: 12 }}>
                 Only your current GPS location or passport ticket locations can be used as verified location.
               </Text>
-              <FlatList
-                data={verifiedOptions}
-                keyExtractor={item => item.name + item.lat + item.lon}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}
-                    onPress={() => {
-                      setVerifiedLocation(item);
-                      setShowVerifiedModal(false);
-                    }}
-                  >
-                    <Text style={{ fontSize: 16, fontWeight: '600' }}>{item.name}</Text>
-                    <Text style={{ color: '#888', fontSize: 13 }}>{item.address}</Text>
-                    <Text style={{ color: '#007aff', fontSize: 12, marginTop: 2 }}>{item.verified ? 'Verified' : ''}</Text>
-                  </TouchableOpacity>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#f9f9f9', marginBottom: 12 }}>
+                <Feather name="search" size={18} color="#999" style={{ marginRight: 8 }} />
+                <TextInput
+                  placeholder="Search nearby (100m)..."
+                  placeholderTextColor="#999"
+                  value={verifiedSearch}
+                  onChangeText={setVerifiedSearch}
+                  style={{ flex: 1, fontSize: 16, color: '#111' }}
+                />
+              </View>
+
+              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <Text style={{ fontWeight: '700', fontSize: 14, color: '#111', marginBottom: 8 }}>Nearby (100m)</Text>
+                {verifiedCenter ? null : (
+                  <Text style={{ color: '#888', marginBottom: 12 }}>Enable location permission to see nearby verified places.</Text>
                 )}
-                ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No verified locations found</Text>}
-              />
+
+                {loadingVerifiedResults ? (
+                  <ActivityIndicator size="small" color="#FFB800" style={{ marginVertical: 10 }} />
+                ) : (
+                  <FlatList
+                    data={verifiedResults}
+                    scrollEnabled={false}
+                    keyExtractor={(item) => item.placeId || (item.name + item.lat + item.lon)}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}
+                        onPress={() => {
+                          setVerifiedLocation(item);
+                          setShowVerifiedModal(false);
+                        }}
+                      >
+                        <Text style={{ fontSize: 16, fontWeight: '600' }}>{item.name}</Text>
+                        <Text style={{ color: '#888', fontSize: 13 }}>{item.address}</Text>
+                        <Text style={{ color: '#007aff', fontSize: 12, marginTop: 2 }}>Verified</Text>
+                      </TouchableOpacity>
+                    )}
+                    ListEmptyComponent={<Text style={{ color: '#888', marginTop: 6 }}>No nearby locations found</Text>}
+                  />
+                )}
+
+                <Text style={{ fontWeight: '700', fontSize: 14, color: '#111', marginTop: 18, marginBottom: 8 }}>Passport / GPS</Text>
+                <FlatList
+                  data={verifiedOptions}
+                  scrollEnabled={false}
+                  keyExtractor={item => item.name + item.lat + item.lon}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}
+                      onPress={() => {
+                        setVerifiedLocation(item);
+                        setShowVerifiedModal(false);
+                      }}
+                    >
+                      <Text style={{ fontSize: 16, fontWeight: '600' }}>{item.name}</Text>
+                      <Text style={{ color: '#888', fontSize: 13 }}>{item.address}</Text>
+                      <Text style={{ color: '#007aff', fontSize: 12, marginTop: 2 }}>{item.verified ? 'Verified' : ''}</Text>
+                    </TouchableOpacity>
+                  )}
+                  ListEmptyComponent={<Text style={{ color: '#888', marginTop: 6 }}>No verified locations found</Text>}
+                />
+              </ScrollView>
               {/* Close Button */}
               <View style={{ paddingVertical: 12, alignItems: 'center' }}>
                 <TouchableOpacity onPress={() => setShowVerifiedModal(false)}>

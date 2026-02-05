@@ -14,6 +14,7 @@ const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile
 
 type Post = {
   id: string;
+  _id?: string;
   userId: string;
   userName: string;
   userAvatar: string;
@@ -22,12 +23,18 @@ type Post = {
   videoUrl?: string;
   mediaType?: 'image' | 'video';
   caption: string;
+  locationName?: string;
+  location?: string | { name?: string };
   locationData?: {
-    name: string;
-    address: string;
-    lat: number;
-    lon: number;
+    name?: string;
+    address?: string;
+    lat?: number;
+    lon?: number;
     verified?: boolean;
+    city?: string;
+    country?: string;
+    countryCode?: string;
+    placeId?: string;
   };
   likes: string[];
   likesCount: number;
@@ -37,6 +44,7 @@ type Post = {
 
 type Story = {
   id: string;
+  _id?: string;
   userId: string;
   userName: string;
   userAvatar: string;
@@ -44,9 +52,10 @@ type Story = {
   videoUrl?: string;
   mediaType?: 'image' | 'video';
   createdAt: any;
+  location?: string | { name?: string };
   locationData?: {
-    name: string;
-    address: string;
+    name?: string;
+    address?: string;
   };
   views?: string[];
   likes?: string[];
@@ -145,44 +154,60 @@ export default function LocationDetailsScreen() {
 
   const fetchLocationPosts = async (searchLocationName: string) => {
     try {
-      // Fetch all posts from backend
-      const response = await apiService.get('/posts?skip=0&limit=1000');
-      
-      if (!response.success || !response.data) {
-        console.log('No posts found from API');
-        setAllPosts([]);
-        setFilteredPosts([]);
-        return;
+      const viewerId = await AsyncStorage.getItem('userId');
+
+      let metaHasVerifiedVisits = false;
+
+      const all: any[] = [];
+      const pageSize = 50;
+      const maxPages = 5;
+
+      for (let page = 0; page < maxPages; page++) {
+        const skip = page * pageSize;
+        const response = await apiService.getPostsByLocation(searchLocationName, skip, pageSize, viewerId || undefined);
+        const next = response?.success && Array.isArray(response?.data) ? response.data : [];
+        all.push(...next);
+        if (next.length < pageSize) break;
       }
 
       // Normalize posts to ensure they have an 'id' field
-      const normalizedPosts = response.data.map((post: any) => ({
+      const locationPosts = all.map((post: any) => ({
         ...post,
         id: post.id || post._id,
       }));
-
-      // Filter posts by location name (check multiple location fields)
-      const locationPosts = normalizedPosts.filter((post: any) => {
-        const postLocation = 
-          post?.locationData?.name || 
-          post?.locationName || 
-          post?.location || 
-          '';
-        
-        return postLocation.toLowerCase().includes(searchLocationName.toLowerCase());
-      });
 
       console.log(`[Location] Found ${locationPosts.length} posts for "${searchLocationName}"`);
       
       setAllPosts(locationPosts);
       setFilteredPosts(locationPosts);
-      setTotalVisits(locationPosts.length);
+
+      try {
+        const metaRes = await apiService.getLocationMeta(searchLocationName, viewerId || undefined);
+        const meta = metaRes?.success ? metaRes?.data : null;
+        if (meta && typeof meta === 'object') {
+          if (typeof meta.visits === 'number') setTotalVisits(meta.visits);
+          else if (typeof meta.postCount === 'number') setTotalVisits(meta.postCount);
+          if (typeof meta.verifiedVisits === 'number') {
+            metaHasVerifiedVisits = true;
+            setVerifiedVisits(meta.verifiedVisits);
+          }
+        } else {
+          setTotalVisits(locationPosts.length);
+        }
+      } catch {
+        setTotalVisits(locationPosts.length);
+      }
       
       // Extract sub-locations from posts
       const subLocationMap = new Map<string, any[]>();
       locationPosts.forEach((post: Post) => {
+        const locStr =
+          post?.locationData?.name ||
+          post?.locationName ||
+          (typeof post?.location === 'string' ? post.location : post?.location?.name) ||
+          '';
         const subLocName = extractSubLocationName(
-          post?.locationData?.name || post?.locationName || post?.location || '',
+          locStr,
           post?.locationData?.address || ''
         );
         if (!subLocationMap.has(subLocName)) {
@@ -200,9 +225,11 @@ export default function LocationDetailsScreen() {
       
       setSubLocations(subLocations);
       
-      // Count verified visits (if posts have verified badges)
-      const verifiedCount = locationPosts.filter((p: any) => p?.locationData?.verified).length;
-      setVerifiedVisits(verifiedCount);
+      // Count verified visits (if meta not available)
+      if (!metaHasVerifiedVisits) {
+        const verifiedCount = locationPosts.filter((p: any) => p?.locationData?.verified).length;
+        setVerifiedVisits(verifiedCount);
+      }
       
       // Set most liked post image for header
       if (locationPosts.length > 0) {

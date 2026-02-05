@@ -38,6 +38,8 @@ import ZeegocloudStreamingService from '../services/implementations/ZeegocloudSt
 import ZeegocloudLiveHost from './_components/ZeegocloudLiveHost';
 import { endLiveStream, getActiveLiveStreams, startLiveStream } from '../lib/firebaseHelpers/live';
 
+import { INSTAGRAM_LIGHT_MAP_STYLE } from '../lib/instagramMapStyle';
+
 let MapView: any = null;
 let Marker: any = null;
 if (Platform.OS !== 'web') {
@@ -766,6 +768,8 @@ export default function GoLiveScreen() {
                     latitudeDelta: 0.02,
                     longitudeDelta: 0.02,
                   }}
+                  provider={Platform.OS === 'ios' ? 'google' : undefined}
+                  customMapStyle={INSTAGRAM_LIGHT_MAP_STYLE}
                   onPress={(e: any) => {
                     const coord = e?.nativeEvent?.coordinate;
                     if (coord && typeof coord.latitude === 'number' && typeof coord.longitude === 'number') {
@@ -975,6 +979,8 @@ export default function GoLiveScreen() {
                 latitudeDelta: 0.01,
                 longitudeDelta: 0.01,
               }}
+              provider={Platform.OS === 'ios' ? 'google' : undefined}
+              customMapStyle={INSTAGRAM_LIGHT_MAP_STYLE}
             >
               <Marker coordinate={(location || manualLocation)!} title="You are here" />
             </MapView>

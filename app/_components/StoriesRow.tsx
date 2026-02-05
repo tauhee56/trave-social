@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ResizeMode, Video } from 'expo-av';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { Image as ExpoImage } from 'expo-image';
@@ -313,17 +314,62 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
       console.log('[StoriesRow] 🚫 Picker BLOCKED:', { pickerBlocked: pickerBlockedRef.current, isViewingStories, showUploadModal });
       return;
     }
-    console.log('[StoriesRow] handleAddStory called - opening picker');
-    const pickerResult = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images', 'videos'],
-      allowsEditing: true,
-      aspect: [9, 16],
-      quality: 0.8,
-      videoMaxDuration: 40,
-    });
-    if (!pickerResult.canceled && authUser) {
-      setSelectedMedia(pickerResult.assets[0]);
-      setShowUploadModal(true);
+    if (!authUser?.uid) {
+      Alert.alert('Login required', 'Please login to create a story');
+      return;
+    }
+
+    const openLibrary = async () => {
+      console.log('[StoriesRow] Opening image picker...');
+      const pickerResult = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsEditing: true,
+        aspect: [9, 16],
+        quality: 0.8,
+        videoMaxDuration: 40,
+      });
+      if (!pickerResult.canceled && pickerResult.assets && pickerResult.assets[0]) {
+        setSelectedMedia(pickerResult.assets[0]);
+        setShowUploadModal(true);
+      }
+    };
+
+    console.log('[StoriesRow] handleAddStory called - opening camera');
+    try {
+      const camPerm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!camPerm.granted) {
+        Alert.alert(
+          'Camera permission required',
+          'Please allow camera access to create a story.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Gallery', onPress: openLibrary },
+          ]
+        );
+        return;
+      }
+
+      const cameraResult = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsEditing: true,
+        aspect: [9, 16],
+        quality: 0.8,
+        videoMaxDuration: 40,
+      });
+
+      if (!cameraResult.canceled && cameraResult.assets && cameraResult.assets[0]) {
+        setSelectedMedia(cameraResult.assets[0]);
+        setShowUploadModal(true);
+      }
+    } catch (e) {
+      Alert.alert(
+        'Camera error',
+        'Failed to open camera. Please try again.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Gallery', onPress: openLibrary },
+        ]
+      );
     }
   }
 
@@ -577,11 +623,22 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
               {/* Media Preview */}
               {selectedMedia ? (
                 <View style={styles.mediaPreviewContainer}>
-                  <Image
-                    source={{ uri: selectedMedia.uri }}
-                    style={styles.modalImage}
-                    resizeMode="cover"
-                  />
+                  {String(selectedMedia?.type || '').toLowerCase() === 'video' || String(selectedMedia?.mimeType || '').toLowerCase().includes('video') ? (
+                    <Video
+                      source={{ uri: selectedMedia.uri }}
+                      style={styles.modalImage}
+                      resizeMode={ResizeMode.COVER}
+                      useNativeControls
+                      shouldPlay={false}
+                      isLooping={false}
+                    />
+                  ) : (
+                    <Image
+                      source={{ uri: selectedMedia.uri }}
+                      style={styles.modalImage}
+                      resizeMode="cover"
+                    />
+                  )}
                   <TouchableOpacity
                     style={styles.changeMediaButton}
                     onPress={async () => {

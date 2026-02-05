@@ -28,6 +28,26 @@ const { width } = Dimensions.get("window");
 
 const MIRROR_HOME = true;
 
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: "#fff" },
+    fab: {
+        position: 'absolute', bottom: 20, right: 20, width: 56, height: 56, borderRadius: 28,
+        backgroundColor: '#e0245e', alignItems: 'center', justifyContent: 'center', elevation: 8, zIndex: 100,
+    },
+    searchBar: {
+        marginHorizontal: 16, marginVertical: 12, backgroundColor: "#fafafa", height: 44,
+        borderRadius: 22, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    },
+    searchText: { marginLeft: 8, color: "#222" },
+    headerSection: { paddingBottom: 8 },
+    chip: { alignItems: 'center', width: 70, marginRight: 12 },
+    chipIconWrap: { width: 56, height: 56, borderRadius: 12, backgroundColor: '#f5f5f5', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+    chipIconWrapActive: { borderColor: '#f39c12', borderWidth: 2 },
+    chipText: { color: '#666', marginTop: 6, fontSize: 11 },
+    chipTextActive: { color: '#111', fontWeight: '700' },
+    categoryImage: { width: 56, height: 56, borderRadius: 12 },
+});
+
 export default function Home() {
 
     const defaultCategoryObjects = Array.isArray(DEFAULT_CATEGORIES)
@@ -291,289 +311,254 @@ export default function Home() {
         }
     };
 
-    useEffect(() => {
-        console.log('[Home] Initial load effect running...');
-        loadInitialFeed();
-        loadCategories();
-    }, []);
+useEffect(() => {
+    console.log('[Home] Initial load effect running...');
+    loadInitialFeed();
+    loadCategories();
+}, []);
 
-    useEffect(() => {
-        if (!MIRROR_HOME) return;
-        if (!categories || categories.length === 0) return;
-        requestAnimationFrame(() => {
-            try {
-                categoriesScrollRef.current?.scrollToEnd({ animated: false });
-            } catch {}
-        });
-    }, [categories.length]);
+useEffect(() => {
+    if (!MIRROR_HOME) return;
+    if (!categories || categories.length === 0) return;
+    requestAnimationFrame(() => {
+        try {
+            categoriesScrollRef.current?.scrollToEnd({ animated: false });
+        } catch {}
+    });
+}, [categories.length]);
 
-    // Privacy Filter logic - FIXED to properly check if user has access
-    async function filterPostsByPrivacy(posts: any[], userId: string | undefined) {
-        // If no user logged in, show only public posts
-        if (!userId) return posts.filter(post => !post.isPrivate);
-        
-        // For logged-in users: show all non-private posts + private posts they have access to
-        return posts.filter(post => {
-            if (!post.userId) return false;
-            
-            // Show own posts
-            if (post.userId === userId) return true;
-            
-            // Show public posts
-            if (!post.isPrivate) return true;
-            
-            // Show private posts only if current user is in allowedFollowers
-            if (post.isPrivate && Array.isArray(post.allowedFollowers)) {
-                return post.allowedFollowers.includes(userId);
-            }
-            
+async function filterPostsByPrivacy(posts: any[], userId: string | undefined) {
+    if (!userId) return posts.filter(post => !post.isPrivate);
+
+    return posts.filter(post => {
+        if (!post.userId) return false;
+        if (post.userId === userId) return true;
+        if (!post.isPrivate) return true;
+        if (post.isPrivate && Array.isArray(post.allowedFollowers)) {
+            return post.allowedFollowers.includes(userId);
+        }
+        return false;
+    });
+}
+
+const filteredRaw = React.useMemo(() => {
+    console.log('[Home] filteredRaw memo - posts count:', posts.length, 'filter:', filter, 'location:', params.location);
+
+    const locationFilter = params.location as string;
+    const selectedPostId = params.postId as string;
+
+    if (locationFilter) {
+        const key = String(locationFilter || '').trim().toLowerCase();
+        const locationPosts = posts.filter((p: any) => {
+            const pLoc = typeof p.location === 'object' ? p.location?.name : p.location;
+            const exact = (pLoc || '').toLowerCase() === key;
+            if (exact) return true;
+
+            const keys = Array.isArray(p?.locationKeys) ? p.locationKeys : [];
+            if (keys.some((k: any) => String(k || '').toLowerCase() === key)) return true;
+
+            const ld = p?.locationData;
+            const city = typeof ld?.city === 'string' ? ld.city.toLowerCase() : '';
+            const country = typeof ld?.country === 'string' ? ld.country.toLowerCase() : '';
+            const cc = typeof ld?.countryCode === 'string' ? ld.countryCode.toLowerCase() : '';
+            if (city && city === key) return true;
+            if (country && country === key) return true;
+            if (cc && cc === key) return true;
+
+            const addr = typeof ld?.address === 'string' ? ld.address.toLowerCase() : '';
+            if (addr && addr.includes(key)) return true;
+
             return false;
         });
+
+        console.log('[Home] filteredRaw location filter - result:', locationPosts.length);
+        if (selectedPostId) {
+            const selected = locationPosts.find((p: any) => p.id === selectedPostId);
+            const others = locationPosts.filter((p: any) => p.id !== selectedPostId);
+            return selected ? [selected, ...others] : others;
+        }
+        return locationPosts;
     }
 
-    const filteredRaw = React.useMemo(() => {
-        console.log('[Home] filteredRaw memo - posts count:', posts.length, 'filter:', filter, 'location:', params.location);
-        
-        const locationFilter = params.location as string;
-        const selectedPostId = params.postId as string;
-
-        if (locationFilter) {
-            const locationPosts = posts.filter((p: any) => {
-                const pLoc = typeof p.location === 'object' ? p.location?.name : p.location;
-                return pLoc?.toLowerCase() === locationFilter.toLowerCase();
-            });
-            console.log('[Home] filteredRaw location filter - result:', locationPosts.length);
-            if (selectedPostId) {
-                const selected = locationPosts.find(p => p.id === selectedPostId);
-                const others = locationPosts.filter(p => p.id !== selectedPostId);
-                return selected ? [selected, ...others] : others;
-            }
-            return locationPosts;
-        } else if (filter) {
-            const categoryPosts = posts.filter((p: any) => p.category?.toLowerCase() === filter.toLowerCase());
-            console.log('[Home] filteredRaw category filter - result:', categoryPosts.length);
-            return categoryPosts;
-        }
-        console.log('[Home] filteredRaw no filter - returning all posts');
-        return posts;
-    }, [posts, params.location, filter, params.postId]);
-
-    useEffect(() => {
-        let isMounted = true;
-        const applyFilter = async () => {
-            console.log('[Home] Apply filter - filteredRaw count:', filteredRaw.length, 'currentUserId:', currentUserId, 'paginationOffset:', paginationOffset);
-            
-            // Remove duplicates using Set based on post ID
-            const uniquePosts = Array.from(new Map(filteredRaw.map(p => [p.id, p])).values());
-            console.log('[Home] After dedup - uniquePosts count:', uniquePosts.length);
-            
-            const filtered = await filterPostsByPrivacy(uniquePosts, currentUserId || undefined);
-            console.log('[Home] After privacy filter - filtered count:', filtered.length);
-            
-            // Log details of posts being filtered
-            filtered.forEach(p => {
-                console.log(`  Post: ${p.id}, userId: ${p.userId}, isPrivate: ${p.isPrivate}, hasImage: ${!!p.imageUrl}`);
-            });
-            
-            if (isMounted) {
-                // Only show first paginationOffset posts
-                const sliced = filtered.slice(0, paginationOffset);
-                console.log('[Home] Sliced to paginationOffset:', sliced.length);
-                setPrivacyFiltered(sliced);
-                setAllLoadedPosts(filtered); // Keep all for pagination
-            }
-        };
-        applyFilter();
-        return () => { isMounted = false; };
-    }, [filteredRaw, currentUserId, paginationOffset]);
-
-    const loadMorePosts = () => {
-        if (loadingMore || privacyFiltered.length >= allLoadedPosts.length) {
-            console.log('[Home] Load more skipped - loadingMore:', loadingMore, 'displayed:', privacyFiltered.length, 'available:', allLoadedPosts.length);
-            return;
-        }
-        
-        // Check if we need to fetch more from backend
-        if (privacyFiltered.length > allLoadedPosts.length * 0.8) {
-            // Fetch next batch from backend
-            const pageNum = Math.floor(allLoadedPosts.length / 50);
-            setLoadingMore(true);
-            loadInitialFeed(pageNum + 1).then(() => {
-                setTimeout(() => setLoadingMore(false), 300);
-            });
-        } else {
-            // Still have posts to show, just increment pagination offset
-            setLoadingMore(true);
-            setTimeout(() => {
-                setPaginationOffset(prev => {
-                    const newOffset = prev + POSTS_PER_PAGE;
-                    console.log('[Home] Loading more posts - new offset:', newOffset, 'total available:', allLoadedPosts.length);
-                    return newOffset;
-                });
-                setLoadingMore(false);
-            }, 300);
-        }
-    };
-
-    const onRefresh = async () => {
-        setRefreshing(true);
-        await new Promise(r => setTimeout(r, 300));
-        setPaginationOffset(20); // Reset to initial count
-        setRefreshing(false);
-    };
-
-    if (loading) {
-        return (
-            <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]} > 
-                <ActivityIndicator size="large" color="#f39c12" />
-            </View>
-        );
+    if (filter) {
+        const categoryPosts = posts.filter((p: any) => p.category?.toLowerCase() === filter.toLowerCase());
+        console.log('[Home] filteredRaw category filter - result:', categoryPosts.length);
+        return categoryPosts;
     }
 
-    const searchText = (!filter && !params.location) ? 'Search' : (params.location || filter);
+    return posts;
+}, [posts, filter, params.location, params.postId]);
 
+useEffect(() => {
+    let cancelled = false;
+    (async () => {
+        const filtered = await filterPostsByPrivacy(filteredRaw, currentUserId || undefined);
+        if (cancelled) return;
+        setPrivacyFiltered(filtered.slice(0, paginationOffset));
+    })();
+    return () => {
+        cancelled = true;
+    };
+}, [filteredRaw, currentUserId, paginationOffset]);
+
+const loadMorePosts = useCallback(() => {
+    if (loadingMore) return;
+    if (privacyFiltered.length >= filteredRaw.length) return;
+    setLoadingMore(true);
+    setTimeout(() => {
+        setPaginationOffset(prev => prev + POSTS_PER_PAGE);
+        setLoadingMore(false);
+    }, 300);
+}, [loadingMore, privacyFiltered.length, filteredRaw.length]);
+
+const onRefresh = async () => {
+    setRefreshing(true);
+    await new Promise(r => setTimeout(r, 300));
+    setPaginationOffset(20);
+    await loadInitialFeed(0);
+    setRefreshing(false);
+};
+
+if (loading) {
     return (
-        <View style={styles.container}> 
-            <TouchableOpacity 
-                style={styles.fab}
-                onPress={() => router.push('/go-live')}
-            >
-                <Feather name="video" size={24} color="#fff" />
-            </TouchableOpacity>
+        <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+            <ActivityIndicator size="large" color="#f39c12" />
+        </View>
+    );
+}
 
-            <FlatList
-                ref={flatListRef}
-                data={privacyFiltered}
-                keyExtractor={(item, index) => `post-${item.id}-${index}`}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#f39c12" />}
-                initialNumToRender={5}
-                maxToRenderPerBatch={5}
-                windowSize={7}
-                removeClippedSubviews={true}
-                updateCellsBatchingPeriod={50}
-                ListHeaderComponent={() => (
-                    <View>
-                        <StoriesRow
-                            onStoryPress={(stories, initialIndex) => {
-                                console.log('[Home] onStoryPress called with', stories.length, 'stories, initialIndex:', initialIndex);
-                                setSelectedStories(stories);
-                                setStoryInitialIndex(initialIndex || 0);
-                                setShowStoriesViewer(true);
+const searchText = (!filter && !params.location) ? 'Search' : (params.location || filter);
+
+return (
+    <View style={styles.container}> 
+        <TouchableOpacity 
+            style={styles.fab}
+            onPress={() => router.push('/go-live')}
+        >
+            <Feather name="video" size={24} color="#fff" />
+        </TouchableOpacity>
+
+        <FlatList
+            ref={flatListRef}
+            data={privacyFiltered}
+            keyExtractor={(item, index) => `post-${item.id}-${index}`}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#f39c12" />}
+            initialNumToRender={5}
+            maxToRenderPerBatch={5}
+            windowSize={7}
+            removeClippedSubviews={true}
+            updateCellsBatchingPeriod={50}
+            ListHeaderComponent={() => (
+                <View>
+                    <StoriesRow
+                        onStoryPress={(stories, initialIndex) => {
+                            console.log('[Home] onStoryPress called with', stories.length, 'stories, initialIndex:', initialIndex);
+                            setSelectedStories(stories);
+                            setStoryInitialIndex(initialIndex || 0);
+                            setShowStoriesViewer(true);
+                        }}
+                        onStoryViewerClose={() => {
+                            console.log('[Home] StoriesViewer closed - resetting state');
+                            setShowStoriesViewer(false);
+                            setSelectedStories([]);
+                            setStoryInitialIndex(0);
+                            setStoriesRowResetTrigger(prev => prev + 1);
+                        }}
+                        refreshTrigger={storiesRefreshTrigger}
+                        resetTrigger={storiesRowResetTrigger}
+                        mirror={MIRROR_HOME}
+                    />
+                    <LiveStreamsRow mirror={MIRROR_HOME} />
+                    <View style={styles.headerSection}>
+                        <TouchableOpacity style={[styles.searchBar, MIRROR_HOME && { flexDirection: 'row-reverse' }]} onPress={() => router.push('/search-modal')}>
+                            <Feather name="search" size={18} color="#222" />
+                            <Text style={[styles.searchText, MIRROR_HOME && { marginLeft: 0, marginRight: 8 }]}>{searchText}</Text>
+                        </TouchableOpacity>
+                        <ScrollView
+                            ref={categoriesScrollRef}
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            onContentSizeChange={() => {
+                              if (!MIRROR_HOME) return;
+                              if (categoriesAutoScrolledRef.current) return;
+                              categoriesAutoScrolledRef.current = true;
+                              requestAnimationFrame(() => {
+                                try {
+                                  categoriesScrollRef.current?.scrollToEnd({ animated: false });
+                                } catch {}
+                              });
                             }}
-                            onStoryViewerClose={() => {
-                                console.log('[Home] StoriesViewer closed - resetting state');
-                                setShowStoriesViewer(false);
-                                setSelectedStories([]);
-                                setStoryInitialIndex(0);
-                                setStoriesRowResetTrigger(prev => prev + 1);
-                            }}
-                            refreshTrigger={storiesRefreshTrigger}
-                            resetTrigger={storiesRowResetTrigger}
-                            mirror={MIRROR_HOME}
-                        />
-                        <LiveStreamsRow mirror={MIRROR_HOME} />
-                        <View style={styles.headerSection}>
-                            <TouchableOpacity style={[styles.searchBar, MIRROR_HOME && { flexDirection: 'row-reverse' }]} onPress={() => router.push('/search-modal')}>
-                                <Feather name="search" size={18} color="#222" />
-                                <Text style={[styles.searchText, MIRROR_HOME && { marginLeft: 0, marginRight: 8 }]}>{searchText}</Text>
-                            </TouchableOpacity>
-                            <ScrollView
-                                ref={categoriesScrollRef}
-                                horizontal
-                                showsHorizontalScrollIndicator={false}
-                                onContentSizeChange={() => {
-                                  if (!MIRROR_HOME) return;
-                                  if (categoriesAutoScrolledRef.current) return;
-                                  categoriesAutoScrolledRef.current = true;
-                                  requestAnimationFrame(() => {
-                                    try {
-                                      categoriesScrollRef.current?.scrollToEnd({ animated: false });
-                                    } catch {}
-                                  });
-                                }}
-                                contentContainerStyle={[{ paddingHorizontal: 8 }, MIRROR_HOME && { flexDirection: 'row-reverse', flexGrow: 1 }]}
-                            >
-                                {categories.map((cat) => (
-                                    <TouchableOpacity
-                                        key={cat.name}
-                                        style={[styles.chip, MIRROR_HOME && { marginRight: 0, marginLeft: 12 }]}
-                                        onPress={() => {
-                                            console.log('[Category] Clicked category:', cat.name);
-                                            const next = cat.name === filter ? '' : cat.name;
-                                            console.log('[Category] New filter:', next);
-                                            // Scroll to top when changing filter
-                                            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-                                            router.push(next ? `/(tabs)/home?filter=${encodeURIComponent(next)}` : `/(tabs)/home`);
-                                        }}
-                                    >
-                                        <View style={[styles.chipIconWrap, filter === cat.name && styles.chipIconWrapActive]}>
-                                            <ExpoImage source={getCategoryImageSource(cat.name, cat.image)} style={styles.categoryImage} />
-                                        </View>
-                                        <Text style={[styles.chipText, filter === cat.name && styles.chipTextActive]}>{cat.name}</Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </ScrollView>
-                        </View>
+                            contentContainerStyle={[{ paddingHorizontal: 8 }, MIRROR_HOME && { flexDirection: 'row-reverse', flexGrow: 1 }]}
+                        >
+                            {categories.map((cat) => (
+                                <TouchableOpacity
+                                    key={cat.name}
+                                    style={[styles.chip, MIRROR_HOME && { marginRight: 0, marginLeft: 12 }]}
+                                    onPress={() => {
+                                        console.log('[Category] Clicked category:', cat.name);
+                                        const next = cat.name === filter ? '' : cat.name;
+                                        console.log('[Category] New filter:', next);
+                                        // Scroll to top when changing filter
+                                        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+                                        router.push(next ? `/(tabs)/home?filter=${encodeURIComponent(next)}` : `/(tabs)/home`);
+                                    }}
+                                >
+                                    <View style={[styles.chipIconWrap, filter === cat.name && styles.chipIconWrapActive]}>
+                                        <ExpoImage source={getCategoryImageSource(cat.name, cat.image)} style={styles.categoryImage} />
+                                    </View>
+                                    <Text style={[styles.chipText, filter === cat.name && styles.chipTextActive]}>{cat.name}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
                     </View>
-                )}
-                renderItem={({ item }: { item: any }) => (
-                    <PostCard post={{ ...item, imageUrl: item.thumbnailUrl || item.imageUrl }} currentUser={currentUserData || currentUserId} showMenu={false} mirror={MIRROR_HOME} />
-                )}
-                ListFooterComponent={
-                    loadingMore ? (
-                        <View style={{ paddingVertical: 16, alignItems: 'center' }}>
-                            <ActivityIndicator size="small" color="#f39c12" />
-                        </View>
-                    ) : privacyFiltered.length < allLoadedPosts.length ? (
-                        <View style={{ paddingVertical: 16, alignItems: 'center' }}>
-                            <Text style={{ color: '#999' }}>Scroll for more posts</Text>
-                        </View>
-                    ) : (
-                        <View style={{ paddingVertical: 16, alignItems: 'center' }}>
-                            <Text style={{ color: '#999' }}>No more posts</Text>
-                        </View>
-                    )
-                }
-                onEndReached={loadMorePosts}
-                onEndReachedThreshold={0.5}
-            />
-            {showStoriesViewer && (
-                <Modal visible={showStoriesViewer} animationType="fade" onRequestClose={() => {
+                </View>
+            )}
+            renderItem={({ item }: { item: any }) => (
+                <PostCard post={item} currentUser={currentUserData || currentUserId} showMenu={false} mirror={MIRROR_HOME} />
+            )}
+            ListFooterComponent={
+                loadingMore ? (
+                    <View style={{ padding: 20, alignItems: 'center' }}>
+                        <ActivityIndicator size="small" color="#ffa726" />
+                    </View>
+                ) : privacyFiltered.length < allLoadedPosts.length ? (
+                    <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                        <Text style={{ color: '#999' }}>Scroll for more posts</Text>
+                    </View>
+                ) : (
+                    <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                        <Text style={{ color: '#999' }}>No more posts</Text>
+                    </View>
+                )
+            }
+            onEndReached={loadMorePosts}
+            onEndReachedThreshold={0.5}
+        />
+        {showStoriesViewer && (
+            <Modal
+                visible={showStoriesViewer}
+                animationType="fade"
+                onRequestClose={() => {
                     console.log('[Home] StoriesViewer onRequestClose');
                     setShowStoriesViewer(false);
                     setSelectedStories([]);
                     setStoryInitialIndex(0);
                     setStoriesRowResetTrigger(prev => prev + 1);
-                }}>
-                    <StoriesViewer stories={selectedStories} initialIndex={storyInitialIndex} onClose={() => {
+                }}
+            >
+                <StoriesViewer
+                    stories={selectedStories}
+                    initialIndex={storyInitialIndex}
+                    onClose={() => {
                         console.log('[Home] StoriesViewer onClose callback');
                         setShowStoriesViewer(false);
                         setSelectedStories([]);
                         setStoryInitialIndex(0);
                         setStoriesRowResetTrigger(prev => prev + 1);
-                    }} />
-                </Modal>
-            )}
-        </View>
-    );
+                    }}
+                />
+            </Modal>
+        )}
+    </View>
+);
 }
-
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#fff" },
-    fab: {
-        position: 'absolute', bottom: 20, right: 20, width: 56, height: 56, borderRadius: 28,
-        backgroundColor: '#e0245e', alignItems: 'center', justifyContent: 'center', elevation: 8, zIndex: 100,
-    },
-    searchBar: {
-        marginHorizontal: 16, marginVertical: 12, backgroundColor: "#fafafa", height: 44,
-        borderRadius: 22, flexDirection: "row", alignItems: "center", justifyContent: "center",
-    },
-    searchText: { marginLeft: 8, color: "#222" },
-    headerSection: { paddingBottom: 8 },
-    chip: { alignItems: 'center', width: 70, marginRight: 12 },
-    chipIconWrap: { width: 56, height: 56, borderRadius: 12, backgroundColor: '#f5f5f5', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-    chipIconWrapActive: { borderColor: '#f39c12', borderWidth: 2 },
-    chipText: { color: '#666', marginTop: 6, fontSize: 11 },
-    chipTextActive: { color: '#111', fontWeight: '700' },
-    categoryImage: { width: 56, height: 56, borderRadius: 12 },
-});

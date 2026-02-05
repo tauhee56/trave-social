@@ -13,6 +13,8 @@ import { PostLocationModal } from '../components/PostLocationModal';
 import { useUser } from './_components/UserContext';
 import PostCard from './_components/PostCard';
 
+import { INSTAGRAM_LIGHT_MAP_STYLE } from '../lib/instagramMapStyle';
+
 import { getAllPosts } from '../lib/firebaseHelpers';
 import { apiService } from './_services/apiService';
 import { getOptimizedImageUrl } from '../lib/imageHelpers';
@@ -31,20 +33,6 @@ if (Platform.OS !== 'web') {
   MapView = RNMaps.default ?? RNMaps;
   Marker = RNMaps.Marker;
 }
-
-const standardMapStyle = [
-  { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#aadaff" }] },
-  { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#e5f5e0" }] },
-  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#ffffff" }] },
-  { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#7b7b7b" }] },
-  { "featureType": "road", "elementType": "labels.text.stroke", "stylers": [{ "color": "#ffffff" }] },
-  { "featureType": "poi.park", "elementType": "geometry", "stylers": [{ "color": "#b6e5a8" }] },
-  { "featureType": "administrative", "elementType": "labels.text.fill", "stylers": [{ "color": "#495e6a" }] },
-  { "featureType": "poi", "elementType": "geometry", "stylers": [{ "color": "#e5e5e5" }] },
-  { "featureType": "transit", "elementType": "geometry", "stylers": [{ "color": "#f2f2f2" }] },
-  { "featureType": "landscape.natural", "elementType": "geometry", "stylers": [{ "color": "#d0f5d8" }] },
-  { "featureType": "landscape.man_made", "elementType": "geometry", "stylers": [{ "color": "#f8f8f8" }] },
-];
 
 const IMAGE_PLACEHOLDER = 'L5H2EC=PM+yV0g-mq.wG9c010J}I';
 
@@ -293,16 +281,15 @@ export default function MapScreen() {
         }
       }
 
-      const res: any = await apiService.getPostsByLocation(loc, nextSkip, 10, currentUserId || undefined);
+      const res: any = await apiService.getPostsByLocation(loc, nextSkip, 20, currentUserId || undefined);
       const newPosts = Array.isArray(res?.data) ? res.data : [];
       const normalized = newPosts.map((p: any) => ({ ...p, id: p?.id || p?._id }));
 
       setLocationPosts((prev) => (mode === 'reset' ? normalized : [...prev, ...normalized]));
       setLocationSkip(nextSkip + normalized.length);
-      setLocationHasMore(normalized.length >= 10);
+      setLocationHasMore(normalized.length >= 20);
     } catch (e: any) {
-      setLocationError(e?.message || 'Failed to load location posts');
-      setLocationHasMore(false);
+      setLocationError(e?.message || 'Failed to load posts');
     } finally {
       if (mode === 'reset') setLocationLoading(false);
       else setLocationLoadingMore(false);
@@ -424,8 +411,6 @@ export default function MapScreen() {
     if (userId) return isValidLatLon(lat, lon) && p.userId === userId;
     return isValidLatLon(lat, lon) && likes >= 100;
   });
-
-  const locationGroups: { [key: string]: PostType[] } = {};
   (Array.isArray(filteredPosts) ? filteredPosts : []).forEach((p) => {
     let lat = p.lat ?? (typeof p.location !== 'string' ? p.location?.lat : undefined);
     let lon = p.lon ?? (typeof p.location !== 'string' ? p.location?.lon : undefined);
@@ -434,7 +419,7 @@ export default function MapScreen() {
       lon = p.location.lon;
     }
 
-    const imageUrl = p.imageUrl || (Array.isArray(p.imageUrls) && p.imageUrls[0]) || DEFAULT_AVATAR_URL;
+    const imageUrl = p.imageUrl || (Array.isArray((p as any).mediaUrls) && (p as any).mediaUrls[0]) || (Array.isArray(p.imageUrls) && p.imageUrls[0]) || DEFAULT_AVATAR_URL;
     if (isValidLatLon(lat, lon) && typeof imageUrl === 'string' && imageUrl) {
       const key = `${Number(lat).toFixed(5)},${Number(lon).toFixed(5)}`;
       if (!locationGroups[key]) locationGroups[key] = [];
@@ -444,7 +429,6 @@ export default function MapScreen() {
         .slice(0, 5);
     }
   });
-
   const limitedLocationGroups = Object.entries(locationGroups)
     .slice(0, 50)
     .reduce((acc, [key, val]) => {
@@ -468,7 +452,7 @@ export default function MapScreen() {
       if (imgLoaded && avatarLoaded) setTracks(false);
     }, [imgLoaded, avatarLoaded]);
 
-    const imageUrl = post.imageUrl || (Array.isArray(post.imageUrls) && post.imageUrls[0]) || DEFAULT_AVATAR_URL;
+    const imageUrl = post.imageUrl || (Array.isArray((post as any).mediaUrls) && (post as any).mediaUrls[0]) || (Array.isArray(post.imageUrls) && post.imageUrls[0]) || DEFAULT_AVATAR_URL;
     const avatarUrl = post.userAvatar || DEFAULT_AVATAR_URL;
 
     const markerImageUrl = getOptimizedImageUrl(imageUrl, 'map-marker');
@@ -561,6 +545,7 @@ export default function MapScreen() {
             ref={mapRef}
             style={styles.mapView}
             googleRenderer={Platform.OS === 'android' ? 'LATEST' : undefined}
+            provider={Platform.OS === 'ios' ? 'google' : undefined}
             initialRegion={mapRegion && isValidLatLon(mapRegion.latitude, mapRegion.longitude)
               ? mapRegion
               : DEFAULT_REGION
@@ -569,7 +554,7 @@ export default function MapScreen() {
               ? mapRegion
               : DEFAULT_REGION
             }
-            customMapStyle={standardMapStyle}
+            customMapStyle={INSTAGRAM_LIGHT_MAP_STYLE}
           >
             {/* Live stream markers - only show LIVE pill, no distance */}
             {safeLiveStreams.map((stream) => (
@@ -717,53 +702,55 @@ export default function MapScreen() {
 
               {selectedLocation ? (
                 <View style={styles.searchResultsWrap}>
-                  <View style={styles.locationHeaderRow}>
-                    <Text style={styles.locationHeaderCount}>
-                      {typeof locationMeta?.postCount === 'number' ? locationMeta.postCount : locationPosts.length} Post
-                    </Text>
-                    <Text style={styles.locationHeaderTitle} numberOfLines={1}>
-                      {selectedLocation}
-                    </Text>
-                    <Text style={styles.locationHeaderVisits}>
-                      {(locationMeta?.visits ?? locationPosts.length).toString()} Visits
-                    </Text>
-                  </View>
-
-                  {locationLoading ? (
-                    <View style={styles.searchCenterState}>
-                      <ActivityIndicator size="small" color="#111" />
-                    </View>
-                  ) : locationError ? (
-                    <View style={styles.searchCenterState}>
-                      <Text style={{ color: '#c00' }}>{locationError}</Text>
-                    </View>
-                  ) : (
-                    <FlatList
-                      data={locationPosts}
-                      keyExtractor={(item: any, idx: number) => String(item?.id || item?._id || `loc-${idx}`)}
-                      renderItem={({ item }) => (
-                        <PostCard post={item} currentUser={currentUser || (currentUserId ? { uid: currentUserId, id: currentUserId } : null)} showMenu={true} />
-                      )}
-                      onEndReached={() => {
-                        if (!selectedLocation) return;
-                        fetchLocationFeed(selectedLocation, 'more');
-                      }}
-                      onEndReachedThreshold={0.6}
-                      ListFooterComponent={
-                        locationLoadingMore ? (
-                          <View style={{ paddingVertical: 12 }}>
-                            <ActivityIndicator size="small" color="#111" />
-                          </View>
-                        ) : null
-                      }
-                      ListEmptyComponent={
-                        <View style={styles.searchCenterState}>
-                          <Text style={{ color: '#666' }}>No posts found</Text>
+                  <FlatList
+                    data={locationError ? [] : locationPosts}
+                    keyExtractor={(item: any, idx: number) => String(item?.id || item?._id || `loc-${idx}`)}
+                    renderItem={({ item }) => (
+                      <PostCard post={item} currentUser={currentUser || (currentUserId ? { uid: currentUserId, id: currentUserId } : null)} showMenu={true} />
+                    )}
+                    ListHeaderComponent={() => {
+                      const postCount = typeof locationMeta?.postCount === 'number' ? locationMeta.postCount : locationPosts.length;
+                      const postLabel = postCount === 1 ? 'Post' : 'Posts';
+                      return (
+                        <View style={styles.locationHeaderRow}>
+                          <Text style={styles.locationHeaderCount}>
+                            {postCount} {postLabel}
+                          </Text>
+                          <Text style={styles.locationHeaderTitle} numberOfLines={1}>
+                            {selectedLocation}
+                          </Text>
                         </View>
-                      }
-                      showsVerticalScrollIndicator={false}
-                    />
-                  )}
+                      );
+                    }}
+                    onEndReached={() => {
+                      if (!selectedLocation) return;
+                      fetchLocationFeed(selectedLocation, 'more');
+                    }}
+                    onEndReachedThreshold={0.6}
+                    ListFooterComponent={
+                      locationLoadingMore ? (
+                        <View style={{ paddingVertical: 12 }}>
+                          <ActivityIndicator size="small" color="#111" />
+                        </View>
+                      ) : null
+                    }
+                    ListEmptyComponent={
+                      <View style={styles.searchCenterState}>
+                        {locationLoading ? (
+                          <ActivityIndicator size="small" color="#111" />
+                        ) : locationError ? (
+                          <Text style={{ color: '#c00' }}>{locationError}</Text>
+                        ) : (
+                          <Text style={{ color: '#666' }}>No posts found</Text>
+                        )}
+                      </View>
+                    }
+                    contentContainerStyle={{ paddingBottom: tabBarHeight + 24 }}
+                    style={{ flex: 1 }}
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                  />
                 </View>
               ) : (
                 <View style={styles.searchResultsWrap}>
@@ -944,7 +931,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#111',
     fontWeight: '600',
-    textAlign: 'right',
+    textAlign: 'center',
   },
   locationHeaderTitle: {
     fontSize: 20,
@@ -952,12 +939,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 6,
     textAlign: 'center',
-  },
-  locationHeaderVisits: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 4,
   },
 
   /* Floating action button */
