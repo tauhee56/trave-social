@@ -1,6 +1,6 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { addComment, addCommentReaction, removeCommentReaction, addCommentReply, deleteComment, deleteCommentReply, editComment, editCommentReply, getPostComments } from "../../lib/firebaseHelpers/comments";
 import { feedEventEmitter } from "../../lib/feedEventEmitter";
 import CommentAvatar from "./CommentAvatar";
@@ -41,21 +41,58 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 }) => {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [newComment, setNewComment] = useState("");
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [replyTo, setReplyTo] = useState<{ id: string; userName: string } | null>(null);
   const [replyText, setReplyText] = useState("");
   const [editingComment, setEditingComment] = useState<{ id: string; text: string; isReply: boolean; parentId?: string } | null>(null);
   const [showMenu, setShowMenu] = useState<{ commentId: string; isReply: boolean; parentId?: string; replyId?: string } | null>(null);
   const [showReactions, setShowReactions] = useState<string | null>(null);
 
-  const scrollRef = useRef<ScrollView>(null);
+  const listRef = useRef<FlatList<Comment>>(null);
+  const newCommentRef = useRef('');
+  const replyTextRef = useRef('');
   const userFromContext = useUser();
   // Use prop if provided, otherwise fall back to context
   const currentUser = userProp || userFromContext;
 
+  const listMaxHeightStyle = typeof maxHeight === 'number' ? { maxHeight } : null;
+
+  const runAfterUiIdle = (fn: () => void) => {
+    try {
+      const ric = (globalThis as any)?.requestIdleCallback;
+      if (typeof ric === 'function') {
+        ric(() => fn());
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    setTimeout(() => {
+      requestAnimationFrame(() => fn());
+    }, 0);
+  };
+
   useEffect(() => {
     loadComments();
   }, [postId]);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e: any) => {
+      const h = e?.endCoordinates?.height;
+      setKeyboardHeight(typeof h === 'number' ? h : 0);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const normalizeId = (val: any): string => {
     if (typeof val === 'string') return val;
@@ -91,40 +128,54 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     setLoading(false);
   };
 
-  const handleAddComment = async () => {
+  const handleAddComment = async (overrideText?: string) => {
+    // Debug logging to track UI freeze
+    console.log('[CommentSection] 🔵 handleAddComment START');
+    
+    // Prevent duplicate submissions
+    if (isSubmitting) {
+      console.log('[CommentSection] Already submitting, ignoring click');
+      return;
+    }
+
     // Handle currentUser being either string (userId) or object
     let userId: string | undefined;
     let displayName: string = 'User';
 
     if (typeof currentUser === 'string') {
-      // currentUser is just a userId string
       userId = currentUser;
-      displayName = 'User'; // Default when we only have userId
-      console.log('[CommentSection] handleAddComment - currentUser is string userId:', userId, 'newComment:', newComment.trim());
+      displayName = 'User';
     } else if (currentUser && typeof currentUser === 'object') {
-      // currentUser is an object with uid/id/userId fields
       userId = currentUser?.uid || currentUser?.id || currentUser?.userId || currentUser?.firebaseUid || currentUser?._id;
       displayName = currentUser?.displayName || currentUser?.name || 'User';
-      console.log('[CommentSection] handleAddComment - currentUser is object userId:', userId, 'displayName:', displayName, 'newComment:', newComment.trim());
-    } else {
-      console.log('[CommentSection] handleAddComment - currentUser is null/undefined:', currentUser);
     }
 
-    if (!newComment.trim()) {
-      console.log('[CommentSection] Skipping - no text');
+    const rawText = (overrideText ?? newCommentRef.current ?? newComment).trim();
+
+    if (!rawText) {
       return;
     }
 
     if (!userId) {
-      console.log('[CommentSection] ERROR - Cannot extract userId from currentUser:', currentUser);
       Alert.alert('Error', 'Please login to comment');
       return;
     }
 
-    const commentText = newComment.trim();
-    setNewComment(''); // Clear input immediately for better UX
+    const commentText = rawText;
+    
+    // Set submitting state FIRST
+    setIsSubmitting(true);
+    
+    // Clear input immediately
+    newCommentRef.current = '';
+    setNewComment('');
+    
+    // Defer keyboard dismiss to next frame to prevent blocking
+    requestAnimationFrame(() => {
+      Keyboard.dismiss();
+    });
 
-    // Optimistic UI update - add comment immediately
+    // Optimistic UI update - defer to next frame
     const tempComment: Comment = {
       id: `temp-${Date.now()}`,
       text: commentText,
@@ -136,56 +187,100 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
       reactions: {}
     };
 
-    setComments(prev => [tempComment, ...prev]);
+    requestAnimationFrame(() => {
+      setComments(prev => [tempComment, ...prev]);
+    });
 
-    // Then save to backend
-    console.log('[CommentSection] Adding comment to post:', postId, 'userId:', userId, 'userName:', displayName);
-    const result = await addComment(
-      postId,
-      userId,
-      displayName,
-      currentAvatar,
-      commentText
-    );
-
-    console.log('[CommentSection] addComment result:', result);
-
-    if (!result.success) {
-      // If failed, remove the temp comment and show error
-      setComments(prev => prev.filter(c => c.id !== tempComment.id));
-      setNewComment(commentText); // Restore the text
-      Alert.alert('Error', 'Failed to post comment: ' + result.error);
-    } else {
-      // Emit event to update post's commentCount in PostCard with ACTUAL count from backend
-      const actualCount = result.commentCount || result.data?.commentCount;
-      console.log('[CommentSection] Emitting post updated event with commentCount:', actualCount);
-      feedEventEmitter.emitPostUpdated(postId, {
-        commentAdded: true,
-        commentCount: actualCount  // Pass actual count, not boolean
+    try {
+      console.log('[CommentSection] Adding comment to post:', postId);
+      
+      // Add timeout to prevent indefinite hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Request timeout')), 10000);
       });
-      // Reload to get the real comment with correct ID
-      await loadComments();
+      
+      const result = await Promise.race([
+        addComment(postId, userId, displayName, currentAvatar, commentText),
+        timeoutPromise
+      ]) as any;
+
+      console.log('[CommentSection] addComment result:', result);
+
+      if (!result.success) {
+        // Remove temp comment on error
+        requestAnimationFrame(() => {
+          setComments(prev => prev.filter(c => c.id !== tempComment.id));
+          newCommentRef.current = commentText;
+          setNewComment(commentText); // Restore the text
+        });
+        Alert.alert('Error', 'Failed to post comment: ' + result.error);
+      } else {
+        // Emit event to update post's commentCount
+        const actualCount = result.commentCount || result.data?.commentCount;
+        feedEventEmitter.emitPostUpdated(postId, {
+          commentAdded: true,
+          commentCount: actualCount
+        });
+        
+        // Defer reload to prevent UI freeze
+        setTimeout(() => {
+          runAfterUiIdle(() => {
+            loadComments().catch(err => {
+              console.error('[CommentSection] Failed to reload comments:', err);
+            });
+          });
+        }, 300);
+      }
+    } catch (error: any) {
+      console.error('[CommentSection] Error in handleAddComment:', error);
+      requestAnimationFrame(() => {
+        setComments(prev => prev.filter(c => c.id !== tempComment.id));
+        newCommentRef.current = commentText;
+        setNewComment(commentText);
+      });
+      Alert.alert('Error', 'Failed to post comment. Please try again.');
+    } finally {
+      requestAnimationFrame(() => {
+        setIsSubmitting(false);
+      });
     }
   };
 
-  const handleAddReply = async () => {
-    if (!replyText.trim() || !replyTo || !currentUser) return;
+  const handleAddReply = async (overrideText?: string) => {
+    const rawText = (overrideText ?? replyTextRef.current ?? replyText).trim();
+    if (isSubmitting || !rawText || !replyTo || !currentUser) return;
+
+    setIsSubmitting(true);
+    Keyboard.dismiss();
 
     const reply = {
       id: Date.now().toString(),
       userId: currentUser.uid,
       userName: currentUser.displayName || 'User',
       userAvatar: currentAvatar,
-      text: replyText.trim(),
+      text: rawText,
       createdAt: Date.now()
     };
 
-    const result = await addCommentReply(postId, replyTo.id, reply);
+    try {
+      const result = await addCommentReply(postId, replyTo.id, reply);
 
-    if (result.success) {
-      setReplyText('');
-      setReplyTo(null);
-      await loadComments();
+      if (result.success) {
+        replyTextRef.current = '';
+        setReplyText('');
+        setReplyTo(null);
+        // Reload comments to show new reply immediately (without InteractionManager)
+        loadComments().catch(err => {
+          console.error('[CommentSection] Failed to reload comments after reply:', err);
+        });
+      } else {
+        Alert.alert('Error', 'Failed to post reply: ' + result.error);
+      }
+    } catch (error: any) {
+      console.error('[CommentSection] Error in handleAddReply:', error);
+      Alert.alert('Error', 'Failed to post reply. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -507,37 +602,41 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   return (
     <View style={styles.container}>
       {/* Comments List */}
-      <ScrollView
-        ref={scrollRef}
-        style={styles.scrollView}
-        contentContainerStyle={{ paddingBottom: 20 }}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#999" />
-          </View>
-        ) : comments.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Feather name="message-circle" size={48} color="#ddd" />
-            <Text style={styles.emptyText}>No comments yet</Text>
-            <Text style={styles.emptySubtext}>Be the first to comment!</Text>
-          </View>
-        ) : (
-          <View>
-            {comments.map((comment) => (
-              <View key={comment.id}>
-                {renderComment(comment)}
-              </View>
-            ))}
-          </View>
-        )}
-      </ScrollView>
+      {loading ? (
+        <View style={[styles.loadingContainer, listMaxHeightStyle]}>
+          <ActivityIndicator size="small" color="#999" />
+        </View>
+      ) : comments.length === 0 ? (
+        <View style={[styles.emptyContainer, listMaxHeightStyle]}>
+          <Feather name="message-circle" size={48} color="#ddd" />
+          <Text style={styles.emptyText}>No comments yet</Text>
+          <Text style={styles.emptySubtext}>Be the first to comment!</Text>
+        </View>
+      ) : (
+        <FlatList
+          ref={listRef}
+          style={[styles.scrollView, listMaxHeightStyle]}
+          contentContainerStyle={{ paddingBottom: 20 + keyboardHeight }}
+          data={comments}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => renderComment(item)}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="on-drag"
+          initialNumToRender={12}
+          windowSize={7}
+          removeClippedSubviews={false}
+        />
+      )}
 
       {/* Input Section - Fixed at Bottom */}
       {showInput && (
-        <View style={styles.inputContainer}>
+        <View
+          style={[
+            styles.inputContainer,
+            Platform.OS === 'android' && keyboardHeight > 0 ? { marginBottom: keyboardHeight } : null,
+          ]}
+        >
           {replyTo && (
             <View style={styles.replyingTo}>
               <Text style={styles.replyingToText}>
@@ -559,16 +658,43 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
               placeholder={replyTo ? "Write a reply..." : "Add a comment..."}
               placeholderTextColor="#999"
               value={replyTo ? replyText : newComment}
-              onChangeText={replyTo ? setReplyText : setNewComment}
+              onChangeText={(text) => {
+                if (replyTo) {
+                  replyTextRef.current = text;
+                  setReplyText(text);
+                } else {
+                  newCommentRef.current = text;
+                  setNewComment(text);
+                }
+              }}
               multiline
               maxLength={500}
+              blurOnSubmit={false}
+              returnKeyType="default"
+              editable={!isSubmitting}
             />
             <TouchableOpacity
-              style={[styles.sendBtn, !(replyTo ? replyText : newComment).trim() && styles.sendBtnDisabled]}
-              onPress={replyTo ? handleAddReply : handleAddComment}
-              disabled={!(replyTo ? replyText : newComment).trim()}
+              style={[styles.sendBtn, (!(replyTo ? replyText : newComment).trim() || isSubmitting) && styles.sendBtnDisabled]}
+              onPress={() => {
+                console.log('[CommentSection] Send button pressed');
+                const textAtPress = replyTo ? replyTextRef.current : newCommentRef.current;
+                // Dismiss keyboard first, then immediately post comment
+                Keyboard.dismiss();
+                if (replyTo) {
+                  handleAddReply(textAtPress);
+                } else {
+                  handleAddComment(textAtPress);
+                }
+              }}
+              disabled={!(replyTo ? replyText : newComment).trim() || isSubmitting}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.6}
             >
-              <Ionicons name="send" size={20} color={(replyTo ? replyText : newComment).trim() ? '#007aff' : '#ccc'} />
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#007aff" />
+              ) : (
+                <Ionicons name="send" size={20} color={(replyTo ? replyText : newComment).trim() ? '#007aff' : '#ccc'} />
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -576,41 +702,46 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
 
       {/* Edit Modal */}
       {editingComment && (
-        <Modal visible transparent animationType="fade">
-          <View style={styles.modalOverlay}>
-            <View style={styles.editModal}>
-              <View style={styles.editHeader}>
-                <Text style={styles.editTitle}>Edit Comment</Text>
-                <TouchableOpacity onPress={() => setEditingComment(null)}>
-                  <Feather name="x" size={24} color="#222" />
-                </TouchableOpacity>
-              </View>
+        <Modal visible transparent animationType="fade" onRequestClose={() => setEditingComment(null)}>
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.editModal}>
+                <View style={styles.editHeader}>
+                  <Text style={styles.editTitle}>Edit Comment</Text>
+                  <TouchableOpacity onPress={() => setEditingComment(null)}>
+                    <Feather name="x" size={24} color="#222" />
+                  </TouchableOpacity>
+                </View>
 
-              <TextInput
-                style={styles.editInput}
-                value={editingComment.text}
-                onChangeText={(text) => setEditingComment({ ...editingComment, text })}
-                multiline
-                autoFocus
-                maxLength={500}
-              />
+                <TextInput
+                  style={styles.editInput}
+                  value={editingComment.text}
+                  onChangeText={(text) => setEditingComment({ ...editingComment, text })}
+                  multiline
+                  autoFocus
+                  maxLength={500}
+                />
 
-              <View style={styles.editActions}>
-                <TouchableOpacity
-                  style={[styles.editBtn, styles.cancelBtn]}
-                  onPress={() => setEditingComment(null)}
-                >
-                  <Text style={styles.cancelBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.editBtn, styles.saveBtn]}
-                  onPress={handleEditComment}
-                >
-                  <Text style={styles.saveBtnText}>Save</Text>
-                </TouchableOpacity>
+                <View style={styles.editActions}>
+                  <TouchableOpacity
+                    style={[styles.editBtn, styles.cancelBtn]}
+                    onPress={() => setEditingComment(null)}
+                  >
+                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.editBtn, styles.saveBtn]}
+                    onPress={handleEditComment}
+                  >
+                    <Text style={styles.saveBtnText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       )}
 

@@ -15,9 +15,11 @@ import {
   Dimensions,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   Share,
   StyleSheet,
@@ -36,9 +38,7 @@ import { Audio } from 'expo-av';
 import { ZEEGOCLOUD_CONFIG, generateRoomId } from '../config/zeegocloud';
 import ZeegocloudStreamingService from '../services/implementations/ZeegocloudStreamingService';
 import ZeegocloudLiveHost from './_components/ZeegocloudLiveHost';
-import { endLiveStream, getActiveLiveStreams, startLiveStream } from '../lib/firebaseHelpers/live';
-
-import { INSTAGRAM_LIGHT_MAP_STYLE } from '../lib/instagramMapStyle';
+import { endLiveStream, getActiveLiveStreams, startLiveStream, subscribeToLiveViewers } from '../lib/firebaseHelpers/live';
 
 let MapView: any = null;
 let Marker: any = null;
@@ -77,6 +77,10 @@ function formatDistance(km: number): string {
   return `${km.toFixed(1)}km`;
 }
 
+function clampNumber(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
 interface Comment {
   id: string;
   userId: string;
@@ -97,6 +101,7 @@ export default function GoLiveScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const zeegocloudServiceRef = useRef<ZeegocloudStreamingService | null>(null);
+  const viewersUnsubRef = useRef<null | (() => void)>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [roomId, setRoomId] = useState('');
@@ -182,8 +187,8 @@ export default function GoLiveScreen() {
 
   const endStreamSilently = useCallback(async () => {
     try {
-      if (!isStreamingRef.current) return;
       if (isExplicitlyEndingRef.current) return;
+      if (!isStreamingRef.current) return;
 
       isExplicitlyEndingRef.current = true;
 
@@ -198,6 +203,13 @@ export default function GoLiveScreen() {
 
       setIsStreaming(false);
       isStreamingRef.current = false;
+
+      try {
+        if (viewersUnsubRef.current) {
+          viewersUnsubRef.current();
+          viewersUnsubRef.current = null;
+        }
+      } catch {}
 
       try {
         let streamId = backendStreamIdRef.current;
@@ -219,12 +231,44 @@ export default function GoLiveScreen() {
     } catch (e: any) {
       logger.error('endStreamSilently failed:', e);
     }
-  }, [currentUser?.uid, resolveOwnActiveStreamId]);
-  
+  }, []);
+
+  const startViewersPolling = useCallback((streamId: string) => {
+    try {
+      if (!streamId) return;
+      if (viewersUnsubRef.current) {
+        try { viewersUnsubRef.current(); } catch {}
+        viewersUnsubRef.current = null;
+      }
+
+      const unsub = subscribeToLiveViewers(
+        String(streamId),
+        (items) => {
+          const mapped: Viewer[] = (Array.isArray(items) ? items : []).map((v: any) => ({
+            id: String(v?.id || ''),
+            name: String(v?.name || 'Viewer'),
+            avatar: (typeof v?.avatar === 'string' && v.avatar.trim().length > 0) ? v.avatar : DEFAULT_AVATAR_URL,
+          }));
+          setViewers(mapped);
+        },
+        (count) => {
+          if (typeof count === 'number') setViewerCount(count);
+        }
+      );
+
+      viewersUnsubRef.current = () => {
+        try { unsub(); } catch {}
+      };
+    } catch (e: any) {
+      logger.error('Start viewers polling failed:', e);
+    }
+  }, []);
+
   // Controls state
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isUsingFrontCamera, setIsUsingFrontCamera] = useState(true);
+
   
   // Location state
   const [location, setLocation] = useState<{latitude: number; longitude: number} | null>(null);
@@ -305,6 +349,7 @@ export default function GoLiveScreen() {
   // Comments state
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
+  const [lastReadTs, setLastReadTs] = useState(0);
   
   // Viewers state
   const [viewers, setViewers] = useState<Viewer[]>([]);
@@ -315,6 +360,40 @@ export default function GoLiveScreen() {
   const [showViewers, setShowViewers] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [canToggleComments, setCanToggleComments] = useState(false);
+
+  const commentsListRef = useRef<FlatList<Comment> | null>(null);
+  const shouldAutoScrollRef = useRef(true);
+
+  const unreadCount = comments.reduce((acc, c) => acc + ((Number(c?.timestamp) || 0) > lastReadTs ? 1 : 0), 0);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const subShow = Keyboard.addListener(showEvent as any, (e: any) => {
+      const h = e?.endCoordinates?.height;
+      setKeyboardHeight(typeof h === 'number' ? h : 0);
+    });
+    const subHide = Keyboard.addListener(hideEvent as any, () => setKeyboardHeight(0));
+
+    return () => {
+      try { subShow.remove(); } catch {}
+      try { subHide.remove(); } catch {}
+    };
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => setCanToggleComments(true), 350);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (!showComments) return;
+    const latest = comments.reduce((m, c) => Math.max(m, Number(c?.timestamp) || 0), 0);
+    setLastReadTs(latest);
+  }, [showComments, comments]);
 
   // Stats
   const [streamDuration, setStreamDuration] = useState(0);
@@ -487,6 +566,10 @@ export default function GoLiveScreen() {
             normalizeStreamId(resp?.data?._id) ||
             normalizeStreamId(resp?.id);
           if (newId) backendStreamIdRef.current = newId;
+
+          if (newId) {
+            startViewersPolling(String(newId));
+          }
         } catch (e: any) {
           logger.error('Start live stream (backend) failed:', e);
         }
@@ -524,6 +607,13 @@ export default function GoLiveScreen() {
 
               setIsStreaming(false);
               isStreamingRef.current = false;
+
+              try {
+                if (viewersUnsubRef.current) {
+                  viewersUnsubRef.current();
+                  viewersUnsubRef.current = null;
+                }
+              } catch {}
 
               // TODO: Update backend that stream ended
 
@@ -586,8 +676,14 @@ export default function GoLiveScreen() {
       timestamp: Date.now(),
     };
 
-    setComments([...comments, comment]);
+    setComments(prev => [...prev, comment]);
     setNewComment('');
+
+    requestAnimationFrame(() => {
+      try {
+        commentsListRef.current?.scrollToEnd({ animated: true });
+      } catch {}
+    });
 
     // TODO: Send to backend/Firebase
   };
@@ -629,6 +725,17 @@ export default function GoLiveScreen() {
     };
   }, [endStreamSilently]);
 
+  useEffect(() => {
+    return () => {
+      try {
+        if (viewersUnsubRef.current) {
+          viewersUnsubRef.current();
+          viewersUnsubRef.current = null;
+        }
+      } catch {}
+    };
+  }, []);
+
   // Render comment item
   const renderComment = ({ item }: { item: Comment }) => (
     <View style={styles.commentItem}>
@@ -645,12 +752,12 @@ export default function GoLiveScreen() {
     let distance = '';
     if (location && item.location) {
       const km = calculateDistance(location.latitude, location.longitude, item.location.latitude, item.location.longitude);
-      distance = formatDistance(km);
+      distance = `${km.toFixed(1)} km`;
     }
 
     return (
       <View style={styles.viewerItem}>
-        <Image source={{ uri: item.avatar }} style={styles.viewerAvatar} />
+        <Image source={{ uri: item.avatar || DEFAULT_AVATAR_URL }} style={styles.viewerAvatar} />
         <View style={styles.viewerInfo}>
           <Text style={styles.viewerName}>{item.name}</Text>
           {distance && <Text style={styles.viewerDistance}>{distance} away</Text>}
@@ -762,6 +869,8 @@ export default function GoLiveScreen() {
               {Platform.OS !== 'web' && MapView ? (
                 <MapView
                   style={styles.pickerMap}
+                  googleRenderer={Platform.OS === 'android' ? 'LATEST' : undefined}
+                  mapType="standard"
                   initialRegion={{
                     latitude: pickerLocation.latitude,
                     longitude: pickerLocation.longitude,
@@ -769,7 +878,6 @@ export default function GoLiveScreen() {
                     longitudeDelta: 0.02,
                   }}
                   provider={Platform.OS === 'ios' ? 'google' : undefined}
-                  customMapStyle={INSTAGRAM_LIGHT_MAP_STYLE}
                   onPress={(e: any) => {
                     const coord = e?.nativeEvent?.coordinate;
                     if (coord && typeof coord.latitude === 'number' && typeof coord.longitude === 'number') {
@@ -840,24 +948,28 @@ export default function GoLiveScreen() {
 
       {/* Overlay UI */}
       <View style={styles.overlay}>
-        {/* Top Bar */}
-        <View style={styles.topBar}>
-          <View style={styles.liveIndicator}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE</Text>
-            <Text style={styles.durationText}>{formatDuration(streamDuration)}</Text>
-          </View>
+        <View style={[styles.figmaTopRow, { paddingTop: 12 + (insets?.top || 0) }]} pointerEvents="box-none">
+          <TouchableOpacity
+            style={styles.viewersPill}
+            onPress={() => setShowViewers(true)}
+            activeOpacity={0.85}
+          >
+            <View style={styles.avatarStack}>
+              {(Array.isArray(viewers) ? viewers : []).slice(0, 4).map((v, idx) => (
+                <Image
+                  key={`${v?.id || idx}`}
+                  source={{ uri: v?.avatar || DEFAULT_AVATAR_URL }}
+                  style={[styles.avatarStackItem, { marginLeft: idx === 0 ? 0 : -10, zIndex: 10 - idx }]}
+                />
+              ))}
+            </View>
+            <Text style={styles.viewersPillText}>{(typeof viewerCount === 'number' ? viewerCount : viewers.length)} Viewers</Text>
+            <View style={styles.liveDotGreen} />
+          </TouchableOpacity>
 
-          <View style={styles.topRight}>
-            <TouchableOpacity style={styles.iconButton} onPress={() => setShowStats(!showStats)}>
-              <Ionicons name="stats-chart" size={20} color="#fff" />
-              <Text style={styles.iconButtonText}>{viewerCount}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.iconButton} onPress={handleShare}>
-              <Ionicons name="share-social" size={20} color="#fff" />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity style={styles.endPill} onPress={handleEndStream} activeOpacity={0.9}>
+            <Text style={styles.endPillText}>End</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Stats Panel */}
@@ -872,72 +984,129 @@ export default function GoLiveScreen() {
         )}
 
         {/* Bottom Controls */}
-        <View style={[styles.bottomBar, { paddingBottom: 16 + (insets?.bottom || 0) }]}>
-          <TouchableOpacity style={styles.controlButton} onPress={toggleMute}>
-            <Ionicons name={isMuted ? "mic-off" : "mic"} size={24} color="#fff" />
-          </TouchableOpacity>
+        <View
+          style={[styles.bottomBar, { paddingBottom: 16 + (insets?.bottom || 0) }]}
+          pointerEvents={showComments ? 'box-none' : 'auto'}
+        >
+          <View pointerEvents={showComments ? 'none' : 'auto'}>
+            <TouchableOpacity
+              style={styles.controlButton}
+              onPress={() => setShowMap(!showMap)}
+            >
+              <Ionicons name="map" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity style={styles.controlButton} onPress={toggleCamera}>
-            <Ionicons name={isCameraOn ? "videocam" : "videocam-off"} size={24} color="#fff" />
-          </TouchableOpacity>
+          <View pointerEvents={showComments ? 'none' : 'auto'}>
+            <TouchableOpacity
+              style={styles.controlButton}
+              onPress={toggleCameraFacing}
+            >
+              <Ionicons name="camera" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity style={styles.controlButton} onPress={toggleCameraFacing}>
-            <Ionicons name="camera-reverse" size={24} color="#fff" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.controlButton} onPress={() => setShowComments(!showComments)}>
+          <TouchableOpacity
+            style={styles.controlButton}
+            onPress={() => {
+              if (!canToggleComments) return;
+              setShowComments(v => !v);
+            }}
+          >
             <Ionicons name="chatbubble" size={24} color="#fff" />
-            {comments.length > 0 && (
+            {unreadCount > 0 && !showComments && !showMap && !showViewers && !showStats && (
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>{comments.length}</Text>
+                <Text style={styles.badgeText}>{unreadCount}</Text>
               </View>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.controlButton} onPress={() => setShowViewers(!showViewers)}>
-            <Ionicons name="people" size={24} color="#fff" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.controlButton} onPress={() => setShowMap(!showMap)}>
-            <Ionicons name="map" size={24} color="#fff" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.controlButton, styles.endButton]} onPress={handleEndStream}>
-            <Ionicons name="close-circle" size={24} color="#fff" />
-          </TouchableOpacity>
+          <View pointerEvents={showComments ? 'none' : 'auto'}>
+            <TouchableOpacity
+              style={styles.controlButton}
+              onPress={handleShare}
+            >
+              <Ionicons
+                name="paper-plane"
+                size={22}
+                color="#fff"
+                style={{ transform: [{ rotate: '-25deg' }, { translateY: -1 }] }}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
       {/* Comments Panel */}
       {showComments && (
-        <View style={styles.commentsPanel}>
-          <View style={styles.commentsPanelHeader}>
-            <Text style={styles.commentsPanelTitle}>Comments ({comments.length})</Text>
-            <TouchableOpacity onPress={() => setShowComments(false)}>
-              <Ionicons name="close" size={24} color="#000" />
-            </TouchableOpacity>
-          </View>
-
-          <FlatList
-            data={comments}
-            renderItem={renderComment}
-            keyExtractor={(item) => item.id}
-            style={styles.commentsList}
+        <View style={styles.commentsOverlay} pointerEvents="box-none">
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setShowComments(false)}
           />
 
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-            <View style={styles.commentInput}>
+          <View style={{ flex: 1 }}>
+            <View style={[styles.commentsOverlayHeader, { paddingTop: 12 + (insets?.top || 0) }]}>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity onPress={() => setShowComments(false)} style={styles.commentsOverlayClose}>
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              ref={(r) => {
+                commentsListRef.current = r;
+              }}
+              data={comments}
+              renderItem={renderComment}
+              keyExtractor={(item) => item.id}
+              style={[
+                styles.commentsOverlayList,
+                {
+                  top: Math.round(height * 0.42),
+                  bottom: clampNumber(82 + (insets?.bottom || 0) + (keyboardHeight || 0), 82, height),
+                },
+              ]}
+              contentContainerStyle={[
+                styles.commentsOverlayListContent,
+                { paddingBottom: 12 },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              onScroll={(e) => {
+                const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+                const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+                shouldAutoScrollRef.current = distanceFromBottom < 40;
+              }}
+              scrollEventThrottle={16}
+              onContentSizeChange={() => {
+                if (!shouldAutoScrollRef.current) return;
+                try {
+                  commentsListRef.current?.scrollToEnd({ animated: true });
+                } catch {}
+              }}
+            />
+
+            <View
+              style={[
+                styles.commentsOverlayInputRow,
+                {
+                  paddingBottom: 12 + (insets?.bottom || 0),
+                  bottom: keyboardHeight ? keyboardHeight : 70,
+                },
+              ]}
+            >
               <TextInput
-                style={styles.commentTextInput}
-                placeholder="Add a comment..."
+                style={styles.commentsOverlayTextInput}
+                placeholder="Send a message"
+                placeholderTextColor="rgba(255,255,255,0.7)"
                 value={newComment}
                 onChangeText={setNewComment}
               />
-              <TouchableOpacity onPress={handleSendComment} style={styles.sendButton}>
-                <Ionicons name="send" size={20} color="#667eea" />
+              <TouchableOpacity onPress={handleSendComment} style={styles.commentsOverlaySendBtn}>
+                <Ionicons name="paper-plane" size={18} color="#fff" style={{ transform: [{ rotate: '-25deg' }, { translateY: -1 }] }} />
               </TouchableOpacity>
             </View>
-          </KeyboardAvoidingView>
+          </View>
         </View>
       )}
 
@@ -945,10 +1114,10 @@ export default function GoLiveScreen() {
       {showViewers && (
         <View style={styles.viewersPanel}>
           <View style={styles.viewersPanelHeader}>
-            <Text style={styles.viewersPanelTitle}>Viewers ({viewers.length})</Text>
             <TouchableOpacity onPress={() => setShowViewers(false)}>
               <Ionicons name="close" size={24} color="#000" />
             </TouchableOpacity>
+            <Text style={styles.viewersPanelTitle}>Viewers ({viewers.length})</Text>
           </View>
 
           <FlatList
@@ -973,6 +1142,8 @@ export default function GoLiveScreen() {
           {Platform.OS !== 'web' && MapView ? (
             <MapView
               style={styles.map}
+              googleRenderer={Platform.OS === 'android' ? 'LATEST' : undefined}
+              mapType="standard"
               initialRegion={{
                 latitude: (location || manualLocation)!.latitude,
                 longitude: (location || manualLocation)!.longitude,
@@ -980,7 +1151,6 @@ export default function GoLiveScreen() {
                 longitudeDelta: 0.01,
               }}
               provider={Platform.OS === 'ios' ? 'google' : undefined}
-              customMapStyle={INSTAGRAM_LIGHT_MAP_STYLE}
             >
               <Marker coordinate={(location || manualLocation)!} title="You are here" />
             </MapView>
@@ -1026,6 +1196,14 @@ const styles = StyleSheet.create({
   pickerConfirmText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   videoContainer: { flex: 1, backgroundColor: '#000' },
   overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'box-none' },
+  figmaTopRow: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 60, elevation: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 },
+  viewersPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.35)' },
+  avatarStack: { flexDirection: 'row', alignItems: 'center', marginRight: 10 },
+  avatarStackItem: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)' },
+  viewersPillText: { fontSize: 13, fontWeight: '600', color: '#fff', marginRight: 8 },
+  liveDotGreen: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#2ecc71' },
+  endPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, backgroundColor: '#ff4d4f' },
+  endPillText: { fontSize: 13, fontWeight: '700', color: '#fff' },
   topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: 'rgba(0,0,0,0.5)' },
   liveIndicator: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#e74c3c', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff', marginRight: 6 },
@@ -1037,7 +1215,7 @@ const styles = StyleSheet.create({
   statsPanel: { position: 'absolute', top: 70, right: 16, backgroundColor: 'rgba(0,0,0,0.8)', padding: 16, borderRadius: 12, minWidth: 200 },
   statsTitle: { fontSize: 16, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
   statsText: { fontSize: 14, color: '#fff', marginTop: 4 },
-  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16, backgroundColor: 'transparent' },
+  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 50, elevation: 50, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16, backgroundColor: 'transparent' },
   controlButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   endButton: { backgroundColor: '#e74c3c' },
   badge: { position: 'absolute', top: -4, right: -4, backgroundColor: '#e74c3c', borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
@@ -1046,23 +1224,31 @@ const styles = StyleSheet.create({
   commentsPanelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
   commentsPanelTitle: { fontSize: 18, fontWeight: 'bold', color: '#000' },
   commentsList: { flex: 1 },
-  commentItem: { flexDirection: 'row', padding: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  commentAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 12 },
-  commentContent: { flex: 1 },
-  commentUser: { fontSize: 14, fontWeight: '600', color: '#000', marginBottom: 4 },
-  commentText: { fontSize: 14, color: '#333' },
+  commentItem: { flexDirection: 'row', paddingVertical: 8 },
+  commentAvatar: { width: 28, height: 28, borderRadius: 14, marginRight: 10 },
+  commentContent: { flex: 1, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.35)' },
+  commentUser: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 2 },
+  commentText: { fontSize: 13, color: 'rgba(255,255,255,0.92)' },
   commentInput: { flexDirection: 'row', alignItems: 'center', padding: 12, borderTopWidth: 1, borderTopColor: '#eee' },
   commentTextInput: { flex: 1, borderWidth: 1, borderColor: '#ddd', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, marginRight: 8 },
   sendButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' },
+  commentsOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, elevation: 10, flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  commentsOverlayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingHorizontal: 16, paddingBottom: 12 },
+  commentsOverlayClose: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.35)' },
+  commentsOverlayList: { position: 'absolute', left: 0, right: 0 },
+  commentsOverlayListContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 90 },
+  commentsOverlayInputRow: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 10 },
+  commentsOverlayTextInput: { flex: 1, height: 44, borderRadius: 22, paddingHorizontal: 14, paddingRight: 60, color: '#fff', backgroundColor: 'rgba(0,0,0,0.35)' },
+  commentsOverlaySendBtn: { position: 'absolute', right: 16, top: 10, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' },
   viewersPanel: { position: 'absolute', bottom: 0, left: 0, right: 0, height: height * 0.5, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   viewersPanelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
   viewersPanelTitle: { fontSize: 18, fontWeight: 'bold', color: '#000' },
   viewersList: { flex: 1 },
-  viewerItem: { flexDirection: 'row', padding: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  viewerItem: { flexDirection: 'row-reverse', justifyContent: 'flex-end', padding: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   viewerAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 12 },
-  viewerInfo: { flex: 1, justifyContent: 'center' },
-  viewerName: { fontSize: 14, fontWeight: '600', color: '#000' },
-  viewerDistance: { fontSize: 12, color: '#666', marginTop: 2 },
+  viewerInfo: { flex: 1, justifyContent: 'center', alignItems: 'flex-end' },
+  viewerName: { fontSize: 14, fontWeight: '600', color: '#000', textAlign: 'right' },
+  viewerDistance: { fontSize: 12, color: '#666', marginTop: 2, textAlign: 'right' },
   mapPanel: { position: 'absolute', bottom: 0, left: 0, right: 0, height: height * 0.5, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   mapPanelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
   mapPanelTitle: { fontSize: 18, fontWeight: 'bold', color: '#000' },

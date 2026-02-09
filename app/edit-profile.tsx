@@ -527,7 +527,7 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
   },
   avatarContainer: { 
-    alignItems: 'center', 
+    alignItems: 'flex-end', 
     marginBottom: 32 
   },
   avatar: { 
@@ -540,18 +540,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, 
     paddingVertical: 12, 
     borderBottomWidth: 0.5, 
-    borderBottomColor: '#e0e0e0' 
+    borderBottomColor: '#e0e0e0',
+    alignItems: 'flex-end',
   },
   fieldLabel: { 
     fontSize: 13, 
     color: '#000', 
     fontWeight: '600', 
-    marginBottom: 6 
+    marginBottom: 6,
+    textAlign: 'right',
+    alignSelf: 'stretch',
   },
   input: { 
     fontSize: 14, 
     color: '#999', 
-    paddingVertical: 4 
+    paddingVertical: 4,
+    textAlign: 'right',
+    alignSelf: 'stretch',
   },
   error: {
     color: '#e0245e',

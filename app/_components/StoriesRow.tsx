@@ -107,6 +107,11 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
   }, [refreshTrigger]);
 
   useEffect(() => {
+    if (!authUser?.uid) return;
+    loadCurrentUserAvatar();
+  }, [authUser?.uid]);
+
+  useEffect(() => {
     if (!mirror) return;
     // Ensure the horizontal list starts from the right (Option A)
     requestAnimationFrame(() => {
@@ -189,8 +194,9 @@ function StoriesRowComponent({ onStoryPress, onStoryViewerClose, refreshTrigger,
     if (authUser && authUser.uid) {
       try {
         const userProfile = await getUserProfile(authUser.uid);
-        if (userProfile.data?.avatar) {
-          setCurrentUserAvatar(userProfile.data.avatar);
+        const avatar = userProfile?.data?.avatar || userProfile?.data?.photoURL;
+        if (avatar) {
+          setCurrentUserAvatar(String(avatar));
           return;
         }
       } catch (err) {

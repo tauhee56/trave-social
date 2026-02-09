@@ -32,6 +32,8 @@ const GRID_SIZE = width / 3;
 const MIN_MEDIA_RATIO = 4 / 5;
 const MAX_MEDIA_RATIO = 1.91;
 
+const DEFAULT_AVATAR_URL = 'https://via.placeholder.com/200x200.png?text=Profile';
+
 type LocationType = {
   name: string;
   address: string;
@@ -45,6 +47,7 @@ type UserType = {
   uid: string;
   displayName?: string;
   userName?: string;
+  photoURL?: string | null;
 };
 
 export default function CreatePostScreen() {
@@ -1050,75 +1053,79 @@ export default function CreatePostScreen() {
         <Modal visible={showLocationModal} animationType="slide" transparent onRequestClose={() => setShowLocationModal(false)}>
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
             <KeyboardAvoidingView
+              style={{ flex: 1 }}
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
               keyboardVerticalOffset={Platform.select({ ios: 90, android: 0 })}
-              style={{
-                backgroundColor: '#fff',
-                borderTopLeftRadius: 32,
-                borderTopRightRadius: 32,
-                paddingHorizontal: 20,
-                paddingTop: 20,
-                paddingBottom: 24,
-                height: getModalHeight(0.8)
-              }}
             >
-              {/* Handle bar */}
-              <View style={{ width: 40, height: 5, backgroundColor: '#e0e0e0', borderRadius: 2.5, alignSelf: 'center', marginBottom: 20 }} />
-              <Text style={{ fontWeight: '700', fontSize: 20, marginBottom: 12, color: '#000' }}>Add Location</Text>
-              <TextInput
-                style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14, fontSize: 16, backgroundColor: '#f9f9f9' }}
-                placeholder="Search location..."
-                placeholderTextColor="#999"
-                value={locationSearch}
-                onChangeText={async (text) => {
-                  setLocationSearch(text);
-                  if (text.length > 2) {
-                    setLoadingLocationResults(true);
-                    try {
-                      const suggestions = await mapService.getAutocompleteSuggestions(text);
-                      setLocationResults(suggestions.map((s: any) => ({
-                        name: s.description.split(',')[0],
-                        address: s.description,
-                        placeId: s.placeId,
-                        lat: 0,
-                        lon: 0
-                      })));
-                    } catch (e) {
-                      setLocationResults([]);
-                    }
-                    setLoadingLocationResults(false);
-                  } else {
-                    setLocationResults([]);
-                  }
-                }}
-              />
-              {loadingLocationResults ? (
-                <ActivityIndicator size="small" color="#FFB800" />
-              ) : (
-                <FlatList
-                  data={locationResults}
-                  keyExtractor={item => item.placeId || item.name}
-                  keyboardShouldPersistTaps="handled"
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={{ paddingVertical: 10 }}
-                      onPress={() => {
-                        setLocation(item);
-                        setShowLocationModal(false);
-                      }}
-                    >
-                      <Text style={{ fontSize: 16 }}>{item.name}</Text>
-                      <Text style={{ color: '#888', fontSize: 13 }}>{item.address}</Text>
-                    </TouchableOpacity>
+              <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                <View style={{
+                  backgroundColor: '#fff',
+                  borderTopLeftRadius: 32,
+                  borderTopRightRadius: 32,
+                  paddingHorizontal: 20,
+                  paddingTop: 20,
+                  paddingBottom: 24,
+                  height: getModalHeight(0.8)
+                }}>
+                  {/* Handle bar */}
+                  <View style={{ width: 40, height: 5, backgroundColor: '#e0e0e0', borderRadius: 2.5, alignSelf: 'center', marginBottom: 20 }} />
+                  <Text style={{ fontWeight: '700', fontSize: 20, marginBottom: 12, color: '#000' }}>Add Location</Text>
+                  <TextInput
+                    style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14, fontSize: 16, backgroundColor: '#f9f9f9' }}
+                    placeholder="Search location..."
+                    placeholderTextColor="#999"
+                    value={locationSearch}
+                    onChangeText={async (text) => {
+                      setLocationSearch(text);
+                      if (text.length > 2) {
+                        setLoadingLocationResults(true);
+                        try {
+                          const suggestions = await mapService.getAutocompleteSuggestions(text);
+                          setLocationResults(suggestions.map((s: any) => ({
+                            name: s.description.split(',')[0],
+                            address: s.description,
+                            placeId: s.placeId,
+                            lat: 0,
+                            lon: 0
+                          })));
+                        } catch (e) {
+                          setLocationResults([]);
+                        }
+                        setLoadingLocationResults(false);
+                      } else {
+                        setLocationResults([]);
+                      }
+                    }}
+                  />
+                  {loadingLocationResults ? (
+                    <ActivityIndicator size="small" color="#FFB800" />
+                  ) : (
+                    <FlatList
+                      data={locationResults}
+                      keyExtractor={(item, idx) => String(item.placeId || item.name || idx)}
+                      keyboardShouldPersistTaps="handled"
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={{ paddingVertical: 10 }}
+                          onPress={() => {
+                            setLocation(item);
+                            setShowLocationModal(false);
+                          }}
+                        >
+                          <Text style={{ fontSize: 16 }}>{item.name}</Text>
+                          <Text style={{ color: '#888', fontSize: 13 }}>{item.address}</Text>
+                        </TouchableOpacity>
+                      )}
+                      ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No results</Text>}
+                    />
                   )}
-                  ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No results</Text>}
-                />
-              )}
-              {/* Close Button */}
-              <View style={{ paddingVertical: 12, alignItems: 'center' }}>
-                <TouchableOpacity onPress={() => setShowLocationModal(false)}>
-                  <Text style={{ color: '#f39c12', fontWeight: '700', fontSize: 16 }}>Close</Text>
-                </TouchableOpacity>
+                  {/* Close Button */}
+                  <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                    <TouchableOpacity onPress={() => setShowLocationModal(false)}>
+                      <Text style={{ color: '#f39c12', fontWeight: '700', fontSize: 16 }}>Close</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
             </KeyboardAvoidingView>
           </View>
@@ -1126,165 +1133,199 @@ export default function CreatePostScreen() {
         {/* Verified Location Modal */}
         <Modal visible={showVerifiedModal} animationType="slide" transparent onRequestClose={() => setShowVerifiedModal(false)}>
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
-            <View style={{
-              backgroundColor: '#fff',
-              borderTopLeftRadius: 32,
-              borderTopRightRadius: 32,
-              paddingHorizontal: 20,
-              paddingTop: 20,
-              paddingBottom: 24,
-              height: getModalHeight(0.8)
-            }}>
-              {/* Handle bar */}
-              <View style={{ width: 40, height: 5, backgroundColor: '#e0e0e0', borderRadius: 2.5, alignSelf: 'center', marginBottom: 20 }} />
-              <Text style={{ fontWeight: '700', fontSize: 20, marginBottom: 12, color: '#000' }}>Select Verified Location</Text>
-              <Text style={{ color: '#888', marginBottom: 12 }}>
-                Only your current GPS location or passport ticket locations can be used as verified location.
-              </Text>
+            <KeyboardAvoidingView
+              style={{ flex: 1 }}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.select({ ios: 90, android: 0 })}
+            >
+              <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                <View style={{
+                  backgroundColor: '#fff',
+                  borderTopLeftRadius: 32,
+                  borderTopRightRadius: 32,
+                  paddingHorizontal: 20,
+                  paddingTop: 20,
+                  paddingBottom: 24,
+                  height: getModalHeight(0.8)
+                }}>
+                  {/* Handle bar */}
+                  <View style={{ width: 40, height: 5, backgroundColor: '#e0e0e0', borderRadius: 2.5, alignSelf: 'center', marginBottom: 20 }} />
+                  <Text style={{ fontWeight: '700', fontSize: 20, marginBottom: 12, color: '#000' }}>Select Verified Location</Text>
+                  <Text style={{ color: '#888', marginBottom: 12 }}>
+                    Only your current GPS location or passport ticket locations can be used as verified location.
+                  </Text>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#f9f9f9', marginBottom: 12 }}>
-                <Feather name="search" size={18} color="#999" style={{ marginRight: 8 }} />
-                <TextInput
-                  placeholder="Search nearby (100m)..."
-                  placeholderTextColor="#999"
-                  value={verifiedSearch}
-                  onChangeText={setVerifiedSearch}
-                  style={{ flex: 1, fontSize: 16, color: '#111' }}
-                />
-              </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#f9f9f9', marginBottom: 12 }}>
+                    <Feather name="search" size={18} color="#999" style={{ marginRight: 8 }} />
+                    <TextInput
+                      placeholder="Search nearby (100m)..."
+                      placeholderTextColor="#999"
+                      value={verifiedSearch}
+                      onChangeText={setVerifiedSearch}
+                      style={{ flex: 1, fontSize: 16, color: '#111' }}
+                    />
+                  </View>
 
-              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                <Text style={{ fontWeight: '700', fontSize: 14, color: '#111', marginBottom: 8 }}>Nearby (100m)</Text>
-                {verifiedCenter ? null : (
-                  <Text style={{ color: '#888', marginBottom: 12 }}>Enable location permission to see nearby verified places.</Text>
-                )}
-
-                {loadingVerifiedResults ? (
-                  <ActivityIndicator size="small" color="#FFB800" style={{ marginVertical: 10 }} />
-                ) : (
-                  <FlatList
-                    data={verifiedResults}
-                    scrollEnabled={false}
-                    keyExtractor={(item) => item.placeId || (item.name + item.lat + item.lon)}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}
-                        onPress={() => {
-                          setVerifiedLocation(item);
-                          setShowVerifiedModal(false);
-                        }}
-                      >
-                        <Text style={{ fontSize: 16, fontWeight: '600' }}>{item.name}</Text>
-                        <Text style={{ color: '#888', fontSize: 13 }}>{item.address}</Text>
-                        <Text style={{ color: '#007aff', fontSize: 12, marginTop: 2 }}>Verified</Text>
-                      </TouchableOpacity>
+                  <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                    <Text style={{ fontWeight: '700', fontSize: 14, color: '#111', marginBottom: 8 }}>Nearby (100m)</Text>
+                    {verifiedCenter ? null : (
+                      <Text style={{ color: '#888', marginBottom: 12 }}>Enable location permission to see nearby verified places.</Text>
                     )}
-                    ListEmptyComponent={<Text style={{ color: '#888', marginTop: 6 }}>No nearby locations found</Text>}
-                  />
-                )}
 
-                <Text style={{ fontWeight: '700', fontSize: 14, color: '#111', marginTop: 18, marginBottom: 8 }}>Passport / GPS</Text>
-                <FlatList
-                  data={verifiedOptions}
-                  scrollEnabled={false}
-                  keyExtractor={item => item.name + item.lat + item.lon}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}
-                      onPress={() => {
-                        setVerifiedLocation(item);
-                        setShowVerifiedModal(false);
-                      }}
-                    >
-                      <Text style={{ fontSize: 16, fontWeight: '600' }}>{item.name}</Text>
-                      <Text style={{ color: '#888', fontSize: 13 }}>{item.address}</Text>
-                      <Text style={{ color: '#007aff', fontSize: 12, marginTop: 2 }}>{item.verified ? 'Verified' : ''}</Text>
+                    {loadingVerifiedResults ? (
+                      <ActivityIndicator size="small" color="#FFB800" style={{ marginVertical: 10 }} />
+                    ) : (
+                      <FlatList
+                        data={verifiedResults}
+                        scrollEnabled={false}
+                        keyExtractor={(item, idx) => String(item.placeId || (item.name + item.lat + item.lon) || idx)}
+                        renderItem={({ item }) => (
+                          <TouchableOpacity
+                            style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}
+                            onPress={() => {
+                              setVerifiedLocation(item);
+                              setShowVerifiedModal(false);
+                            }}
+                          >
+                            <Text style={{ fontSize: 16, fontWeight: '600' }}>{item.name}</Text>
+                            <Text style={{ color: '#888', fontSize: 13 }}>{item.address}</Text>
+                            <Text style={{ color: '#007aff', fontSize: 12, marginTop: 2 }}>Verified</Text>
+                          </TouchableOpacity>
+                        )}
+                        ListEmptyComponent={<Text style={{ color: '#888', marginTop: 6 }}>No nearby locations found</Text>}
+                      />
+                    )}
+
+                    <Text style={{ fontWeight: '700', fontSize: 14, color: '#111', marginTop: 18, marginBottom: 8 }}>Passport / GPS</Text>
+                    <FlatList
+                      data={verifiedOptions}
+                      scrollEnabled={false}
+                      keyExtractor={(item, idx) => String((item.name + item.lat + item.lon) || idx)}
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}
+                          onPress={() => {
+                            setVerifiedLocation(item);
+                            setShowVerifiedModal(false);
+                          }}
+                        >
+                          <Text style={{ fontSize: 16, fontWeight: '600' }}>{item.name}</Text>
+                          <Text style={{ color: '#888', fontSize: 13 }}>{item.address}</Text>
+                          <Text style={{ color: '#007aff', fontSize: 12, marginTop: 2 }}>{item.verified ? 'Verified' : ''}</Text>
+                        </TouchableOpacity>
+                      )}
+                      ListEmptyComponent={<Text style={{ color: '#888', marginTop: 6 }}>No verified locations found</Text>}
+                    />
+                  </ScrollView>
+
+                  {/* Close Button */}
+                  <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                    <TouchableOpacity onPress={() => setShowVerifiedModal(false)}>
+                      <Text style={{ color: '#f39c12', fontWeight: '700', fontSize: 16 }}>Close</Text>
                     </TouchableOpacity>
-                  )}
-                  ListEmptyComponent={<Text style={{ color: '#888', marginTop: 6 }}>No verified locations found</Text>}
-                />
-              </ScrollView>
-              {/* Close Button */}
-              <View style={{ paddingVertical: 12, alignItems: 'center' }}>
-                <TouchableOpacity onPress={() => setShowVerifiedModal(false)}>
-                  <Text style={{ color: '#f39c12', fontWeight: '700', fontSize: 16 }}>Close</Text>
-                </TouchableOpacity>
+                  </View>
+                </View>
               </View>
-            </View>
+            </KeyboardAvoidingView>
           </View>
         </Modal>
         {/* Tag People Modal */}
         <Modal visible={showTagModal} animationType="slide" transparent onRequestClose={() => setShowTagModal(false)}>
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
             <KeyboardAvoidingView
+              style={{ flex: 1 }}
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
               keyboardVerticalOffset={Platform.select({ ios: 90, android: 0 })}
-              style={{
-                backgroundColor: '#fff',
-                borderTopLeftRadius: 32,
-                borderTopRightRadius: 32,
-                paddingHorizontal: 20,
-                paddingTop: 20,
-                paddingBottom: 24,
-                height: getModalHeight(0.8)
-              }}
             >
-              {/* Handle bar */}
-              <View style={{ width: 40, height: 5, backgroundColor: '#e0e0e0', borderRadius: 2.5, alignSelf: 'center', marginBottom: 20 }} />
-              <Text style={{ fontWeight: '700', fontSize: 20, marginBottom: 16, color: '#000' }}>Tag People</Text>
-              <TextInput
-                style={{ borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14, fontSize: 16, backgroundColor: '#f9f9f9' }}
-                placeholder="Search users..."
-                placeholderTextColor="#999"
-                value={userSearch}
-                onChangeText={async (text) => {
-                  setUserSearch(text);
-                  setLoadingUserResults(true);
-                  const result = await searchUsers(text, 20);
-                  if (result.success) {
-                    setUserResults(result.data.map((u: any) => ({
-                      uid: u.id,
-                      displayName: u.displayName,
-                      userName: u.userName
-                    })));
-                  } else {
-                    setUserResults([]);
-                  }
-                  setLoadingUserResults(false);
-                }}
-              />
-              {loadingUserResults ? (
-                <ActivityIndicator size="small" color="#FFB800" />
-              ) : (
-                <FlatList
-                  data={userResults}
-                  keyExtractor={item => item.uid}
-                  keyboardShouldPersistTaps="handled"
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}
-                      onPress={() => {
-                        if (!taggedUsers.some(u => u.uid === item.uid)) {
-                          setTaggedUsers([...taggedUsers, item]);
+              <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                <View style={{
+                  backgroundColor: '#fff',
+                  borderTopLeftRadius: 32,
+                  borderTopRightRadius: 32,
+                  paddingHorizontal: 20,
+                  paddingTop: 20,
+                  paddingBottom: 24,
+                  height: getModalHeight(0.8)
+                }}>
+                  {/* Handle bar */}
+                  <View style={{ width: 40, height: 5, backgroundColor: '#e0e0e0', borderRadius: 2.5, alignSelf: 'center', marginBottom: 20 }} />
+                  <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 14, color: '#000', textAlign: 'center' }}>Tag someone</Text>
+
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12, backgroundColor: '#f9f9f9' }}>
+                    <Feather name="search" size={18} color="#999" style={{ marginLeft: 10 }} />
+                    <TextInput
+                      style={{ flex: 1, fontSize: 15, color: '#111', textAlign: 'right' }}
+                      placeholder="Search"
+                      placeholderTextColor="#999"
+                      value={userSearch}
+                      onChangeText={async (text) => {
+                        setUserSearch(text);
+                        setLoadingUserResults(true);
+                        const result = await searchUsers(text, 20);
+                        if (result.success) {
+                          setUserResults(result.data.map((u: any) => ({
+                            uid: String(u?.uid || u?.id || ''),
+                            displayName: u?.displayName,
+                            userName: u?.userName,
+                            photoURL: u?.photoURL || u?.avatar || null,
+                          })).filter((uu: any) => typeof uu?.uid === 'string' && uu.uid.trim().length > 0));
                         } else {
-                          setTaggedUsers(taggedUsers.filter(u => u.uid !== item.uid));
+                          setUserResults([]);
                         }
+                        setLoadingUserResults(false);
                       }}
-                    >
-                      <Text style={{ fontSize: 16, fontWeight: '500', flex: 1 }}>{item.displayName || item.userName || item.uid}</Text>
-                      {taggedUsers.some(u => u.uid === item.uid) && (
-                        <Feather name="check" size={20} color="#f39c12" style={{ marginLeft: 8 }} />
+                    />
+                  </View>
+                  {loadingUserResults ? (
+                    <ActivityIndicator size="small" color="#FFB800" />
+                  ) : (
+                    <FlatList
+                      data={userResults}
+                      keyExtractor={item => item.uid}
+                      keyboardShouldPersistTaps="handled"
+                      renderItem={({ item }) => (
+                        <TouchableOpacity
+                          style={{ flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#eee' }}
+                          onPress={() => {
+                            if (!taggedUsers.some(u => u.uid === item.uid)) {
+                              setTaggedUsers([...taggedUsers, item]);
+                            } else {
+                              setTaggedUsers(taggedUsers.filter(u => u.uid !== item.uid));
+                            }
+                          }}
+                        >
+                          <Image
+                            source={{ uri: item.photoURL || DEFAULT_AVATAR_URL }}
+                            style={{ width: 44, height: 44, borderRadius: 12, marginLeft: 12, backgroundColor: '#eee' }}
+                          />
+                          <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                            <Text style={{ fontSize: 15, fontWeight: '500', textAlign: 'right', color: '#111' }} numberOfLines={1}>
+                              {item.displayName || item.userName || item.uid}
+                            </Text>
+                            {!!item.userName && (
+                              <Text style={{ fontSize: 12, color: '#777', textAlign: 'right', marginTop: 2 }} numberOfLines={1}>
+                                {item.userName}
+                              </Text>
+                            )}
+                          </View>
+                          {taggedUsers.some(u => u.uid === item.uid) && (
+                            <Feather name="check" size={20} color="#f39c12" style={{ marginRight: 10 }} />
+                          )}
+                        </TouchableOpacity>
                       )}
-                    </TouchableOpacity>
+                      ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No results</Text>}
+                    />
                   )}
-                  ListEmptyComponent={<Text style={{ color: '#888', marginTop: 12 }}>No results</Text>}
-                />
-              )}
-              {/* Close Button */}
-              <View style={{ paddingVertical: 12, alignItems: 'center' }}>
-                <TouchableOpacity onPress={() => setShowTagModal(false)}>
-                  <Text style={{ color: '#f39c12', fontWeight: '700', fontSize: 16 }}>Close</Text>
-                </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 14 }}>
+                    <TouchableOpacity onPress={() => setShowTagModal(false)}>
+                      <Text style={{ color: '#111', fontWeight: '600', fontSize: 15 }}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity onPress={() => setShowTagModal(false)} style={{ backgroundColor: '#FFB800', borderRadius: 8, paddingHorizontal: 22, paddingVertical: 12 }}>
+                      <Text style={{ color: '#000', fontWeight: '700', fontSize: 15 }}>Save</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
             </KeyboardAvoidingView>
           </View>

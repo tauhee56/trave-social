@@ -3,7 +3,7 @@ import type { Video as VideoType } from 'expo-av';
 import { ResizeMode, Video } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Dimensions, KeyboardAvoidingView, Modal, PanResponder, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { feedEventEmitter } from '../../lib/feedEventEmitter';
 import { getLocationVisitCount, likePost, unlikePost } from "../../lib/firebaseHelpers";
@@ -44,6 +44,16 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     backgroundColor: '#fff',
   },
+  topCenter: {
+    flex: 1,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  topRight: {
+    width: 44,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -56,53 +66,131 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   verifiedBadgeBox: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: 12,
-    backgroundColor: '#fafafa',
+    backgroundColor: '#f5f5f5',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
-    marginTop: 2,
   },
   locationIconBox: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
     borderRadius: 12,
     backgroundColor: '#F5F5F5',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
   locationInfo: {
     flexDirection: 'column',
-    justifyContent: 'center',
     flex: 1,
     minWidth: 0,
   },
   locationName: {
     fontWeight: 'bold',
-    fontSize: 15,
+    fontSize: 18,
     color: '#111',
     marginBottom: 0,
     flexShrink: 1,
     letterSpacing: 0.1,
+    textAlign: 'right',
   },
   visits: {
-    fontSize: 13,
-    color: '#666',
-    fontWeight: '400',
+    fontSize: 14,
+    color: '#777',
+    fontWeight: '500',
     marginTop: 2,
     letterSpacing: 0.1,
+    textAlign: 'right',
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: '#eee',
     borderWidth: 1,
     borderColor: '#ddd',
     overflow: 'hidden',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 6,
+  },
+  metaRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  metaTextWrap: {
+    alignItems: 'flex-end',
+  },
+  metaName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111',
+  },
+  metaTime: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#888',
+  },
+  captionWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+  },
+  caption: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '500',
+    color: '#111',
+  },
+  captionMore: {
+    marginTop: 2,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+    color: '#777',
+  },
+  iconRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 3,
+    paddingBottom: 7,
+  },
+  actionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    minHeight: 24,
+  },
+  actionCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#111',
+  },
+  commentCtaRow: {
+    paddingHorizontal: 16,
+    paddingBottom: 5,
+  },
+  commentCtaBox: {
+    borderRadius: 5,
+    backgroundColor: '#f2f2f2',
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+    alignSelf: 'stretch',
+  },
+  commentCtaText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    textAlign: 'right',
   },
   card: {
     marginBottom: 16,
@@ -113,7 +201,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 16,
     overflow: 'hidden',
-    borderRadius: 0,
+    borderRadius: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
@@ -140,22 +228,12 @@ const styles = StyleSheet.create({
     resizeMode: "contain",
     alignSelf: 'center',
   },
-  iconRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-  },
   likes: {
     fontWeight: "700",
     fontSize: 15,
     paddingHorizontal: 12,
     paddingTop: 8,
     paddingBottom: 4,
-  },
-  caption: {
-    paddingHorizontal: 12,
-    paddingBottom: 2,
-    color: "#333",
   },
   hashtags: {
     flexDirection: 'row',
@@ -221,6 +299,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 2,
     textAlign: "right",
+  },
+  mediaModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mediaModalClose: {
+    position: 'absolute',
+    top: 18,
+    right: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 60,
+  },
+  mediaModalMedia: {
+    width: '100%',
+    height: '100%',
   },
   modalBackground: {
     flex: 1,
@@ -544,14 +644,25 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
   }, [post.id]);
 
   const [currentAvatar, setCurrentAvatar] = useState<string>("https://via.placeholder.com/200x200.png?text=Profile");
+  const [currentUserName, setCurrentUserName] = useState<string>('User');
   useEffect(() => {
     // Use pre-populated user data from backend if available
     if (post?.userId && typeof post.userId === 'object') {
       // Backend populated userId with user object
       const avatar = post.userId?.avatar || post.userId?.photoURL || post.userId?.profilePicture;
+      const name =
+        post.userId?.name ||
+        post.userId?.displayName ||
+        post.userId?.username ||
+        post.userId?.userName ||
+        post?.userName ||
+        post?.username;
       console.log('[PostCard] Using populated user avatar:', avatar);
       if (avatar) {
         setCurrentAvatar(avatar);
+      }
+      if (name) {
+        setCurrentUserName(String(name));
         return;
       }
     }
@@ -560,6 +671,16 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
     if (typeof post?.userId === 'string' && post?.userAvatar) {
       console.log('[PostCard] Using post.userAvatar:', post.userAvatar);
       setCurrentAvatar(post.userAvatar);
+    }
+
+    const directName =
+      (post as any)?.userName ||
+      (post as any)?.username ||
+      (post as any)?.user?.name ||
+      (post as any)?.user?.displayName ||
+      (post as any)?.user?.username;
+    if (directName) {
+      setCurrentUserName(String(directName));
       return;
     }
 
@@ -570,11 +691,15 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
           console.log('[PostCard] Fetching avatar for userId:', post.userId);
           const { getUserProfile } = await import('../../lib/firebaseHelpers/user');
           const res = await getUserProfile(post.userId);
-          if (res && res.success && res.data && res.data.avatar) {
-            console.log('[PostCard] Fetched avatar:', res.data.avatar);
-            setCurrentAvatar(res.data.avatar);
-          } else {
-            console.warn('[PostCard] No avatar in profile response');
+          if (res && res.success && res.data) {
+            if (res.data.avatar) {
+              console.log('[PostCard] Fetched avatar:', res.data.avatar);
+              setCurrentAvatar(res.data.avatar);
+            }
+            const fetchedName = res.data.name || res.data.username;
+            if (fetchedName) {
+              setCurrentUserName(String(fetchedName));
+            }
           }
         } catch (err) {
           console.warn('[PostCard] Error fetching avatar:', err);
@@ -583,7 +708,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
       }
     }
     fetchAvatar();
-  }, [post?.userId, post?.userAvatar]);
+  }, [post?.userId, post?.userAvatar, post?.userName, (post as any)?.username]);
 
   // Helper function to check if URL is a video
   const isVideoUrl = (url: string) => {
@@ -612,8 +737,11 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
   let showImages = images.length > 0;
   let showVideo = !showImages && videos.length > 0;
   const [mediaIndex, setMediaIndex] = useState(0);
+  const [modalMediaIndex, setModalMediaIndex] = useState(0);
   const currentImageUrl = showImages ? images[mediaIndex] : undefined;
   const currentVideoUrl = showVideo ? videos[0] : undefined;
+  const currentMediaUrl = currentImageUrl || currentVideoUrl;
+  const isCurrentMediaVideo = typeof currentVideoUrl === 'string' && !!currentVideoUrl;
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false); // Videos don't auto-play
@@ -626,6 +754,52 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
   const [showControls, setShowControls] = useState(true); // Show video controls
   const videoRef = useRef<VideoType>(null);
   const mediaIndexRef = useRef(0);
+
+  const [showMediaModal, setShowMediaModal] = useState(false);
+  const modalTapLockRef = useRef(false);
+  const modalMediaIndexRef = useRef(0);
+
+  const closeMediaModal = useCallback(() => {
+    setShowMediaModal(false);
+    requestAnimationFrame(() => {
+      setMediaIndex(modalMediaIndex);
+    });
+  }, [modalMediaIndex]);
+
+  const openMediaModal = useCallback(() => {
+    setModalMediaIndex(mediaIndex);
+    setShowMediaModal(true);
+  }, [mediaIndex]);
+
+  useEffect(() => {
+    if (!showMediaModal) return;
+    if (!showImages || images.length === 0) return;
+
+    const getUri = (idx: number) => {
+      const raw = images[idx];
+      if (typeof raw !== 'string' || !raw) return null;
+      return getOptimizedImageUrl(raw, 'detail');
+    };
+
+    const all = images.length <= 12;
+    const window = 3;
+    const candidates: (string | null)[] = [];
+    if (all) {
+      for (let i = 0; i < images.length; i++) candidates.push(getUri(i));
+    } else {
+      for (let d = -window; d <= window; d++) candidates.push(getUri(modalMediaIndex + d));
+    }
+
+    const uris = candidates.filter(Boolean) as string[];
+
+    if (uris.length > 0) {
+      ExpoImage.prefetch(uris);
+    }
+  }, [showMediaModal, showImages, images, modalMediaIndex]);
+
+  useEffect(() => {
+    modalMediaIndexRef.current = modalMediaIndex;
+  }, [modalMediaIndex]);
 
   const mediaRatioCacheRef = useRef<Map<string, number>>(new Map());
   const [mediaHeight, setMediaHeight] = useState<number>(SCREEN_WIDTH);
@@ -688,6 +862,33 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
         }
       },
     }), [images.length]);
+
+  const modalPanResponder = React.useMemo(() =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 12 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+      },
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderRelease: (_, gestureState) => {
+        const currentIndex = modalMediaIndexRef.current;
+        const totalImages = images.length;
+
+        if (gestureState.dx > 35 && currentIndex > 0) {
+          setModalMediaIndex(() => {
+            const next = Math.max(0, currentIndex - 1);
+            modalMediaIndexRef.current = next;
+            return next;
+          });
+        } else if (gestureState.dx < -35 && currentIndex < totalImages - 1) {
+          setModalMediaIndex(() => {
+            const next = Math.min(totalImages - 1, currentIndex + 1);
+            modalMediaIndexRef.current = next;
+            return next;
+          });
+        }
+      },
+    }), [images.length]);
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [localShowCommentsModal, setLocalShowCommentsModal] = useState(false);
   const showCommentsModal = localShowCommentsModal;
@@ -746,22 +947,38 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
 
   const router = useRouter();
 
+  const postUserName = currentUserName;
+
+  const postTimeText = getTimeAgo(post?.createdAt);
+
+  const [isCaptionExpanded, setIsCaptionExpanded] = useState(false);
+
+  const captionText = (() => {
+    let caption = '';
+    if (typeof post?.caption === 'string' || typeof post?.caption === 'number') {
+      caption = String(post?.caption);
+    } else if (Array.isArray(post?.caption) || typeof post?.caption === 'object') {
+      caption = JSON.stringify(post?.caption);
+    }
+    return caption;
+  })();
+
+  const shouldShowMore = !isCaptionExpanded && captionText.trim().length > 110;
+
   return (
     <View style={{ flex: 1, backgroundColor: appColors.background }}>
       <View style={[styles.card, { backgroundColor: appColors.background }]}>
-        {/* Top section: Location/Visits (left), Avatar (right) */}
-        <View style={[styles.topRow, mirror && { flexDirection: 'row-reverse' }]}>
-          {/* Location and Visits (left) - CLICKABLE */}
+        {/* Top header: centered location + visits, verified badge on right */}
+        <View style={styles.topRow}>
+          <View style={{ width: 44 }} />
           <TouchableOpacity
-            style={styles.locationInfo}
+            style={styles.topCenter}
             activeOpacity={0.7}
             onPress={() => {
-              // Navigate to location screen with location details
               const locationToUse = post?.locationData?.name || post?.locationName || post?.location;
               const addressToUse = post?.locationData?.address || locationToUse;
 
               if (locationToUse) {
-                // Use placeId if available, otherwise use location name
                 if (post?.locationData?.placeId) {
                   router.push({
                     pathname: `/location/[placeId]`,
@@ -772,7 +989,6 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                     }
                   } as any);
                 } else {
-                  // Navigate with location name even without placeId
                   router.push({
                     pathname: `/location/[placeId]`,
                     params: {
@@ -782,62 +998,27 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                     }
                   } as any);
                 }
-              } else {
-                console.log('No location available for this post');
               }
             }}
-            accessible
             accessibilityRole="button"
-            accessibilityLabel={liked ? 'Unlike post' : 'Like post'}
+            accessibilityLabel="Open location"
           >
-            <View style={[styles.locationRow, mirror && { flexDirection: 'row-reverse' }]}>
-              {/* Show verified badge if location is verified, otherwise show map pin */}
-              {post?.locationData?.verified ? (
-                <View style={[styles.verifiedBadgeBox, mirror && { marginRight: 0, marginLeft: 10 }]}>
-                  <VerifiedBadge size={20} color="#000" />
-                </View>
-              ) : (
-                <View style={[styles.locationIconBox, mirror && { marginRight: 0, marginLeft: 12 }]}>
-                  <Feather name="map-pin" size={20} color="#111" />
-                </View>
-              )}
-              <View style={[styles.locationTextWrap, mirror && { alignItems: 'flex-end' }]}>
-                <Text style={styles.locationName} numberOfLines={1} ellipsizeMode="tail">
-                  {post?.locationData?.name || post?.locationName || post?.location || 'Unknown Location'}
-                </Text>
-                <Text style={styles.visits}>{visitCount.toLocaleString()} Visits</Text>
+            <Text style={styles.locationName} numberOfLines={1} ellipsizeMode="tail">
+              {post?.locationData?.name || post?.locationName || post?.location || 'Unknown Location'}
+            </Text>
+            <Text style={styles.visits}>{visitCount.toLocaleString()} Visits</Text>
+          </TouchableOpacity>
+          <View style={styles.topRight}>
+            {post?.locationData?.verified ? (
+              <View style={styles.verifiedBadgeBox}>
+                <VerifiedBadge size={18} color="#111" />
               </View>
-            </View>
-          </TouchableOpacity>
-          {/* Avatar (right) - CLICKABLE */}
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => {
-              // Navigate to user profile
-              if (post?.userId) {
-                // Handle both string userId and object userId (from backend population)
-                const uid = typeof post.userId === 'string' ? post.userId : post.userId?._id || post.userId?.uid;
-                if (uid) {
-                  router.push({
-                    pathname: '/(tabs)/profile',
-                    params: { user: uid }
-                  } as any);
-                } else {
-                  console.log('No valid userId found for this post');
-                }
-              } else {
-                console.log('No userId available for this post');
-              }
-            }}
-          >
-            <ExpoImage
-              source={{ uri: currentAvatar }}
-              style={styles.avatar}
-              contentFit="cover"
-              placeholder={IMAGE_PLACEHOLDER}
-              transition={150}
-            />
-          </TouchableOpacity>
+            ) : (
+              <View style={styles.verifiedBadgeBox}>
+                <Feather name="map-pin" size={18} color="#111" />
+              </View>
+            )}
+          </View>
         </View>
         {/* Media content: Image/Video */}
         {/* Image carousel if images exist */}
@@ -848,7 +1029,7 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
               style={styles.image}
               contentFit="cover"
               placeholder={IMAGE_PLACEHOLDER}
-              transition={200}
+              transition={0}
               onLoad={(e: any) => {
                 const w = e?.source?.width;
                 const h = e?.source?.height;
@@ -862,37 +1043,58 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 }
               }}
             />
+            {images.length > 1 && (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 14,
+                  right: 14,
+                  paddingHorizontal: 10,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  backgroundColor: 'rgba(0,0,0,0.55)',
+                  zIndex: 12,
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                  {mediaIndex + 1}/{images.length}
+                </Text>
+              </View>
+            )}
             {/* Left/Right tap areas for navigation */}
             {images.length > 1 && (
               <>
                 <TouchableOpacity
                   style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '30%', zIndex: 5 }}
-                  onPress={() => mediaIndex > 0 && setMediaIndex(mediaIndex - 1)}
+                  onPress={() => {
+                    setMediaIndex(i => Math.max(0, i - 1));
+                  }}
+                  activeOpacity={1}
+                />
+                <TouchableOpacity
+                  style={{ position: 'absolute', left: '30%', top: 0, bottom: 0, width: '40%', zIndex: 6 }}
+                  onPress={() => {
+                    if (currentMediaUrl) openMediaModal();
+                  }}
                   activeOpacity={1}
                 />
                 <TouchableOpacity
                   style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '30%', zIndex: 5 }}
-                  onPress={() => mediaIndex < images.length - 1 && setMediaIndex(mediaIndex + 1)}
+                  onPress={() => {
+                    setMediaIndex(i => Math.min(images.length - 1, i + 1));
+                  }}
                   activeOpacity={1}
                 />
               </>
             )}
-            {/* Page indicators (dots) - Instagram style at bottom center */}
-            {images.length > 1 && (
-              <View style={{ position: 'absolute', bottom: 12, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', zIndex: 10 }}>
-                {images.map((_: string, idx: number) => (
-                  <View
-                    key={idx}
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
-                      marginHorizontal: 3,
-                      backgroundColor: idx === mediaIndex ? '#fff' : 'rgba(255,255,255,0.4)',
-                    }}
-                  />
-                ))}
-              </View>
+            {images.length === 1 && (
+              <TouchableOpacity
+                style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 6 }}
+                onPress={() => {
+                  if (currentMediaUrl) openMediaModal();
+                }}
+                activeOpacity={1}
+              />
             )}
           </View>
         )}
@@ -1097,8 +1299,67 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
         {/* Removed old carousel navigation and page counter - now using Instagram-style dots at bottom */}
       </View>
       {/* All content inside card box */}
-      <View style={{ paddingHorizontal: 2 }}>
-        <View style={[styles.iconRow, mirror && { flexDirection: 'row-reverse' }]}>
+      <View style={{ paddingHorizontal: 0 }}>
+        <View style={styles.metaRow}>
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              if (post?.userId) {
+                const uid = typeof post.userId === 'string' ? post.userId : post.userId?._id || post.userId?.uid;
+                if (uid) {
+                  router.push({
+                    pathname: '/(tabs)/profile',
+                    params: { user: uid }
+                  } as any);
+                }
+              }
+            }}
+          >
+            <View style={styles.metaRight}>
+              <View style={styles.metaTextWrap}>
+                <Text style={styles.metaName} numberOfLines={1}>{postUserName}</Text>
+                <Text style={styles.metaTime}>{postTimeText}</Text>
+              </View>
+              <ExpoImage
+                source={{ uri: currentAvatar }}
+                style={styles.avatar}
+                contentFit="cover"
+                placeholder={IMAGE_PLACEHOLDER}
+                transition={150}
+              />
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.captionWrap}>
+          <Text style={[styles.caption, { color: appColors.text }]} numberOfLines={isCaptionExpanded ? undefined : 2}>
+            {captionText}
+          </Text>
+          {shouldShowMore && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => setIsCaptionExpanded(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Expand caption"
+            >
+              <Text style={styles.captionMore}>...more</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.commentCtaRow}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setShowCommentsModal(true)}
+          >
+            <View style={styles.commentCtaBox}>
+              <Text style={styles.commentCtaText}>Write a comment</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.iconRow}>
           <TouchableOpacity
             onPress={async () => {
               const userId = userIdForLike;
@@ -1163,26 +1424,31 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 console.error('Like/unlike exception:', err);
               }
             }}
-            style={{ marginRight: mirror ? 0 : 8, marginLeft: mirror ? 8 : 0, flexDirection: mirror ? 'row-reverse' : 'row', alignItems: 'center' }}
+            style={styles.actionItem}
           >
             {liked ? (
               <MaterialCommunityIcons name="heart" size={24} color={appColors.like} />
             ) : (
               <MaterialCommunityIcons name="heart-outline" size={24} color={appColors.icon} />
             )}
-            <Text style={{ marginLeft: mirror ? 0 : 6, marginRight: mirror ? 6 : 0, fontWeight: '700', color: appColors.text, fontSize: 15 }}>{typeof likesCount === 'number' || typeof likesCount === 'string' ? String(likesCount) : ''}</Text>
+            <Text style={styles.actionCount}>{typeof likesCount === 'number' ? String(likesCount) : String(likesCount || '')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             accessible
             accessibilityRole="button"
             accessibilityLabel="Open comments"
             onPress={() => setShowCommentsModal(true)}
-            style={{ marginRight: mirror ? 0 : 24, marginLeft: mirror ? 24 : 0 }}
+            style={styles.actionItem}
           >
             <Feather name="message-circle" size={22} color={appColors.icon} />
+            <Text style={styles.actionCount}>{String(commentCount || 0)}</Text>
           </TouchableOpacity>
+
+          <View style={{ minWidth: 28, alignItems: 'center', justifyContent: 'center' }}>
+            <SaveButton post={{ ...post, savedBy }} currentUser={currentUser} />
+          </View>
+
           <TouchableOpacity
-            style={{ marginRight: mirror ? 0 : 24, marginLeft: mirror ? 24 : 0 }}
             onPress={async () => {
               try {
                 await sharePost(post);
@@ -1190,59 +1456,13 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
                 console.log('Share error:', error);
               }
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Share post"
+            style={{ minWidth: 28, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Feather name="send" size={22} color={appColors.accent} />
+            <Feather name="send" size={22} color={appColors.icon} />
           </TouchableOpacity>
-          <View style={{ flex: 1 }} />
-          <SaveButton post={{ ...post, savedBy }} currentUser={currentUser} />
         </View>
-        {/* Likes Count */}
-        <Text style={[styles.likes, { color: appColors.text }, mirror && { textAlign: 'right' }]}>{typeof likesCount === 'number' ? `${likesCount.toLocaleString()} likes` : ''}</Text>
-        {/* Description (expandable) */}
-        <Text style={[styles.caption, { color: appColors.text }, mirror && { textAlign: 'right' }]} numberOfLines={showFullDesc ? undefined : 2}>
-          {(() => {
-            let username = '';
-            if (typeof post?.userName === 'string' || typeof post?.userName === 'number') {
-              username = String(post?.userName);
-            }
-            let caption = '';
-            if (typeof post?.caption === 'string' || typeof post?.caption === 'number') {
-              caption = String(post?.caption);
-            } else if (Array.isArray(post?.caption) || typeof post?.caption === 'object') {
-              caption = JSON.stringify(post?.caption);
-            }
-            return username ? `${username} ${caption}`.trim() : caption;
-          })()}
-        </Text>
-
-        {/* Hashtags Display */}
-        {post?.hashtags && Array.isArray(post.hashtags) && post.hashtags.length > 0 && (
-          <View style={[styles.hashtags, mirror && { flexDirection: 'row-reverse' }]}>
-            {post.hashtags.map((hashtag: string, idx: number) => (
-              <TouchableOpacity
-                key={`${hashtag}-${idx}`}
-                style={styles.hashtag}
-                onPress={() => {
-                  // Navigate to hashtag search
-                  router.push({
-                    pathname: '/search',
-                    params: { query: hashtag, type: 'hashtag' }
-                  });
-                }}
-              >
-                <Text style={styles.hashtagText}>#{hashtag}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Comments Preview */}
-        <TouchableOpacity onPress={() => setShowCommentsModal(true)}>
-          <Text style={[styles.commentPreview, { color: appColors.muted }, mirror && { textAlign: 'right' }]}>{`View all ${commentCount} comments`}</Text>
-        </TouchableOpacity>
-        {/* Remove the comment input box below like button */}
-        {/* Time */}
-        <Text style={[styles.time, mirror && { textAlign: 'left' }]}>{getTimeAgo(post?.createdAt)}</Text>
       </View>
       {/* Comments Modal */}
       <Modal
@@ -1251,77 +1471,270 @@ function PostCard({ post, currentUser, showMenu = true, highlightedCommentId, hi
         transparent={true}
         onRequestClose={() => setShowCommentsModal(false)}
       >
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={0}
-        >
-          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-            <TouchableOpacity
-              style={{ flex: 1 }}
-              activeOpacity={1}
-              onPress={() => setShowCommentsModal(false)}
-            />
-            <View
-              style={{
-                backgroundColor: '#fff',
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-                height: '90%',
-                shadowColor: '#000',
-                shadowOpacity: 0.1,
-                shadowRadius: 12,
-                elevation: 10,
-              }}
-            >
-              {/* Swipe Handle */}
+        {Platform.OS === 'ios' ? (
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={'padding'}
+            keyboardVerticalOffset={0}
+          >
+            <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                activeOpacity={1}
+                onPress={() => setShowCommentsModal(false)}
+              />
               <View
                 style={{
-                  alignItems: 'center',
-                  paddingTop: 12,
-                  paddingBottom: 8,
+                  backgroundColor: '#fff',
                   borderTopLeftRadius: 20,
                   borderTopRightRadius: 20,
+                  height: '90%',
+                  shadowColor: '#000',
+                  shadowOpacity: 0.1,
+                  shadowRadius: 12,
+                  elevation: 10,
                 }}
-                {...panResponder.panHandlers}
               >
-                <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2 }} />
-              </View>
-
-              {/* Header */}
-              <View style={{
-                paddingHorizontal: 16,
-                paddingBottom: 12,
-                borderBottomWidth: 1,
-                borderBottomColor: '#f0f0f0',
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}>
-                <Text style={{ fontWeight: '700', fontSize: 18, color: '#222' }}>Comments</Text>
-                <TouchableOpacity
-                  onPress={() => setShowCommentsModal(false)}
-                  style={{ padding: 4 }}
+                {/* Swipe Handle */}
+                <View
+                  style={{
+                    alignItems: 'center',
+                    paddingTop: 12,
+                    paddingBottom: 8,
+                    borderTopLeftRadius: 20,
+                    borderTopRightRadius: 20,
+                  }}
+                  {...panResponder.panHandlers}
                 >
-                  <Feather name="x" size={24} color="#666" />
-                </TouchableOpacity>
-              </View>
+                  <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2 }} />
+                </View>
 
-              {/* Comments Section */}
-              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1 }}>
-                <CommentSection
-                  postId={post.id}
-                  postOwnerId={post.userId}
-                  currentAvatar={user?.photoURL || "https://via.placeholder.com/200x200.png?text=Profile"}
-                  currentUser={currentUser}
-                  maxHeight={undefined}
-                  showInput={true}
-                  highlightedCommentId={highlightedCommentId}
-                />
-              </ScrollView>
+                {/* Header */}
+                <View style={{
+                  paddingHorizontal: 16,
+                  paddingBottom: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: '#f0f0f0',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}>
+                  <Text style={{ fontWeight: '700', fontSize: 18, color: '#222' }}>Comments</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowCommentsModal(false)}
+                    style={{ padding: 4 }}
+                  >
+                    <Feather name="x" size={24} color="#666" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Comments Section */}
+                <View style={{ flex: 1 }}>
+                  <CommentSection
+                    postId={post.id}
+                    postOwnerId={post.userId}
+                    currentAvatar={user?.photoURL || "https://via.placeholder.com/200x200.png?text=Profile"}
+                    currentUser={currentUser}
+                    maxHeight={undefined}
+                    showInput={true}
+                    highlightedCommentId={highlightedCommentId}
+                  />
+                </View>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        ) : (
+          <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                activeOpacity={1}
+                onPress={() => setShowCommentsModal(false)}
+              />
+              <View
+                style={{
+                  backgroundColor: '#fff',
+                  borderTopLeftRadius: 20,
+                  borderTopRightRadius: 20,
+                  height: '90%',
+                  shadowColor: '#000',
+                  shadowOpacity: 0.1,
+                  shadowRadius: 12,
+                  elevation: 10,
+                }}
+              >
+                {/* Swipe Handle */}
+                <View
+                  style={{
+                    alignItems: 'center',
+                    paddingTop: 12,
+                    paddingBottom: 8,
+                    borderTopLeftRadius: 20,
+                    borderTopRightRadius: 20,
+                  }}
+                  {...panResponder.panHandlers}
+                >
+                  <View style={{ width: 40, height: 4, backgroundColor: '#ddd', borderRadius: 2 }} />
+                </View>
+
+                {/* Header */}
+                <View style={{
+                  paddingHorizontal: 16,
+                  paddingBottom: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: '#f0f0f0',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}>
+                  <Text style={{ fontWeight: '700', fontSize: 18, color: '#222' }}>Comments</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowCommentsModal(false)}
+                    style={{ padding: 4 }}
+                  >
+                    <Feather name="x" size={24} color="#666" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Comments Section */}
+                <View style={{ flex: 1 }}>
+                  <CommentSection
+                    postId={post.id}
+                    postOwnerId={post.userId}
+                    currentAvatar={user?.photoURL || "https://via.placeholder.com/200x200.png?text=Profile"}
+                    currentUser={currentUser}
+                    maxHeight={undefined}
+                    showInput={true}
+                    highlightedCommentId={highlightedCommentId}
+                  />
+                </View>
+              </View>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        )}
+      </Modal>
+
+      <Modal
+        visible={showMediaModal}
+        animationType="none"
+        transparent={true}
+        presentationStyle="overFullScreen"
+        hardwareAccelerated={true}
+        statusBarTranslucent={true}
+        onRequestClose={closeMediaModal}
+      >
+        <View style={styles.mediaModalBackdrop}>
+          <TouchableOpacity
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            activeOpacity={1}
+            onPress={closeMediaModal}
+          />
+
+          {showImages && images.length > 1 && (
+            <View
+              style={{
+                position: 'absolute',
+                top: 18,
+                left: 18,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 999,
+                backgroundColor: 'rgba(0,0,0,0.55)',
+                zIndex: 21,
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                {modalMediaIndex + 1}/{images.length}
+              </Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.mediaModalClose}
+            onPress={closeMediaModal}
+            accessibilityRole="button"
+            accessibilityLabel="Close media"
+          >
+            <Feather name="x" size={22} color="#fff" />
+          </TouchableOpacity>
+
+          {showImages && images.length > 0 ? (
+            <>
+              <View style={styles.mediaModalMedia} {...modalPanResponder.panHandlers}>
+                <ExpoImage
+                  source={{
+                    uri: getOptimizedImageUrl(
+                      images[modalMediaIndex] || images[0] || currentMediaUrl || 'https://via.placeholder.com/600x600.png?text=No+Image',
+                      'detail'
+                    )
+                  }}
+                  recyclingKey={String(modalMediaIndex)}
+                  style={styles.mediaModalMedia}
+                  contentFit="contain"
+                  placeholder={IMAGE_PLACEHOLDER}
+                  cachePolicy="memory-disk"
+                  priority="high"
+                  transition={0}
+                />
+              </View>
+              {images.length > 1 && (
+                <>
+                  <TouchableOpacity
+                    style={{ position: 'absolute', left: 0, top: 80, bottom: 0, width: '30%', zIndex: 10 }}
+                    onPress={() => {
+                      if (modalTapLockRef.current) return;
+                      modalTapLockRef.current = true;
+                      setModalMediaIndex(i => {
+                        const next = Math.max(0, i - 1);
+                        modalMediaIndexRef.current = next;
+                        return next;
+                      });
+                      setTimeout(() => {
+                        modalTapLockRef.current = false;
+                      }, 120);
+                    }}
+                    activeOpacity={1}
+                  />
+                  <TouchableOpacity
+                    style={{ position: 'absolute', right: 0, top: 80, bottom: 0, width: '30%', zIndex: 10 }}
+                    onPress={() => {
+                      if (modalTapLockRef.current) return;
+                      modalTapLockRef.current = true;
+                      setModalMediaIndex(i => {
+                        const next = Math.min(images.length - 1, i + 1);
+                        modalMediaIndexRef.current = next;
+                        return next;
+                      });
+                      setTimeout(() => {
+                        modalTapLockRef.current = false;
+                      }, 120);
+                    }}
+                    activeOpacity={1}
+                  />
+                </>
+              )}
+            </>
+          ) : currentMediaUrl ? (
+            isCurrentMediaVideo ? (
+              <Video
+                source={{ uri: currentMediaUrl }}
+                style={styles.mediaModalMedia}
+                resizeMode={ResizeMode.CONTAIN}
+                shouldPlay={true}
+                useNativeControls={true}
+                isLooping={true}
+              />
+            ) : (
+              <ExpoImage
+                source={{ uri: getOptimizedImageUrl(currentMediaUrl, 'detail') }}
+                style={styles.mediaModalMedia}
+                contentFit="contain"
+                placeholder={IMAGE_PLACEHOLDER}
+                transition={0}
+              />
+            )
+          ) : null}
+        </View>
       </Modal>
     </View>
   );

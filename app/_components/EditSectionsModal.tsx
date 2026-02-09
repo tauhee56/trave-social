@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import React, { useEffect, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -45,6 +45,18 @@ export default function EditSectionsModal({
   const [newSectionName, setNewSectionName] = useState('');
   const [showCreateInput, setShowCreateInput] = useState(false);
 
+  const normalizeSections = (data: any): Section[] => {
+    const arr = Array.isArray(data) ? data : [];
+    return arr
+      .map((s: any) => ({
+        _id: typeof s?._id === 'string' ? s._id : undefined,
+        name: String(s?.name || ''),
+        postIds: (Array.isArray(s?.postIds) ? s.postIds : []).filter((id: any): id is string => typeof id === 'string'),
+        coverImage: typeof s?.coverImage === 'string' ? s.coverImage : undefined,
+      }))
+      .filter((s: Section) => !!s.name);
+  };
+
   const handleCreateSection = async () => {
     if (!newSectionName.trim() || !userId) {
       console.log('❌ Cannot create section - missing name or userId:', { newSectionName, userId });
@@ -65,7 +77,7 @@ export default function EditSectionsModal({
       const sectionsData = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.data) ? res.data.data : []);
       console.log('✅ Updating sections in UI:', sectionsData.length, 'sections');
       console.log('✅ Section names:', sectionsData.map((s: any) => s.name || s._id));
-      onSectionsUpdate(sectionsData);
+      onSectionsUpdate(normalizeSections(sectionsData));
     } else {
       console.error('❌ Failed to fetch sections:', res);
     }
@@ -86,7 +98,7 @@ export default function EditSectionsModal({
           const res = await getUserSectionsSorted(userId);
           if (res.success && res.data) {
             const sectionsData = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.data) ? res.data.data : []);
-            onSectionsUpdate(sectionsData);
+            onSectionsUpdate(normalizeSections(sectionsData));
           }
           if (selectedSectionForEdit === sectionName) {
             setSelectedSectionForEdit(null);
@@ -112,10 +124,11 @@ export default function EditSectionsModal({
     if (!section) return;
 
     const postId = post._id || post.id;
+    if (!postId) return;
     console.log('Post selected:', postId, 'Mode:', sectionMode);
 
     if (sectionMode === 'cover') {
-      const uri = post.imageUrl || (post as any).mediaUrls?.[0] || post.imageUrls?.[0];
+      const uri = post.imageUrl || post.imageUrls?.[0];
       console.log('Setting cover image:', uri);
       
       // Cover is just a thumbnail, don't add post to section automatically
@@ -140,7 +153,7 @@ export default function EditSectionsModal({
         const sectionsData = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.data) ? res.data.data : []);
         console.log('📋 Extracted sections data:', sectionsData.length, 'sections');
         if (sectionsData.length > 0) {
-          onSectionsUpdate(sectionsData);
+          onSectionsUpdate(normalizeSections(sectionsData));
         } else {
           console.warn('⚠️ Sections data is empty, keeping current state');
         }
@@ -148,9 +161,10 @@ export default function EditSectionsModal({
         console.error('❌ Failed to fetch sections after update:', res);
       }
     } else {
-      const newPostIds = section.postIds.includes(postId)
-        ? section.postIds.filter(id => id !== postId)
-        : [...section.postIds, postId];
+      const safePostIds = (Array.isArray(section.postIds) ? section.postIds : []).filter((id): id is string => typeof id === 'string');
+      const newPostIds = safePostIds.includes(postId)
+        ? safePostIds.filter(id => id !== postId)
+        : [...safePostIds, postId];
       console.log('📝 Updating postIds:', newPostIds);
       
       // Update local state immediately for instant feedback
@@ -174,7 +188,7 @@ export default function EditSectionsModal({
         const sectionsData = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.data) ? res.data.data : []);
         console.log('📋 Extracted sections data:', sectionsData.length, 'sections');
         if (sectionsData.length > 0) {
-          onSectionsUpdate(sectionsData);
+          onSectionsUpdate(normalizeSections(sectionsData));
         } else {
           console.warn('⚠️ Sections data is empty, keeping current state');
         }
@@ -211,7 +225,7 @@ export default function EditSectionsModal({
     const res = await getUserSectionsSorted(userId);
     if (res.success && res.data) {
       const sectionsData = Array.isArray(res.data) ? res.data : (Array.isArray(res.data.data) ? res.data.data : []);
-      onSectionsUpdate(sectionsData);
+      onSectionsUpdate(normalizeSections(sectionsData));
     }
   };
 
@@ -242,44 +256,48 @@ export default function EditSectionsModal({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Ionicons name="close" size={24} color="#000" />
-          </TouchableOpacity>
-          <Text style={styles.title}>Edit sections</Text>
-          <View style={{ width: 40 }} />
-        </View>
-
-        <ScrollView contentContainerStyle={styles.content}>
-          {/* Create new section button */}
-          {!showCreateInput ? (
-            <TouchableOpacity
-              style={styles.createSectionBtn}
-              onPress={() => setShowCreateInput(true)}
-            >
-              <Ionicons name="add" size={20} color="#000" style={{ marginRight: 8 }} />
-              <Text style={styles.createSectionText}>Create a new section</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.createInputContainer}>
-              <TextInput
-                style={styles.createInput}
-                placeholder="Section name"
-                value={newSectionName}
-                onChangeText={setNewSectionName}
-                autoFocus
-                onSubmitEditing={handleCreateSection}
-              />
-              <TouchableOpacity onPress={handleCreateSection} style={styles.createConfirmBtn}>
-                <Ionicons name="checkmark" size={20} color="#fff" />
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+            {/* Header */}
+            <View style={styles.header}>
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+                <Ionicons name="close" size={24} color="#000" />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setShowCreateInput(false); setNewSectionName(''); }} style={styles.createCancelBtn}>
-                <Ionicons name="close" size={20} color="#666" />
-              </TouchableOpacity>
+              <Text style={styles.title}>Edit sections</Text>
+              <View style={{ width: 40 }} />
             </View>
-          )}
+
+            <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+              {/* Create new section button */}
+              {!showCreateInput ? (
+                <TouchableOpacity
+                  style={styles.createSectionBtn}
+                  onPress={() => setShowCreateInput(true)}
+                >
+                  <Ionicons name="add" size={20} color="#000" style={{ marginRight: 8 }} />
+                  <Text style={styles.createSectionText}>Create a new section</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.createInputContainer}>
+                  <TextInput
+                    style={styles.createInput}
+                    placeholder="Section name"
+                    value={newSectionName}
+                    onChangeText={setNewSectionName}
+                    autoFocus
+                    onSubmitEditing={handleCreateSection}
+                  />
+                  <TouchableOpacity onPress={handleCreateSection} style={styles.createConfirmBtn}>
+                    <Ionicons name="checkmark" size={20} color="#fff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => { setShowCreateInput(false); setNewSectionName(''); }} style={styles.createCancelBtn}>
+                    <Ionicons name="close" size={20} color="#666" />
+                  </TouchableOpacity>
+                </View>
+              )}
 
           {/* Draggable Sections list */}
           <View style={{ minHeight: sections.length * 80 }}>
@@ -320,8 +338,11 @@ export default function EditSectionsModal({
                 {posts.map((p) => {
                   const postId = p._id || p.id;
                   const section = sections.find(s => s.name === selectedSectionForEdit);
-                  const isSelected = sectionMode === 'select' && section?.postIds.includes(postId);
-                  const isCoverSelected = sectionMode === 'cover' && section?.coverImage === (p.imageUrl || p.mediaUrls?.[0] || p.imageUrls?.[0]);
+                  if (!postId) return null;
+                  const safeSectionPostIds = (Array.isArray(section?.postIds) ? section?.postIds : []).filter((id): id is string => typeof id === 'string');
+                  const isSelected = sectionMode === 'select' && safeSectionPostIds.includes(postId);
+                  const isCoverSelected = sectionMode === 'cover' && section?.coverImage === (p.imageUrl || p.imageUrls?.[0]);
+                  const imageUri = p.imageUrl || p.imageUrls?.[0];
                   return (
                     <TouchableOpacity
                       key={postId}
@@ -330,7 +351,7 @@ export default function EditSectionsModal({
                       onPress={() => handlePostSelection(p)}
                     >
                       <ExpoImage
-                        source={{ uri: p.imageUrl || p.mediaUrls?.[0] || p.imageUrls?.[0] }}
+                        source={{ uri: imageUri }}
                         style={styles.gridImage}
                         contentFit="cover"
                         transition={200}
@@ -362,8 +383,9 @@ export default function EditSectionsModal({
               <Text style={styles.saveBtnText}>Save</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
-      </SafeAreaView>
+            </ScrollView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
       </GestureHandlerRootView>
     </Modal>
   );

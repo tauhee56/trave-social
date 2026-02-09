@@ -28,7 +28,6 @@ import HighlightCarousel from '../../src/_components/HighlightCarousel';
 import HighlightViewer from '../../src/_components/HighlightViewer';
 import PostViewerModal from '../../src/_components/PostViewerModal';
 import StoriesViewer from '../../src/_components/StoriesViewer';
-import { INSTAGRAM_LIGHT_MAP_STYLE } from '../../lib/instagramMapStyle';
 
 import { getTaggedPosts, getUserHighlights as getUserHighlightsAPI, getUserPosts as getUserPostsAPI, getUserProfile as getUserProfileAPI, getUserSections as getUserSectionsAPI, getUserStories as getUserStoriesAPI } from '../../src/_services/firebaseService';
 import { getKeyboardOffset, getModalHeight } from '../../utils/responsive';
@@ -702,7 +701,7 @@ export default function Profile({ userIdProp }: any) {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={[]}>
       {/* Header for other users' profiles with back button and 3-dots menu */}
       {!isOwnProfile && (
         <View style={styles.profileHeader}>
@@ -878,7 +877,7 @@ export default function Profile({ userIdProp }: any) {
                 }}
                 disabled={isPrivate && !isOwnProfile && !approvedFollower}
               >
-                <Text style={styles.statNum}>{profile?.followersCount ?? (profile?.followers?.length || 0)}</Text>
+                <Text style={styles.statNum}>{Math.max(0, Number(profile?.followersCount ?? (profile?.followers?.length || 0)) || 0)}</Text>
                 <Text style={styles.statLbl}>Followers</Text>
               </TouchableOpacity>
               <TouchableOpacity 
@@ -890,7 +889,7 @@ export default function Profile({ userIdProp }: any) {
                 }}
                 disabled={isPrivate && !isOwnProfile && !approvedFollower}
               >
-                <Text style={styles.statNum}>{profile?.followingCount ?? (profile?.following?.length || 0)}</Text>
+                <Text style={styles.statNum}>{Math.max(0, Number(profile?.followingCount ?? (profile?.following?.length || 0)) || 0)}</Text>
                 <Text style={styles.statLbl}>Following</Text>
               </TouchableOpacity>
             </>
@@ -1078,8 +1077,8 @@ export default function Profile({ userIdProp }: any) {
                   latitudeDelta: 0.0922,
                   longitudeDelta: 0.0421,
                 } : undefined}
+                googleRenderer={Platform.OS === 'android' ? 'LATEST' : undefined}
                 provider={Platform.OS === 'ios' ? 'google' : undefined}
-                customMapStyle={INSTAGRAM_LIGHT_MAP_STYLE}
               >
                 {posts.filter(p => {
                   const lat = parseCoord(p.location?.latitude ?? p.location?.lat ?? p.lat ?? p.locationData?.lat);
@@ -1518,7 +1517,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: 8,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
     backgroundColor: '#fff',

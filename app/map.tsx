@@ -2,7 +2,7 @@ import { Image as ExpoImage } from 'expo-image';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Dimensions, FlatList, PermissionsAndroid, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Dimensions, FlatList, KeyboardAvoidingView, PermissionsAndroid, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +13,7 @@ import { PostLocationModal } from '../components/PostLocationModal';
 import { useUser } from './_components/UserContext';
 import PostCard from './_components/PostCard';
 
-import { INSTAGRAM_LIGHT_MAP_STYLE } from '../lib/instagramMapStyle';
+// ... existing code ...
 
 import { getAllPosts } from '../lib/firebaseHelpers';
 import { apiService } from './_services/apiService';
@@ -167,6 +167,8 @@ export default function MapScreen() {
   const [locationPermission, setLocationPermission] = useState<'granted'|'denied'|'unknown'>('unknown');
   const [showSearch, setShowSearch] = useState(false);
   const [showCommentsModalId, setShowCommentsModal] = useState<string | null>(null);
+
+  const lastCenteredAtRef = useRef<number>(0);
 
   useEffect(() => {
     if (!showSearch) return;
@@ -381,6 +383,57 @@ export default function MapScreen() {
     }
   }, [latParam, lonParam]);
 
+  const centerOnUserLocation = useCallback(async () => {
+    try {
+      // If the screen was opened with explicit coordinates, respect them
+      if (latParam && lonParam && isValidLatLon(latParam, lonParam)) return;
+
+      const now = Date.now();
+      // Throttle to avoid repeated permission/location prompts on quick tab switches
+      if (now - lastCenteredAtRef.current < 1500) return;
+      lastCenteredAtRef.current = now;
+
+      let granted = false;
+      if (Platform.OS === 'android') {
+        // Some devices still require explicit Android permission prompt handling
+        const already = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+        if (already) {
+          granted = true;
+        } else {
+          const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+          granted = result === PermissionsAndroid.RESULTS.GRANTED;
+        }
+      } else {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        granted = status === 'granted';
+      }
+
+      setLocationPermission(granted ? 'granted' : 'denied');
+      if (!granted) return;
+
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const lat = pos?.coords?.latitude;
+      const lon = pos?.coords?.longitude;
+      if (!isValidLatLon(lat, lon)) return;
+
+      setViewerCoords({ lat, lon });
+
+      const nextRegion: Region = {
+        latitude: lat,
+        longitude: lon,
+        latitudeDelta: 0.03,
+        longitudeDelta: 0.03,
+      };
+
+      setMapRegion(nextRegion);
+      try {
+        mapRef.current?.animateToRegion?.(nextRegion, 450);
+      } catch {}
+    } catch {
+      setLocationPermission('denied');
+    }
+  }, [isValidLatLon, latParam, lonParam]);
+
   const fetchLiveStreams = useCallback(async () => {
     try {
       const res: any = await apiService.get('/live-streams');
@@ -399,9 +452,10 @@ export default function MapScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchLiveStreams();
+      centerOnUserLocation();
       const t = setInterval(fetchLiveStreams, 5000);
       return () => clearInterval(t);
-    }, [fetchLiveStreams])
+    }, [centerOnUserLocation, fetchLiveStreams])
   );
 
   const filteredPosts = safePosts.filter((p) => {
@@ -411,6 +465,10 @@ export default function MapScreen() {
     if (userId) return isValidLatLon(lat, lon) && p.userId === userId;
     return isValidLatLon(lat, lon) && likes >= 100;
   });
+
+  // Group posts by location for map markers
+  const locationGroups: { [key: string]: PostType[] } = {};
+
   (Array.isArray(filteredPosts) ? filteredPosts : []).forEach((p) => {
     let lat = p.lat ?? (typeof p.location !== 'string' ? p.location?.lat : undefined);
     let lon = p.lon ?? (typeof p.location !== 'string' ? p.location?.lon : undefined);
@@ -554,7 +612,6 @@ export default function MapScreen() {
               ? mapRegion
               : DEFAULT_REGION
             }
-            customMapStyle={INSTAGRAM_LIGHT_MAP_STYLE}
           >
             {/* Live stream markers - only show LIVE pill, no distance */}
             {safeLiveStreams.map((stream) => (
@@ -622,10 +679,7 @@ export default function MapScreen() {
         )}
 
         {showSearch && (
-          <View
-            style={[styles.searchOverlay, { bottom: 0 }]}
-            pointerEvents="box-none"
-          >
+          <View style={[styles.searchOverlay, { bottom: 0 }]} pointerEvents="box-none">
             <View
               pointerEvents="none"
               renderToHardwareTextureAndroid
@@ -636,25 +690,18 @@ export default function MapScreen() {
                 },
               ]}
             />
-            <TouchableOpacity
-              style={[styles.searchBackButton, { top: insets.top + 10 }]}
-              activeOpacity={0.85}
-              onPress={() => setShowSearch(false)}
-            >
-              <Ionicons name="arrow-back" size={20} color="#111" />
-            </TouchableOpacity>
 
-            <View style={[styles.searchSheet, { bottom: tabBarHeight }]} pointerEvents="auto">
+            <KeyboardAvoidingView
+              style={[styles.searchSheet, { bottom: tabBarHeight }]}
+              pointerEvents="auto"
+              behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+              keyboardVerticalOffset={Platform.select({ ios: 90, android: tabBarHeight + (insets?.bottom || 0) })}
+            >
               <View style={styles.searchSheetHandle} />
               <View style={styles.searchSheetBar}>
                 {query ? (
                   <TouchableOpacity
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    onPress={() => {
-                      setQuery('');
-                      resetLocationSearch();
-                    }}
-                    style={{ paddingRight: 8 }}
                     activeOpacity={0.8}
                   >
                     <Ionicons name="close" size={18} color="#111" />
@@ -662,6 +709,7 @@ export default function MapScreen() {
                 ) : (
                   <View style={{ width: 26 }} />
                 )}
+
                 <TextInput
                   value={query}
                   onChangeText={setQuery}
@@ -681,6 +729,7 @@ export default function MapScreen() {
                     fetchLocationFeed(chosen, 'reset');
                   }}
                 />
+
                 <TouchableOpacity
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   activeOpacity={0.85}
@@ -783,7 +832,7 @@ export default function MapScreen() {
                   )}
                 </View>
               )}
-            </View>
+            </KeyboardAvoidingView>
           </View>
         )}
       </View>
@@ -819,6 +868,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    bottom: 0,
     backgroundColor: 'transparent',
     zIndex: 999,
     elevation: 30,
@@ -832,9 +882,16 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
   },
-  searchBackButton: {
+  searchBackButtonWrap: {
     position: 'absolute',
-    left: 16,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1002,
+    elevation: 8,
+  },
+  searchBackButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -846,7 +903,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 8,
     elevation: 8,
-    zIndex: 1002,
   },
   searchSheet: {
     position: 'absolute',
@@ -889,7 +945,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#111',
-    textAlign: 'center',
+    textAlign: 'right',
     paddingRight: 10,
   },
 
@@ -941,93 +997,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  /* Floating action button */
-  fab: {
-    position: 'absolute',
-
-    right: 16,
-    bottom: Platform.OS === 'ios' ? 34 : 20,
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  fabInner: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#111',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  /* My Location button */
-  myLocationBtn: {
-    position: 'absolute',
-    left: 16,
-    bottom: Platform.OS === 'ios' ? 34 : 20,
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  myLocationBtnInner: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#f39c12',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  /* Modal search bar styles */
-  modalOverlay: { flex: 1 },
-  modalBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.18)' },
-  modalContent: { flex: 1, justifyContent: 'flex-end' },
-  searchModalWrapper: { left: 12, right: 12, bottom: Platform.OS === 'ios' ? 140 : 120, alignItems: 'center', zIndex: 9999, elevation: 20 },
-  searchBarTop: { width: '92%', height: 56, borderRadius: 28, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 10 },
-  modalInput: { flex: 1, marginLeft: 12, fontSize: 16, color: '#111' },
-  clearBtn: { padding: 6 },
-  
-  /* Post modal styles */
-  postModalOverlay: { 
-    flex: 1, 
-    backgroundColor: 'rgba(0,0,0,0.5)' 
-  },
-  postModalBackdrop: { 
-    position: 'absolute', 
-    top: 0, 
-    left: 0, 
-    right: 0, 
-    bottom: 0 
-  },
-  postModalContainer: { 
-    flex: 1, 
-    justifyContent: 'flex-end' 
-  },
-  postModalContent: { 
-    backgroundColor: '#fff', 
-    borderTopLeftRadius: 24, 
-    borderTopRightRadius: 24,
-    maxHeight: '95%',
-    paddingTop: 8,
-  },
-  
-  /* Custom marker styles */
   markerContainer: {
     position: 'relative',
     width: 44,
@@ -1082,7 +1051,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f0f0',
   },
 
-  /* Live stream marker styles */
   liveMarkerContainer: {
     flexDirection: 'row',
     alignItems: 'center',

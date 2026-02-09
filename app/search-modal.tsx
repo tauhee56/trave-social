@@ -213,8 +213,8 @@ export default function SearchModal() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <View style={{ flex: 1 }}>
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <View style={{ flex: 1, paddingTop: 8 }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           {/* Header Tabs */}
           <View style={styles.headerTabsRow}>
@@ -238,7 +238,11 @@ export default function SearchModal() {
           {/* Search and Region Select in bordered box */}
           <View style={styles.searchRegionBorderBox}>
             <View style={styles.searchBox}>
-              <Feather name="search" size={20} color="#333" />
+              {q.length > 0 && (
+                <TouchableOpacity onPress={() => setQ('')} style={styles.inputClear}>
+                  <Feather name="x" size={16} color="#777" />
+                </TouchableOpacity>
+              )}
               <TextInput
                 style={styles.input}
                 placeholder={tab === 'people' ? 'Search for traveler' : 'Search a destination'}
@@ -249,11 +253,7 @@ export default function SearchModal() {
                 autoCorrect={false}
                 importantForAutofill="no"
               />
-              {q.length > 0 && (
-                <TouchableOpacity onPress={() => setQ('')} style={styles.inputClear}>
-                  <Feather name="x" size={16} color="#777" />
-                </TouchableOpacity>
-              )}
+              <Feather name="search" size={20} color="#333" style={styles.searchIcon} />
             </View>
             {/* Region Select Grid (background) */}
             {tab === 'place' && (
@@ -540,14 +540,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingTop: 12,
+    paddingTop: 0,
   },
   headerTabsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 8,
     paddingBottom: 8,
     borderBottomWidth: 1,
     borderColor: '#eee',
@@ -676,12 +676,16 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
     marginBottom: 16,
   },
+  searchIcon: {
+    marginLeft: 8,
+  },
   input: {
     flex: 1,
     fontSize: 16,
     color: '#333',
     paddingVertical: 0,
     paddingHorizontal: 8,
+    textAlign: 'right',
   },
   inputClear: {
     width: 24,

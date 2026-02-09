@@ -1,12 +1,13 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { Image as ExpoImage } from 'expo-image';
 import { Tabs, useFocusEffect, useRouter, useSegments } from "expo-router";
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, StyleSheet, Text, TouchableOpacity, View, FlatList, Modal, ScrollView } from 'react-native';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Animated, Dimensions, StyleSheet, Text, TouchableOpacity, View, FlatList, Modal, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNotifications } from '../../hooks/useNotifications';
 import { notificationService } from '../../lib/notificationService';
 import { getPushNotificationToken, requestNotificationPermissions, savePushToken } from '../../services/notificationService';
+
 let RtcSurfaceView: any = null;
 let VideoSourceType: any = null;
 let RenderModeType: any = null;
@@ -36,9 +37,28 @@ const CHEVRON_SIZE = isSmallDevice ? 18 : 20;
 const TAB_ACTIVE_COLOR = '#f39c12';
 const TAB_INACTIVE_COLOR = '#777';
 const TAB_LABEL_SIZE = 10;
+const TOP_MENU_HEIGHT = isSmallDevice ? 50 : 56;
 
 // Create a context for tab events
 const TabEventContext = createContext<{ emitHomeTabPress: () => void; subscribeHomeTabPress: (cb: () => void) => () => void } | undefined>(undefined);
+
+type HeaderVisibilityApi = {
+  hideHeader: () => void;
+  showHeader: () => void;
+};
+
+const HeaderVisibilityContext = createContext<HeaderVisibilityApi | undefined>(undefined);
+
+export const useHeaderVisibility = (): HeaderVisibilityApi => {
+  const ctx = useContext(HeaderVisibilityContext);
+  if (!ctx) {
+    return {
+      hideHeader: () => {},
+      showHeader: () => {},
+    };
+  }
+  return ctx;
+};
 
 export const useTabEvent = () => useContext(TabEventContext);
 
@@ -56,9 +76,53 @@ export default function TabsLayout() {
   };
   const router = useRouter();
 
+  const headerHeightRef = useRef<number>(TOP_MENU_HEIGHT);
+  const animatedHeaderHeight = useRef(new Animated.Value(TOP_MENU_HEIGHT)).current;
+  const animatedHeaderTranslateY = useRef(new Animated.Value(0)).current;
+
+  const applyHeaderState = useCallback((hidden: boolean) => {
+    const h = headerHeightRef.current;
+    if (!h) return;
+
+    Animated.parallel([
+      Animated.timing(animatedHeaderHeight, {
+        toValue: hidden ? 0 : h,
+        duration: 180,
+        useNativeDriver: false,
+      }),
+      Animated.timing(animatedHeaderTranslateY, {
+        toValue: hidden ? -h : 0,
+        duration: 180,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [animatedHeaderHeight, animatedHeaderTranslateY]);
+
+  const hideHeader = useCallback(() => {
+    applyHeaderState(true);
+  }, [applyHeaderState]);
+
+  const showHeader = useCallback(() => {
+    applyHeaderState(false);
+  }, [applyHeaderState]);
+
+  const headerVisibilityValue = useMemo(() => {
+    return { hideHeader, showHeader };
+  }, [hideHeader, showHeader]);
+
   return (
     <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
-      <TopMenu />
+      <Animated.View
+        style={{
+          height: animatedHeaderHeight,
+          transform: [{ translateY: animatedHeaderTranslateY }],
+          overflow: 'hidden',
+        }}
+      >
+        <TopMenu />
+      </Animated.View>
+
+      <HeaderVisibilityContext.Provider value={headerVisibilityValue}>
       <TabEventContext.Provider value={{ emitHomeTabPress, subscribeHomeTabPress }}>
       <Tabs
         screenOptions={{
@@ -122,6 +186,10 @@ export default function TabsLayout() {
           }}
           options={{
             title: "Post",
+            tabBarLabelStyle: {
+              fontSize: TAB_LABEL_SIZE,
+              marginTop: 6,
+            },
             tabBarIcon: ({ color, size }) => (
               <View style={{
                 width: 40,
@@ -172,6 +240,7 @@ export default function TabsLayout() {
         />
       </Tabs>
       </TabEventContext.Provider>
+      </HeaderVisibilityContext.Provider>
     </SafeAreaView>
   );
 }
@@ -179,8 +248,8 @@ export default function TabsLayout() {
 function TopMenu(): React.ReactElement {
   const router = useRouter();
   const [currentUserId, setCurrentUserId] = useState<string>('');
-  const [unreadNotif, setUnreadNotif] = React.useState(0);
-  const [unreadMsg, setUnreadMsg] = React.useState(0);
+  const [unreadNotif, setUnreadNotif] = useState(0);
+  const [unreadMsg, setUnreadMsg] = useState(0);
   const [menuVisible, setMenuVisible] = React.useState(false);
 
   const [notificationsModalVisible, setNotificationsModalVisible] = React.useState(false);

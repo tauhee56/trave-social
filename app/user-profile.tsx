@@ -35,8 +35,8 @@ export default function UserProfileWrapper() {
   }, [currentUserId, userId, router]);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <View style={styles.wrapper}>
+    <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <View style={{ flex: 1 }}>
         <Profile userIdProp={userId} />
       </View>
     </SafeAreaView>
@@ -45,5 +45,4 @@ export default function UserProfileWrapper() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
-  wrapper: { flex: 1, paddingTop: 12, paddingBottom: 12 },
 });

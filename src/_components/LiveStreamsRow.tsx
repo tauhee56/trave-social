@@ -196,7 +196,7 @@ export default memo(LiveStreamsRowComponent);
 
 const styles = StyleSheet.create({
 	container: {
-		marginBottom: 16,
+		marginBottom: 8,
 		backgroundColor: '#fff',
 	},
 	header: {
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
 	},
 	scrollContent: {
 		paddingHorizontal: 16,
-		paddingBottom: 12,
+		paddingBottom: 6,
 	},
 	streamCard: {
 		alignItems: 'center',

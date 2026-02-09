@@ -1,5 +1,15 @@
 import { apiService } from '../../app/_services/apiService';
 
+// Timeout wrapper to prevent indefinite hanging
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number = 15000): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error('Request timeout - please try again')), timeoutMs)
+    )
+  ]);
+};
+
 // ============= COMMENTS CRUD =============
 
 /**
@@ -8,12 +18,15 @@ import { apiService } from '../../app/_services/apiService';
 export async function addComment(postId: string, userId: string, userName: string, userAvatar: string, text: string) {
   try {
     console.log('[Comments API] addComment - postId:', postId, 'userId:', userId, 'text:', text);
-    const data = await apiService.post(`/posts/${postId}/comments`, { userId, userName, userAvatar, text });
+    const data = await withTimeout(
+      apiService.post(`/posts/${postId}/comments`, { userId, userName, userAvatar, text }),
+      15000
+    );
     console.log('[Comments API] addComment response:', data);
     return data;
   } catch (error: any) {
     console.error('❌ addComment error:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: error.message || 'Request failed' };
   }
 }
 
@@ -119,11 +132,14 @@ export async function removeCommentReaction(postId: string, commentId: string, u
  */
 export async function getPostComments(postId: string) {
   try {
-    const data = await apiService.get(`/posts/${postId}/comments`);
+    const data = await withTimeout(
+      apiService.get(`/posts/${postId}/comments`),
+      15000
+    );
     return data;
   } catch (error: any) {
     console.error('❌ getPostComments error:', error);
-    return { success: false, error: error.message, data: [] };
+    return { success: false, error: error.message || 'Request failed', data: [] };
   }
 }
 
