@@ -1,7 +1,6 @@
 import io from 'socket.io-client';
 
-// Use LAN IP for mobile device access
-const SOCKET_URL = 'http://192.168.0.110:5000'; // <-- Replace with your computer's LAN IP
+const SOCKET_URL = String(process.env.EXPO_PUBLIC_API_BASE_URL || 'https://trave-social-backend.onrender.com/api').replace('/api', '');
 const socket = io(SOCKET_URL);
 
 export function subscribeToMessages(onMessage: (msg: any) => void) {

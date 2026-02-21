@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { API_BASE } from '../services/apiClient';
 import toast from 'react-hot-toast';
 import '../styles/Login.css';
 
@@ -21,7 +22,7 @@ export default function Login() {
         return;
       }
       // Call backend API for admin login
-      const res = await fetch('http://192.168.1.11:5000/api/admin/login', {
+      const res = await fetch(`${API_BASE}/admin/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
